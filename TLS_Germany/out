@@ -1,0 +1,9 @@
+[🌐] Fetching Google Sheet: https://docs.google.com/spreadsheets/d/12N0onox6RMsgRJ9uzzSGMkrKVqcCdfEnLm-GAsJyqPs/export?format=csv
+✅ Success! Loaded 3 accounts:
+
+{'Account': 'test1@example.com', 'Password': 'Pass123!', 'Second': 58, 'Millisecond': 100, 'Start Time': '08:00', 'End Time': '20:00', 'Country': 'Germany', 'Platform': '"https://visas-de.tlscontact.com/en-us"'}
+{'Account': 'test2@example.com', 'Password': 'Secure456', 'Second': 58, 'Millisecond': 250, 'Start Time': '09:00', 'End Time': '18:00', 'Country': 'Germany', 'Platform': 'TLS'}
+{'Account': 'test4@example.com', 'Password': 'Pass999', 'Second': 59, 'Millisecond': 500, 'Start Time': None, 'End Time': None, 'Country': 'blank', 'Platform': 'TLS_Germany'}
+
+⚠️ Warnings (Skipped Rows):
+- Row 4 skipped: Missing required value for 'Account'.

@@ -14,7 +14,7 @@ omni-booking-automation-suite/
 │   │   ├── app/
 │   │   │   ├── __init__.py     # Credentials and VFS target selectors
 │   │   │   ├── browser_manager.py
-│   │   │   ├── captcha.py      # Cloudflare Turnstile local click handler
+│   │   │   ├── captcha.py      # Cloudflare Turnstile local click handlermkdir 
 │   │   │   ├── gui.py
 │   │   │   └── main.py
 │   │   └── README.md
