@@ -1,7 +1,0 @@
-2026/07/09-21:41:22.476 7204 Reusing MANIFEST C:\Users\Active\Desktop\Coding\Gradutaion\CustProjects\Omni-Booking-Automation-Suite\TLS_Germany\runtime_profiles\tivime8259_preparmy_com\Default\WebStorage\2\IndexedDB\indexeddb.leveldb/MANIFEST-000001
-2026/07/09-21:41:22.476 7204 Recovering log #3
-2026/07/09-21:41:22.477 7204 Reusing old log C:\Users\Active\Desktop\Coding\Gradutaion\CustProjects\Omni-Booking-Automation-Suite\TLS_Germany\runtime_profiles\tivime8259_preparmy_com\Default\WebStorage\2\IndexedDB\indexeddb.leveldb/000003.log 
-2026/07/09-21:41:31.278 91a8 Level-0 table #5: started
-2026/07/09-21:41:31.321 91a8 Level-0 table #5: 14608 bytes OK
-2026/07/09-21:41:31.361 91a8 Delete type=0 #3
-2026/07/09-21:41:31.362 6e44 Manual compaction at level-0 from '\x00\x02\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x03\x00\x00\x00' @ 0 : 0; will stop at (end)
