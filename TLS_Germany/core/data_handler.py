@@ -1,202 +1,165 @@
+"""
+Omni-Booking-Automation-Suite/TLS_Germany/core/data_handler.py
+"""
+
 import os
 import re
 import pandas as pd
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Optional
 
 class DataIngestor:
     """
     General File Parser for Omni-Booking Suite.
-    Dynamically handles required columns, rejecting invalid files, 
-    and gracefully skipping invalid rows with warnings.
+    Dynamically handles required columns, rejects invalid files, 
+    and gracefully skips invalid rows while capturing all dynamic columns.
     """
 
     def __init__(self, target_columns: Optional[List[str]] = None) -> None:
-        # إذا لم يمرر المستخدم أعمدة مطلوبة، نعتمد الحساب والباسورد كأعمدة إجبارية فقط
+        # Default mandatory columns if none are provided
         self.required_columns: List[str] = target_columns or ['Account', 'Password']
 
-    def _sanitize_and_parse(self, df: pd.DataFrame) -> Tuple[bool, List[Dict[str, Any]], str, List[str]]:
+    def _sanitize_and_parse(self, df: pd.DataFrame) -> Dict[str, Any]:
         """
-        Internal method to safely validate and parse dataframe.
-        Returns: (Success_Boolean, Parsed_Data_List, Error_Message, Warnings_List)
+        Internal method to safely validate and parse the dataframe dynamically.
+        Returns a structured dictionary with execution results.
         """
-        # 1. فحص مستوى الملف (File Level Validation)
+        # Clean column headers (removes accidental trailing spaces like "IP Address ")
+        df.columns = df.columns.str.strip()
+
+        # 1. File Level Validation
         missing_cols = [col for col in self.required_columns if col not in df.columns]
         if missing_cols:
-            # رفض الملف بالكامل إذا غابت الأعمدة الأساسية
-            return False, [], f"File rejected. Missing required columns: {', '.join(missing_cols)}", []
+            return {
+                "success": False,
+                "data": [],
+                "error": f"File rejected. Missing required columns: {', '.join(missing_cols)}",
+                "warnings": []
+            }
 
         parsed_data = []
         warnings = []
 
-        # 2. فحص مستوى الصفوف (Row Level Validation)
+        # 2. Row Level Validation & Dynamic Parsing
         for index, row in df.iterrows():
             try:
+                row_dict = row.to_dict()
                 row_is_valid = True
                 
-                # أ. التأكد من أن جميع الأعمدة المطلوبة تحتوي على بيانات في هذا الصف
+                # A. Validate mandatory columns
                 for req_col in self.required_columns:
-                    val = row.get(req_col)
+                    val = row_dict.get(req_col)
                     if pd.isna(val) or str(val).strip() == '' or str(val).strip().lower() == 'nan':
                         warnings.append(f"Row {index + 2} skipped: Missing required value for '{req_col}'.")
                         row_is_valid = False
-                        break # exist if condition .. 
+                        break 
                 
                 if not row_is_valid:
-                    continue # تخطي الصف بالكامل
+                    continue
 
-                # ب. استخراج البيانات الإجبارية (نحن متأكدون الآن أنها موجودة وصالحة)
-                account = str(row['Account']).strip()
-                password = str(row['Password']).strip()
-
-                # ج. معالجة الأعمدة الاختيارية (Optional Columns)
-                
-                # معالجة الثواني
-                second = 0
-                if 'Second' in df.columns and not pd.isna(row['Second']):
-                    second = int(pd.to_numeric(row['Second'], errors='coerce'))
-                    if pd.isna(second): second = 0
-                
-                # معالجة الملي ثانية
-                millisecond = 0
-                if 'Millisecond' in df.columns and not pd.isna(row['Millisecond']):
-                    millisecond = int(pd.to_numeric(row['Millisecond'], errors='coerce'))
-                    if pd.isna(millisecond): millisecond = 0
-
-                # معالجة وقت البداية والنهاية
-                start_time = row.get('Start Time', None)
-                end_time = row.get('End Time', None)
-                if pd.isna(start_time): start_time = None
-                if pd.isna(end_time): end_time = None
-
-                # معالجة الدولة (Country Logic)
-                if 'Country' not in df.columns:
-                    country = None  # العمود غير موجود إطلاقاً في الملف
-                else:
-                    c_val = row['Country']
-                    if pd.isna(c_val) or str(c_val).strip() == '':
-                        country = "blank"  # العمود موجود لكن الخلية فارغة
+                # B. Dynamically clean and build the row payload
+                cleaned_row = {}
+                for key, val in row_dict.items():
+                    if pd.isna(val):
+                        cleaned_row[key] = None
+                    elif isinstance(val, str):
+                        cleaned_row[key] = val.strip()
                     else:
-                        country = str(c_val).strip()
+                        cleaned_row[key] = val
 
-                # معالجة المنصة
-                platform = 'TLS_Germany'
-                if 'Platform' in df.columns:
-                    p_val = row['Platform']
-                    if not pd.isna(p_val) and str(p_val).strip() != '' and str(p_val).strip().lower() != 'nan':
-                        platform = str(p_val).strip()
+                # C. Ensure timing values are integers if they exist, otherwise default to 0
+                for time_col in ['Second', 'Millisecond']:
+                    if time_col in cleaned_row and cleaned_row[time_col] is not None:
+                        try:
+                            cleaned_row[time_col] = int(float(cleaned_row[time_col]))
+                        except ValueError:
+                            cleaned_row[time_col] = 0
+                    elif time_col not in cleaned_row:
+                        cleaned_row[time_col] = 0
 
-                # د. تجميع الصف السليم وإضافته للقائمة
-                parsed_data.append({
-                    'Account': account,
-                    'Password': password,
-                    'Second': second,
-                    'Millisecond': millisecond,
-                    'Start Time': start_time,
-                    'End Time': end_time,
-                    'Country': country,
-                    'Platform': platform
-                })
+                # D. Apply specific business logic fallbacks
+                if 'Platform' not in cleaned_row or not cleaned_row['Platform']:
+                    cleaned_row['Platform'] = 'TLS_Germany'
+                    
+                if 'Country' in cleaned_row and not cleaned_row['Country']:
+                    cleaned_row['Country'] = 'blank'
+
+                # Append the fully dynamic row dictionary
+                parsed_data.append(cleaned_row)
 
             except Exception as e:
-                # إذا حدث خطأ غير متوقع في التحويل، نضيفه للتحذيرات ونتخطى الصف
-                warnings.append(f"Row {index + 2} skipped due to formatting error: {str(e)}")
+                warnings.append(f"Row {index + 2} skipped due to unexpected error: {str(e)}")
                 
-        return True, parsed_data, "", warnings
+        return {
+            "success": True,
+            "data": parsed_data,
+            "error": "",
+            "warnings": warnings
+        }
 
-    def load_from_csv(self, file_path: str) -> Tuple[bool, List[Dict[str, Any]], str, List[str]]:
+    def load_from_csv(self, file_path: str) -> Dict[str, Any]:
         if not os.path.exists(file_path):
-            return False, [], "The selected CSV file does not exist.", []
+            return {"success": False, "data": [], "error": "The selected CSV file does not exist.", "warnings": []}
         try:
             return self._sanitize_and_parse(pd.read_csv(file_path))
         except Exception as e:
-            return False, [], f"Failed to read CSV file: {str(e)}", []
+            return {"success": False, "data": [], "error": f"Failed to read CSV file: {str(e)}", "warnings": []}
 
-    def load_from_excel(self, file_path: str) -> Tuple[bool, List[Dict[str, Any]], str, List[str]]:
+    def load_from_excel(self, file_path: str) -> Dict[str, Any]:
         if not os.path.exists(file_path):
-            return False, [], "The selected Excel file does not exist.", []
+            return {"success": False, "data": [], "error": "The selected Excel file does not exist.", "warnings": []}
         try:
             return self._sanitize_and_parse(pd.read_excel(file_path))
         except Exception as e:
-            return False, [], f"Failed to read Excel file: {str(e)}", []
-    def load_from_google_sheet(self, url: str) -> Tuple[bool, List[Dict[str, Any]], str, List[str]]:
-            """
-            يستقبل رابط جوجل شيت العادي (من شريط المتصفح أو زر Share)
-            ويقوم بتحويله تلقائياً إلى رابط تحميل مباشر بصيغة CSV.
-            """
-            import re
-            import pandas as pd
+            return {"success": False, "data": [], "error": f"Failed to read Excel file: {str(e)}", "warnings": []}
 
-            # 1. استخراج الـ ID الخاص بالشيت من الرابط
-            id_match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
-            if not id_match:
-                return False, [], "Invalid Google Sheets URL. Could not find Spreadsheet ID.", []
-            
-            spreadsheet_id = id_match.group(1)
+    def load_from_google_sheet(self, url: str) -> Dict[str, Any]:
+        """
+        Extracts data from a standard Google Sheets share link.
+        Automatically converts the URL to a CSV export endpoint.
+        """
+        # Extract the Spreadsheet ID
+        id_match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+        if not id_match:
+            return {"success": False, "data": [], "error": "Invalid Google Sheets URL. Could not find Spreadsheet ID.", "warnings": []}
+        
+        spreadsheet_id = id_match.group(1)
 
-            # 2. استخراج الـ gid (إن وجد)
-            gid_match = re.search(r'[#&?]gid=([0-9]+)', url)
-            
-            # 3. بناء الرابط بذكاء (إذا لم نجد gid، لا نكتبه، وجوجل ستحمل أول صفحة تلقائياً)
-            if gid_match:
-                gid = gid_match.group(1)
-                export_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv&gid={gid}"
-            else:
-                export_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv"
+        # Extract the GID (sheet page identifier) if present
+        gid_match = re.search(r'[#&?]gid=([0-9]+)', url)
+        
+        if gid_match:
+            gid = gid_match.group(1)
+            export_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv&gid={gid}"
+        else:
+            export_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv"
 
-            print(f"[🌐] Fetching Google Sheet: {export_url}") # سطر للمراقبة في التيرمينال
+        print(f"[🌐] Fetching Google Sheet: {export_url}")
 
-            try:
-                # 4. قراءة الرابط المباشر
-                # نضيف User-Agent لمنع جوجل من حظر الطلب في بعض الأحيان
-                storage_options = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-                df = pd.read_csv(export_url, storage_options=storage_options)
-                return self._sanitize_and_parse(df)
-            except Exception as e:
-                hint = ""
-                if "HTTP Error 400" in str(e):
-                    hint = "\n[Hint]: Ensure the Google Sheet is set to 'Anyone with the link can view'."
-                return False, [], f"Failed to fetch Google Sheet data: {str(e)}{hint}", []
+        try:
+            storage_options = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            df = pd.read_csv(export_url, storage_options=storage_options)
+            return self._sanitize_and_parse(df)
+        except Exception as e:
+            hint = "\n[Hint]: Ensure the Google Sheet is set to 'Anyone with the link can view'." if "HTTP Error 400" in str(e) else ""
+            return {"success": False, "data": [], "error": f"Failed to fetch Google Sheet data: {str(e)}{hint}", "warnings": []}
+
 
 if __name__ == "__main__":
-    # 1. إنشاء الكائن
     ingestor = DataIngestor()
     
-    # 2. تحديد الملف الموجود عندك
-    file_path = "https://docs.google.com/spreadsheets/d/12N0onox6RMsgRJ9uzzSGMkrKVqcCdfEnLm-GAsJyqPs/edit?usp=sharing"
+    sheet_url = "https://docs.google.com/spreadsheets/d/12N0onox6RMsgRJ9uzzSGMkrKVqcCdfEnLm-GAsJyqPs/edit?usp=sharing"
     
-    # 3. تحميل البيانات
-    success, data_list, error_msg, warnings = ingestor.load_from_google_sheet(file_path)
+    # Store the returned dictionary
+    result = ingestor.load_from_google_sheet(sheet_url)
     
-    # 4. طباعة النتائج في الـ Terminal
-    if success:
-        print(f"✅ Success! Loaded {len(data_list)} accounts:\n")
-        for row in data_list:
+    if result["success"]:
+        print(f"✅ Success! Loaded {len(result['data'])} accounts:\n")
+        for row in result["data"]:
             print(row)
     else:
-        print(f"❌ Critical Error: {error_msg}")
+        print(f"❌ Critical Error: {result['error']}")
         
-    if warnings:
+    if result["warnings"]:
         print("\n⚠️ Warnings (Skipped Rows):")
-        for warn in warnings:
+        for warn in result["warnings"]:
             print(f"- {warn}")
-'''
-if __name__ == "__main__":
-    ingestor = DataIngestor() # يعتمد على الأعمدة الافتراضية 'Account', 'Password'
-    success, data_list, error_msg, warnings = ingestor.load_from_excel(file_path)
-
-    if not success:
-        # الملف نفسه مرفوض (لا يحتوي على عمود Account أصلاً)
-        messagebox.showerror("Critical Error", error_msg)
-    else:
-        # تم قبول الملف، واستخراج الحسابات السليمة
-        for row in data_list:
-            self.add_account_to_ui(row) # دالة إضافة الحساب للواجهة
-            
-        # إذا كانت هناك تحذيرات (صفوف تم تخطيها لأن الباسورد أو الإيميل فارغ)
-        if warnings:
-            warnings_text = "\n".join(warnings)
-            messagebox.showwarning(
-                "Partial Success", 
-                f"Loaded {len(data_list)} accounts successfully.\n\nHowever, some rows were skipped:\n{warnings_text}"
-            )
-'''
