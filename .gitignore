@@ -5,3 +5,6 @@ localpycs/
 *.exe
 *.spec
 runtime_profiles/
+downloaded_files/
+omni_booking.egg-info/
+.git/
