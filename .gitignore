@@ -1,10 +1,21 @@
-build/
-dist/
+# Cache and runtime files
 __pycache__/
-localpycs/
-*.exe
-*.spec
+*.pyc
+.pytest_cache/
+
+# Virtual Environment
+wenv/
+venv/
+ENV/
+
+# Automation outputs and profiles
 runtime_profiles/
 downloaded_files/
-omni_booking.egg-info/
-.git/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Any random output logs
+out.txt
+out
