@@ -7,7 +7,7 @@ __pycache__/
 wenv/
 venv/
 ENV/
-
+templates/
 # Automation outputs and profiles
 runtime_profiles/
 downloaded_files/

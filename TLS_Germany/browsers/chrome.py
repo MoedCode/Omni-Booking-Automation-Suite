@@ -5,20 +5,21 @@ Synchronous Thread-Based Implementation
 """
 import sys
 import os
-# Force Python to look one directory up (at TLS_Germany) so it can find the 'config' folder
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import threading
 import time
 from typing import Optional, Dict
 from seleniumbase import Driver
-from config.selectors import TLS_SELECTORS
-from browsers.stealth_actions import StealthActions
+
+from browsers.browser_base import BrowserBase
+from config.settings import *
 
 class ChromeManager:
     """
     Manages an isolated Chrome browser instance using pure threading.
-    Each instance runs in its own OS thread. No asyncio required.
-    Designed for zero-disk footprint and maximum performance.
+    Handles lifecycle, threading, and precision timing.
+    Delegates all page interaction to BrowserBase.
     """
 
     def __init__(
@@ -42,7 +43,6 @@ class ChromeManager:
         self.driver = None
 
     def _build_stealth_profile(self) -> list:
-        """Returns browser flags optimized for performance and zero-disk usage."""
         flags = [
             "--window-size=1280,800",
             "--disable-blink-features=AutomationControlled",
@@ -59,7 +59,6 @@ class ChromeManager:
         return flags
 
     def start_engine(self) -> None:
-        """Spawns an isolated hardware thread for the account."""
         if self.is_running:
             return
 
@@ -72,7 +71,6 @@ class ChromeManager:
         self.thread.start()
 
     def _run_task(self) -> None:
-        """Main sequential execution logic running inside the thread."""
         print(f"[🧵] Thread started for: {self.account}")
 
         try:
@@ -82,14 +80,27 @@ class ChromeManager:
                 incognito=False,
                 chromium_arg=",".join(self._build_stealth_profile())
             )
-            
-            # 2. Login Workflow
-            self._perform_login()
 
-            # 3. Precision Timing
-            self._wait_until_target()
+            # 2. Navigate to the start URL
+            self.driver.get(self.target_url)
 
-            # 4. Trigger Action
+            # 3. Hand over control to the BrowserBase (The State Machine)
+            # Pass lambda to allow the loop to monitor the thread's running state
+            navigator = BrowserBase(
+                driver=self.driver, 
+                account=self.account, 
+                password=self.password,
+                is_running_flag=lambda: self.is_running
+            )
+
+            # 4. START THE INFINITE ROUTING LOOP
+            navigator.navigate_to_target_state()
+
+            # 5. Precision Timing (Wait for the exact millisecond)
+            if self.is_running:
+                self._wait_until_target()
+
+            # 6. Trigger Action
             if self.is_running:
                 self._execute_action()
 
@@ -97,43 +108,23 @@ class ChromeManager:
             print(f"❌ [Error in {self.account}]: {e}")
         finally:
             print(f"[💡] Process finished for {self.account}.")
-
-    def _perform_login(self) -> None:
-        """Navigates and types credentials sequentially."""
-        self.driver.get(self.target_url)
-        
-        # Instantiate StealthActions for this thread
-        actor = StealthActions(self.driver)
-        
-        # Sequentially perform login
-        actor.smart_type(TLS_SELECTORS['login_form']['email_input_field'], self.account)
-        actor.natural_delay()
-        actor.smart_type(TLS_SELECTORS['login_form']['password_input_field'], self.password)
-        actor.human_click(TLS_SELECTORS['login_form']['submit_login_btn'])
-        print(f"[✅] {self.account} logged in.")
+            self.stop_engine()
 
     def _wait_until_target(self) -> None:
-        """High-precision sync wait loop without asyncio."""
         target_time = self.target_sec + (self.target_ms / 1000.0)
         print(f"🎯 [Armed] {self.account} waiting for {target_time}s")
 
         while self.is_running:
             now = time.time()
-            # Logic: check current second and millisecond
             if int(now) % 60 == self.target_sec:
-                # Tight precision check
                 if (now - int(now)) >= (self.target_ms / 1000.0):
                     break
-            
-            # Small sleep to keep CPU usage low
             time.sleep(0.001)
 
     def _execute_action(self) -> None:
-        """Fires the trigger."""
         print(f"🚀 [💥 FIRE] {self.account} executed at {time.time()}")
 
     def stop_engine(self) -> None:
-        """Gracefully quits the driver."""
         self.is_running = False
         if self.driver:
             try:
@@ -143,21 +134,16 @@ class ChromeManager:
             self.driver = None
 
 if __name__ == "__main__":
-    # Test logic
-    from config.settings import START_URL
-    
     bot = ChromeManager(
         account="tivime8259@preparmy.com",
         password="Yallavisa@@123",
         target_sec=3,
         target_ms=500,
-        url=START_URL
+        url=BASE_URL # Testing from the base URL to verify routing works
     )
-    
+
     bot.start_engine()
-    
     try:
-        # Keep main thread alive
         bot.thread.join()
     except KeyboardInterrupt:
         bot.stop_engine()
