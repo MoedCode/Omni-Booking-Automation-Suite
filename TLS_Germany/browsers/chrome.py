@@ -23,6 +23,10 @@ class ChromeManager:
     Delegates all page interaction to BrowserBase.
     """
 
+    # Class-level lock to prevent race conditions during driver initialization,
+    # especially when using seleniumbase's uc=True mode, which patches files on the fly.
+    _driver_init_lock = threading.Lock()
+
     def __init__(
         self,
         account: str,
@@ -42,15 +46,22 @@ class ChromeManager:
         self.target_sec = int(target_sec)
         self.target_ms = int(target_ms)
         self.proxy_address = proxy_address
-
+        
+        # --- Unique Identifiers for Isolation & Viewing ---
+        # Create a filesystem-safe name for the profile directory
+        self.account_safe_name = "".join([c if c.isalnum() else "_" for c in self.account])
+        self.profile_path = os.path.abspath(f"./runtime_profiles/{self.account_safe_name}")
+        self.window_title = f"Omni-Booking :: {self.account}"
+        
         self.thread: Optional[threading.Thread] = None
         self.is_running = False
-        self.driver = None
-        # Status attribute for rich feedback to the GUI
+        self.driver: Optional[Driver] = None
         self.status = "Idle"
 
     def _build_stealth_profile(self) -> list:
+        os.makedirs(self.profile_path, exist_ok=True)
         flags = [
+            f"--user-data-dir={self.profile_path}",
             "--window-size=1280,800",
             "--disable-blink-features=AutomationControlled",
             "--disable-infobars",
@@ -82,13 +93,15 @@ class ChromeManager:
         self.status = "Initializing"
 
         try:
-            # 1. Initialize browser
-            self.status = "Launching Driver"
-            self.driver = Driver(
-                uc=True,
-                incognito=False,
-                chromium_arg=",".join(self._build_stealth_profile())
-            )
+            # 1. Initialize browser (synchronized to prevent race conditions)
+            with ChromeManager._driver_init_lock:
+                self.status = "Launching Driver"
+                self.driver = Driver(
+                    uc=True,
+                    incognito=False,
+                    chromium_arg=",".join(self._build_stealth_profile())
+                )
+            self.driver.execute_script(f"document.title = '{self.window_title}'")
 
             # 2. Navigate to the start URL
             self.status = "Navigating to Start URL"
@@ -115,17 +128,22 @@ class ChromeManager:
             if self.is_running:
                 self.status = "Executing Action"
                 self._execute_action()
-                self.status = "Action Executed"
+                self.status = "Finished"
+                
+                # Idle loop: Keep browser open until stopped from the GUI
+                while self.is_running:
+                    time.sleep(0.5)
 
         except Exception as e:
-            error_msg = str(e).split('\n')[0] # Get a concise error message
-            print(f"❌ [Error in {self.account}]: {error_msg}")
-            self.status = f"Error: {error_msg}"
-        finally:
-            if self.is_running: # If not stopped by an error or manual termination
-                self.status = "Finished"
-            print(f"[💡] Process finished for {self.account}.")
-            self.stop_engine()
+            # This block is entered if an error occurs during automation,
+            # or if driver.quit() is called by stop_engine, which raises an exception.
+            if self.is_running: # If it's an unexpected error, not a manual stop
+                error_msg = str(e).split('\n')[0]
+                print(f"❌ [Error in {self.account}]: {error_msg}")
+                self.status = f"Error: {error_msg}"
+        
+        # When the loop breaks (is_running=False) or an exception occurs, the thread ends.
+        print(f"[💡] Thread for {self.account} has exited.")
 
     def _wait_until_target(self) -> None:
         """
@@ -145,7 +163,10 @@ class ChromeManager:
             except ValueError:
                 self.status = f"Error: Invalid time {self.target_hr}:{self.target_min}:{self.target_sec}"
                 print(f"❌ [{self.account}] {self.status}")
-                self.stop_engine() # Stop this thread as it has invalid config
+                # Do not self-terminate. Instead, idle here with an error status
+                # to allow the user to see the problem and take manual action.
+                while self.is_running:
+                    time.sleep(1)
                 return
 
             # If target time has already passed for today, aim for the next day
@@ -171,14 +192,18 @@ class ChromeManager:
 
     def stop_engine(self) -> None:
         if not self.is_running: return
-        self.is_running = False
+        
+        self.is_running = False # Signal thread to stop its loops
+        
         if self.driver:
             try:
                 self.driver.quit()
-            except:
+            except Exception:
+                # Ignore errors, e.g., if browser was already closed manually
                 pass
             self.driver = None
-        if "Error" not in self.status:
+            
+        if "Error" not in self.status and self.status != "Finished":
             self.status = "Terminated"
 
 if __name__ == "__main__":

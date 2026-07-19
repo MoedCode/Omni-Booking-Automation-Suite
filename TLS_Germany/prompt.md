@@ -1,9 +1,9 @@
-1 -bot opens chrome windows "instant" but but just opens url and tray to login on just one window
-A - i want open url login to all bot steps that in chrome.py in each window all at oncei n same time
-B - code inside browser directory will be synchronous dont use asyncio or threading
-but we will use asyncio just when running multiple instants
-2 - button `x` which for terminate each instant  didnt work and should contain wod terminate instead of `x`
-  orange color and it just terminate tak not delte it from dashboard 
+1 - **button   `view` `terminate` `delete`  have  wired inner text that use cant understand what is it** ..   i told you but inside the there button should contain text `view` `terminate` `delete` 
+2-when i click view i should see![alt text](image.png) wither instant is running or not 
+3- bit shouldn't terminate instant from itself 
+4- there an issue **bot open many instant all of them is jusst empty window of chrome just execute code in `browser/chrome.py` inside one instant**** that not  waht i want 
+ i want code inside  `browser/chrome.py` executed inside all window at same time ..
  
-3- delete button contain word delete and with red color .. that terminate task then delete  instant from dashborad 
-4- `view` button color aqua to view instant  s
+5-user sould be able to copy paste code from isnide the dashboard .. 
+6- comment document code inside `gui` to know each component 
+make code mre redable easy to understand more human
