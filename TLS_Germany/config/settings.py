@@ -15,7 +15,17 @@ RESIDENCE = {
     "country": "Egypt", 
     "city": "Alexandria"
 }
+ACCOUNTS_FOR_TEST ={
+    "test1":{
+        "account": "tivime8259@preparmy.com",
+        "password": "Yallavisa@@123",
 
+    },
+    "me":{
+        "account":"mohamed71291@gmail.com",
+        "password":"moed-TLS-25",
+    }
+}
 # --- TYPING PROFILES ---
 TYPING_SPEED_MIN = 0.05
 TYPING_SPEED_MAX = 0.15

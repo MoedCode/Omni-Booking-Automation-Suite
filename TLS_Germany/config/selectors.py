@@ -4,11 +4,6 @@ Fully mapped selectors for the TLScontact Germany workflow engines
 """
 
 TLS_SELECTORS = {
-    # [NEW] Cloudflare Interception
-    "cloudflare": {
-        "challenge_iframe": "iframe[src*='challenges.cloudflare.com']",
-    },
-
     # [0] choose_country
     "choose_country": {
         "splash_container": "div#splash-country-selector",
@@ -49,12 +44,36 @@ TLS_SELECTORS = {
         "password_input_field": "input#password-input-field",
         "forgot_password_btn": "a#forget-password",
         "submit_login_btn": "button#btn-login",
-        "captcha_widget": "iframe[src*='challenges.cloudflare.com']" # For embedded Turnstile/hCaptcha
+        "captcha_widget": "iframe[title='reCAPTCHA']"
     },
     
     # [4] Dashboard Ready State
     "dashboard": {
-        # A generic anchor that represents a successful login (e.g. Logout button)
         "logged_in_anchor": "a[href*='/logout'], button.user-profile, div.dashboard-container"
+    },
+
+    # [5] Google reCAPTCHA v2 Elements
+    "recaptcha_v2": {
+        "checkbox_iframe": "iframe[title='reCAPTCHA']",
+        "checkbox": "span#recaptcha-anchor",
+        "challenge_iframe": "iframe[title*='recaptcha challenge']",
+        "audio_play_button": "div.rc-audiochallenge-play-button button",
+        "audio_button": "button#recaptcha-audio-button",
+        "audio_source": "audio#audio-source",
+        "audio_download_link": "a.rc-audiochallenge-tdownload-link",
+        "audio_response_input": "input#audio-response",
+        "verify_button": "button#recaptcha-verify-button",
+        "error_message": "div.rc-audiochallenge-error-message",
+        # Image Challenge selectors
+        "image_challenge_payload": "div.rc-imageselect-payload",
+        "image_challenge_instruction_desc": "div.rc-imageselect-desc",
+        "image_challenge_instruction_strong": "div.rc-imageselect-desc strong",
+        "image_challenge_tiles": "td.rc-imageselect-tile",
+        "image_challenge_img": "img.rc-image-tile-33",
+        "image_challenge_checkbox": "div.rc-imageselect-checkbox",
+        "image_challenge_incorrect_response": "div.rc-imageselect-incorrect-response",
+        "image_challenge_error_select_more": "div.rc-imageselect-error-select-more",
+        "image_challenge_error_dynamic_more": "div.rc-imageselect-error-dynamic-more",
+        "image_challenge_error_select_something": "div.rc-imageselect-error-select-something",
     }
 }

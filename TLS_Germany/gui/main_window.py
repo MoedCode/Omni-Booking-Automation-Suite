@@ -84,6 +84,10 @@ class MainWindow(QMainWindow):
             "", "Target Account Context", "Operational State (Status)",
             "Trigger Matrix (H:M:S.ms)", "Network Tunnel Routing (Proxy)", "Actions"
         ])
+        
+        # Enforce comfortable vertical row section height so custom button layouts fit perfectly
+        self.table.verticalHeader().setDefaultSectionSize(36)
+        
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) # Checkbox
@@ -234,19 +238,59 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(5, 0, 5, 0)
         layout.setSpacing(5)
 
+        # Normalized CSS theme templates: Compact padding prevents layout vertical truncation bugs entirely
         view_btn = QPushButton("View")
         view_btn.setToolTip("View this instance's browser window")
-        view_btn.setStyleSheet("background-color: #0891B2; color: white; font-size: 12px; padding: 4px 8px; font-weight: bold;")
+        view_btn.setStyleSheet("""
+            QPushButton { 
+                background-color: #0891B2; 
+                color: white; 
+                font-size: 11px; 
+                padding: 4px 12px; 
+                font-weight: bold; 
+                border: none; 
+                border-radius: 4px; 
+            } 
+            QPushButton:hover { 
+                background-color: #06B6D4; 
+            }
+        """)
         view_btn.clicked.connect(lambda checked, acc=account: self._view_instance(acc))
 
-        term_btn = QPushButton("Terminate")
+        term_btn = QPushButton("Close")
         term_btn.setToolTip("Terminate this instance's process")
-        term_btn.setStyleSheet("background-color: #D97706; color: white; font-size: 12px; padding: 4px 8px; font-weight: bold;")
+        term_btn.setStyleSheet("""
+            QPushButton { 
+                background-color: #D97706; 
+                color: white; 
+                font-size: 11px; 
+                padding: 4px 12px; 
+                font-weight: bold; 
+                border: none; 
+                border-radius: 4px; 
+            } 
+            QPushButton:hover { 
+                background-color: #F59E0B; 
+            }
+        """)
         term_btn.clicked.connect(lambda checked, acc=account: self._terminate_instance(acc))
 
         del_btn = QPushButton("Delete")
         del_btn.setToolTip("Terminate and delete this instance from the list")
-        del_btn.setStyleSheet("background-color: #B91C1C; color: white; font-size: 12px; padding: 4px 8px; font-weight: bold;")
+        del_btn.setStyleSheet("""
+            QPushButton { 
+                background-color: #B91C1C; 
+                color: white; 
+                font-size: 11px; 
+                padding: 4px 12px; 
+                font-weight: bold; 
+                border: none; 
+                border-radius: 4px; 
+            } 
+            QPushButton:hover { 
+                background-color: #EF4444; 
+            }
+        """)
         del_btn.clicked.connect(lambda checked, acc=account: self._delete_instance(acc))
 
         layout.addWidget(view_btn)
