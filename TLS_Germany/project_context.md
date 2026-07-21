@@ -37,6 +37,8 @@ if __name__ == "__main__":
 ## FILE: ./project_context.py
 
 ```py
+#!/usr/bin/env python3
+
 import os
 
 def create_context_file(output_file="project_context.md"):
@@ -457,6 +459,7 @@ Omni-Booking-Automation-Suite/TLS_Germany/browsers/captcha_handler.py
 
 Required dependencies for audio bypass:
 pip install SpeechRecognition pydub requests
+(Requires FFmpeg installed on system PATH for pydub to convert audio)
 """
 import os
 import time
@@ -468,37 +471,54 @@ from seleniumbase import Driver
 from config.selectors import TLS_SELECTORS
 
 class CaptchaHandler:
+    """
+    Handles detection and resolution of Google reCAPTCHA v2 using Audio Bypass.
+    """
     def __init__(self, driver: Driver):
         self.driver = driver
 
+    def solve_interstitial_captcha(self) -> None:
+        """
+        Triggered when the bot hits a full-page Cloudflare block ("Just a moment...").
+        """
+        print("[🧩] CaptchaHandler: Interstitial Cloudflare block detected. Waiting for resolution...")
+        pass
+        
     def _solve_audio_challenge_modal(self, thread_id: int) -> bool:
         """
-        Handles the audio challenge modal after it has been opened.
-        Assumes the driver is currently focused on the challenge iframe.
+        Handles the audio challenge modal after switching to its iframe.
         """
         mp3_path, wav_path = None, None
         try:
-            # Check for audio block ("automated queries")
+            # 1. Check for Audio Block (Google blocking IP from automated queries)
             if self.driver.is_element_visible(TLS_SELECTORS['recaptcha_v2']['error_message']):
-                print(f"[❌][{thread_id}] IP blocked from audio challenge. Cannot proceed with bypass.")
+                print(f"[❌][{thread_id}] IP blocked from audio challenge (Automated queries detected).")
                 return False
 
-            # Click PLAY to ensure a valid audio source is loaded
-            if self.driver.is_element_visible(TLS_SELECTORS['recaptcha_v2']['audio_play_button']):
-                self.driver.click(TLS_SELECTORS['recaptcha_v2']['audio_play_button'])
-                print(f"    - Clicked PLAY button.")
-                time.sleep(1)
+            # 2. Click PLAY button to initialize the audio stream
+            print(f"    - Looking for PLAY button...")
+            self.driver.wait_for_element_visible(TLS_SELECTORS['recaptcha_v2']['audio_play_button'], timeout=10)
+            # 💡 Using js_click() to bypass Google's invisible protective overlays (z-index: 2000000000)
+            self.driver.js_click(TLS_SELECTORS['recaptcha_v2']['audio_play_button'])
+            print(f"    - Clicked PLAY button successfully.")
+            time.sleep(1)
 
+            # 3. Extract Audio URL directly from the Download link (No need to open a new tab)
             self.driver.wait_for_element_present(TLS_SELECTORS['recaptcha_v2']['audio_download_link'], timeout=10)
             audio_url = self.driver.get_attribute(TLS_SELECTORS['recaptcha_v2']['audio_download_link'], "href")
-            print(f"    - Audio source found. Downloading...")
+            
+            if not audio_url or not audio_url.startswith("http"):
+                print(f"[❌][{thread_id}] Could not capture audio stream URL.")
+                return False
 
-            # Create unique file paths
+            print(f"    - Audio stream URL captured. Downloading silently...")
+
+            # 4. Generate unique file paths for thread safety
             timestamp = int(time.time())
             mp3_path = os.path.abspath(f"./downloaded_files/audio_{thread_id}_{timestamp}.mp3")
             wav_path = os.path.abspath(f"./downloaded_files/audio_{thread_id}_{timestamp}.wav")
 
-            # Use requests with the driver's session to download the file
+            # 5. Download MP3 using session cookies to prevent access denied
             session = requests.Session()
             for cookie in self.driver.get_cookies():
                 session.cookies.set(cookie['name'], cookie['value'])
@@ -507,8 +527,16 @@ class CaptchaHandler:
             with open(mp3_path, 'wb') as f:
                 f.write(response.content)
 
-            # Convert MP3 to WAV and transcribe
-            AudioSegment.from_mp3(mp3_path).export(wav_path, format="wav")
+            # 6. Convert MP3 to WAV using Pydub & FFmpeg
+            try:
+                AudioSegment.from_mp3(mp3_path).export(wav_path, format="wav")
+            except FileNotFoundError:
+                print(f"\n[⚠️ CRITICAL ERROR][{thread_id}] FFmpeg IS NOT INSTALLED ON YOUR WINDOWS SYSTEM!")
+                print("    -> Pydub cannot convert MP3 to WAV without FFmpeg.")
+                print("    -> Please download FFmpeg and add it to your Windows PATH.\n")
+                return False
+
+            # 7. Transcribe WAV file to Text
             recognizer = sr.Recognizer()
             with sr.AudioFile(wav_path) as source:
                 audio_data = recognizer.record(source)
@@ -516,47 +544,52 @@ class CaptchaHandler:
             transcribed_text = recognizer.recognize_google(audio_data).lower()
             print(f"    - Transcription successful: '{transcribed_text}'")
 
-            # Input text and verify
+            # 8. Type Response and Verify
             self.driver.type(TLS_SELECTORS['recaptcha_v2']['audio_response_input'], transcribed_text)
-            time.sleep(0.5)
-            self.driver.click(TLS_SELECTORS['recaptcha_v2']['verify_button'])
+            time.sleep(1)
+            # 💡 Using js_click() to bypass overlays again
+            self.driver.js_click(TLS_SELECTORS['recaptcha_v2']['verify_button'])
             print(f"    - Submitted transcription and clicked Verify.")
-            time.sleep(3) # Wait for verification result
+            time.sleep(3)
             return True
 
         except Exception as e:
             print(f"[❌][{thread_id}] Audio challenge processing failed: {str(e).splitlines()[0]}")
             return False
         finally:
-            # Clean up temporary files
+            # Clean up temp files
             if mp3_path and os.path.exists(mp3_path): os.remove(mp3_path)
             if wav_path and os.path.exists(wav_path): os.remove(wav_path)
 
     def solve_google_recaptcha(self) -> bool:
         """
-        Executes the audio bypass strategy for Google reCAPTCHA v2.
-        Returns True on success, False on failure.
+        Main entry method called by BrowserBase to handle Google reCAPTCHA v2.
         """
         thread_id = threading.get_ident()
-        print(f"[🧩][{thread_id}] reCAPTCHA v2 detected. Initiating audio bypass strategy...")
+        print(f"[🧩][{thread_id}] reCAPTCHA v2 detected. Initiating Audio Bypass strategy...")
         
         os.makedirs("./downloaded_files", exist_ok=True)
-        
-        checkbox_iframe = None # To hold the iframe element for later use
+        checkbox_iframe = None
 
         try:
-            # Step 1: Switch to checkbox iframe and click it
-            self.driver.wait_for_element_visible(TLS_SELECTORS['recaptcha_v2']['checkbox_iframe'], timeout=10)
+            # Wait for stabilization
+            time.sleep(2)
+
+            # Step 1: Find and Switch to Checkbox Iframe
+            self.driver.wait_for_element_visible(TLS_SELECTORS['recaptcha_v2']['checkbox_iframe'], timeout=12)
             checkbox_iframe = self.driver.find_element("css selector", TLS_SELECTORS['recaptcha_v2']['checkbox_iframe'])
+            
             self.driver.switch_to.frame(checkbox_iframe)
             self.driver.wait_for_element_visible(TLS_SELECTORS['recaptcha_v2']['checkbox'], timeout=10)
-            self.driver.click(TLS_SELECTORS['recaptcha_v2']['checkbox'])
+            
+            # 💡 Using js_click() to cut through Google's defensive layers
+            self.driver.js_click(TLS_SELECTORS['recaptcha_v2']['checkbox'])
             
             self.driver.switch_to.default_content()
             print(f"    - Clicked checkbox. Waiting for challenge...")
             time.sleep(3)
 
-            # Step 1.5: Check if it was instantly solved (Green Checkmark)
+            # Step 1.5: Check if instantly solved (Green Check)
             self.driver.switch_to.frame(checkbox_iframe)
             is_checked = self.driver.get_attribute(TLS_SELECTORS['recaptcha_v2']['checkbox'], "aria-checked")
             self.driver.switch_to.default_content()
@@ -565,16 +598,19 @@ class CaptchaHandler:
                 print(f"[✅][{thread_id}] CAPTCHA instantly solved (Green Checkmark).")
                 return True
 
-            # Step 2: Switch to challenge iframe and delegate to audio solver
+            # Step 2: Switch to Challenge Iframe
             if self.driver.is_element_visible(TLS_SELECTORS['recaptcha_v2']['challenge_iframe']):
                 challenge_iframe_element = self.driver.find_element("css selector", TLS_SELECTORS['recaptcha_v2']['challenge_iframe'])
                 self.driver.switch_to.frame(challenge_iframe_element)
                 
+                # Click the Audio Headphone icon
                 self.driver.wait_for_element_visible(TLS_SELECTORS['recaptcha_v2']['audio_button'], timeout=10)
-                self.driver.click(TLS_SELECTORS['recaptcha_v2']['audio_button'])
+                # 💡 Using js_click()
+                self.driver.js_click(TLS_SELECTORS['recaptcha_v2']['audio_button'])
                 print(f"    - Switched to audio challenge.")
                 time.sleep(2)
 
+                # Delegate to Audio Resolver logic
                 if not self._solve_audio_challenge_modal(thread_id):
                     self.driver.switch_to.default_content()
                     return False
@@ -583,7 +619,7 @@ class CaptchaHandler:
                 self.driver.switch_to.default_content()
                 return False
 
-            # Step 3: Verify final success
+            # Step 3: Final Verification Check
             self.driver.switch_to.default_content()
             if checkbox_iframe:
                 self.driver.switch_to.frame(checkbox_iframe)
@@ -591,7 +627,7 @@ class CaptchaHandler:
                 self.driver.switch_to.default_content()
 
                 if str(is_checked).lower() == "true":
-                    print(f"[✅][{thread_id}] CAPTCHA bypass successful!")
+                    print(f"[✅][{thread_id}] CAPTCHA Audio Bypass successful!")
                     return True
             
             print(f"[❌][{thread_id}] CAPTCHA verification failed after audio attempt.")

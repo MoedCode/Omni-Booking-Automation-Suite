@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import os
 
 def create_context_file(output_file="project_context.md"):
