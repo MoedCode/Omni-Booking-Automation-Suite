@@ -15,16 +15,17 @@ TLS_SELECTORS = {
 
     # [1] choose_city
     "choose_city": {
+        "page_title_header": "h1#page-title",
         "map_view_search_input": "input#search-vac-map-view",
         "list_view_search_input": "input#search-vac-list-view",
         "search_submit_btn": "input#search-vac-map-view + button",
         "generic_continue_btn": "button[data-testid='btn-select-vac']",
 
         # Specific regional routing links
-        "alexandria_center_route": "a[href*='/vac/egALY2de']",
-        "cairo_center_route": "a[href*='/vac/egCAI2de']",
-        "hurghada_center_route": "a[href*='/vac/egHRG2de']",
-        "6th_of_october_route": "a[href*='/vac/egHAC2de']"
+        "alexandria_center_route": "a[href*='/vac/egALY2de'] button[data-testid='btn-select-vac']",
+        "cairo_center_route": "a[href*='/vac/egCAI2de'] button[data-testid='btn-select-vac']",
+        "hurghada_center_route": "a[href*='/vac/egHRG2de'] button[data-testid='btn-select-vac']",
+        "6th_of_october_route": "a[href*='/vac/egHAC2de'] button[data-testid='btn-select-vac']"
     },
 
     # [2] info_page

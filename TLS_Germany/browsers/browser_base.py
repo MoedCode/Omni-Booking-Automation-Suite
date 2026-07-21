@@ -32,8 +32,10 @@ class BrowserBase:
             return "login_form"
         if self.driver.is_element_visible(TLS_SELECTORS['choose_country']['select_dropdown']):
             return "choose_country"
-        elif self.driver.is_element_visible(TLS_SELECTORS['choose_city']['search_submit_btn']):
-            return "choose_city"
+        elif self.driver.is_element_visible(TLS_SELECTORS['choose_city']['page_title_header']):
+            # Add a text check for robustness, as the page title ID might be generic
+            if "Select your Visa Application Centre" in self.driver.get_text(TLS_SELECTORS['choose_city']['page_title_header']):
+                return "choose_city"
         elif self.driver.is_element_visible(TLS_SELECTORS['info_page']['header_login_btn']):
             return "info_page"
         elif self.driver.is_element_visible(TLS_SELECTORS['dashboard']['logged_in_anchor']):
