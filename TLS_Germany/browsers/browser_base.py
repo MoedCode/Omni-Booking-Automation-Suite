@@ -28,24 +28,32 @@ class BrowserBase:
             lambda d: d.execute_script('return document.readyState') == 'complete'
         )
 
-        # Priority 1: Check for the final logged-in state.
+        # Priority 0: Check for Cloudflare interstitial page.
+        if "Just a moment..." in self.driver.get_title() and self.driver.is_element_visible(TLS_SELECTORS['cloudflare']['heading_text']):
+            return "cloudflare_interstitial"
+
+        # Priority 1: Check for the application list page, a key post-login state.
+        if self.driver.is_element_visible(TLS_SELECTORS['application_list']['page_title_header']):
+            if "Application manager" in self.driver.get_text(TLS_SELECTORS['application_list']['page_title_header']):
+                return "application_list"
+
+        # Priority 2: Check for the final logged-in state (the main dashboard for appointment checking).
         if self.driver.is_element_visible(TLS_SELECTORS['dashboard']['logged_in_anchor']):
             return "dashboard_ready"
 
-        # Priority 2: Check for the login form itself.
+        # Priority 3: Check for the login form itself.
         if self.driver.is_element_visible(TLS_SELECTORS['login_form']['email_input_field']):
             return "login_form"
 
-        # Priority 3 & 4: Check for specific pre-login setup pages.
+        # Priority 4 & 5: Check for specific pre-login setup pages.
         if self.driver.is_element_visible(TLS_SELECTORS['choose_country']['select_dropdown']):
             return "choose_country"
         
         if self.driver.is_element_visible(TLS_SELECTORS['choose_city']['page_title_header']):
-            # Add a text check for robustness, as the page title ID might be generic
             if "Select your Visa Application Centre" in self.driver.get_text(TLS_SELECTORS['choose_city']['page_title_header']):
                 return "choose_city"
 
-        # Priority 5: As a fallback, if a login button is visible in the header,
+        # Priority 6: As a fallback, if a login button is visible in the header,
         # we're on a generic info page and need to log in. This implements your request
         # for a global "logged-out" check.
         if self.driver.is_element_visible(TLS_SELECTORS['info_page']['header_login_btn']):
@@ -75,12 +83,16 @@ class BrowserBase:
 
     def _handle_current_state(self, current_state: str) -> None:
         try:
-            if current_state == "login_form":
+            if current_state == "cloudflare_interstitial":
+                self.captcha_handler.solve_interstitial_captcha()
+            elif current_state == "login_form":
                 self._workflow_login()
             elif current_state == "choose_country":
                 self._workflow_choose_country()
             elif current_state == "choose_city":
                 self._workflow_choose_city()
+            elif current_state == "application_list":
+                self._workflow_application_list()
             elif current_state == "info_page":
                 self._workflow_info_page()
         except Exception as e:
@@ -163,16 +175,43 @@ class BrowserBase:
     def _workflow_choose_city(self) -> None:
         print(f"[🏢] {self.account} handling city selection...")
         city_name = settings.RESIDENCE['city']
-        selector_key = f"{city_name.lower().replace(' ', '_')}_center_route"
-
-        try:
-            city_selector = TLS_SELECTORS['choose_city'][selector_key]
-            self.actor.human_click(city_selector)
-            print(f"    - Clicked on city link for {city_name}.")
-        except KeyError:
-            print(f"[❌] CRITICAL: No selector found for city '{city_name}'")
-            time.sleep(10) 
+        
+        # This is a more robust way to find the city, by iterating through the cards
+        # and matching the city name by text, rather than relying on a hardcoded href.
+        city_cards_selector = "div.TlsVacCard_tls-vac-card__DLGQr"
+        self.driver.wait_for_element_visible(city_cards_selector)
+        cards = self.driver.find_elements(city_cards_selector)
+        
+        city_found = False
+        for card in cards:
+            try:
+                card_title = card.find_element(By.CSS_SELECTOR, TLS_SELECTORS['choose_city']['city_card_title']).text
+                
+                if city_name.lower() in card_title.lower():
+                    print(f"    - Found card for city: {card_title}")
+                    continue_button = card.find_element(By.CSS_SELECTOR, TLS_SELECTORS['choose_city']['generic_continue_btn'])
+                    self.driver.execute_script("arguments[0].click();", continue_button)
+                    print(f"    - Clicked 'Continue' for {city_name}.")
+                    city_found = True
+                    break
+            except Exception as e:
+                print(f"    - Error processing a city card: {e}")
+                continue
+                
+        if not city_found:
+            print(f"[❌] CRITICAL: Could not find city card for '{city_name}'")
+            time.sleep(10)
 
     def _workflow_info_page(self) -> None:
         print(f"[ℹ️] {self.account} found info page. Navigating to login...")
         self.actor.human_click(TLS_SELECTORS['info_page']['header_login_btn'])
+
+    def _workflow_application_list(self) -> None:
+        print(f"[📋] {self.account} on application list page. Clicking 'Select'...")
+        try:
+            self.actor.human_click(TLS_SELECTORS['application_list']['select_application_button'])
+            print(f"    - 'Select' button clicked.")
+            time.sleep(3) # Wait for next page
+        except Exception as e:
+            print(f"[❌] {self.account} could not find or click the 'Select' button on the application list page: {e}")
+            time.sleep(5)

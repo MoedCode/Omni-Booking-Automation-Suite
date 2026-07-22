@@ -354,24 +354,32 @@ class BrowserBase:
             lambda d: d.execute_script('return document.readyState') == 'complete'
         )
 
-        # Priority 1: Check for the final logged-in state.
+        # Priority 0: Check for Cloudflare interstitial page.
+        if "Just a moment..." in self.driver.get_title() and self.driver.is_element_visible(TLS_SELECTORS['cloudflare']['heading_text']):
+            return "cloudflare_interstitial"
+
+        # Priority 1: Check for the application list page, a key post-login state.
+        if self.driver.is_element_visible(TLS_SELECTORS['application_list']['page_title_header']):
+            if "Application manager" in self.driver.get_text(TLS_SELECTORS['application_list']['page_title_header']):
+                return "application_list"
+
+        # Priority 2: Check for the final logged-in state (the main dashboard for appointment checking).
         if self.driver.is_element_visible(TLS_SELECTORS['dashboard']['logged_in_anchor']):
             return "dashboard_ready"
 
-        # Priority 2: Check for the login form itself.
+        # Priority 3: Check for the login form itself.
         if self.driver.is_element_visible(TLS_SELECTORS['login_form']['email_input_field']):
             return "login_form"
 
-        # Priority 3 & 4: Check for specific pre-login setup pages.
+        # Priority 4 & 5: Check for specific pre-login setup pages.
         if self.driver.is_element_visible(TLS_SELECTORS['choose_country']['select_dropdown']):
             return "choose_country"
         
         if self.driver.is_element_visible(TLS_SELECTORS['choose_city']['page_title_header']):
-            # Add a text check for robustness, as the page title ID might be generic
             if "Select your Visa Application Centre" in self.driver.get_text(TLS_SELECTORS['choose_city']['page_title_header']):
                 return "choose_city"
 
-        # Priority 5: As a fallback, if a login button is visible in the header,
+        # Priority 6: As a fallback, if a login button is visible in the header,
         # we're on a generic info page and need to log in. This implements your request
         # for a global "logged-out" check.
         if self.driver.is_element_visible(TLS_SELECTORS['info_page']['header_login_btn']):
@@ -401,12 +409,16 @@ class BrowserBase:
 
     def _handle_current_state(self, current_state: str) -> None:
         try:
-            if current_state == "login_form":
+            if current_state == "cloudflare_interstitial":
+                self.captcha_handler.solve_interstitial_captcha()
+            elif current_state == "login_form":
                 self._workflow_login()
             elif current_state == "choose_country":
                 self._workflow_choose_country()
             elif current_state == "choose_city":
                 self._workflow_choose_city()
+            elif current_state == "application_list":
+                self._workflow_application_list()
             elif current_state == "info_page":
                 self._workflow_info_page()
         except Exception as e:
@@ -489,19 +501,46 @@ class BrowserBase:
     def _workflow_choose_city(self) -> None:
         print(f"[🏢] {self.account} handling city selection...")
         city_name = settings.RESIDENCE['city']
-        selector_key = f"{city_name.lower().replace(' ', '_')}_center_route"
-
-        try:
-            city_selector = TLS_SELECTORS['choose_city'][selector_key]
-            self.actor.human_click(city_selector)
-            print(f"    - Clicked on city link for {city_name}.")
-        except KeyError:
-            print(f"[❌] CRITICAL: No selector found for city '{city_name}'")
-            time.sleep(10) 
+        
+        # This is a more robust way to find the city, by iterating through the cards
+        # and matching the city name by text, rather than relying on a hardcoded href.
+        city_cards_selector = "div.TlsVacCard_tls-vac-card__DLGQr"
+        self.driver.wait_for_element_visible(city_cards_selector)
+        cards = self.driver.find_elements(city_cards_selector)
+        
+        city_found = False
+        for card in cards:
+            try:
+                card_title = card.find_element(By.CSS_SELECTOR, TLS_SELECTORS['choose_city']['city_card_title']).text
+                
+                if city_name.lower() in card_title.lower():
+                    print(f"    - Found card for city: {card_title}")
+                    continue_button = card.find_element(By.CSS_SELECTOR, TLS_SELECTORS['choose_city']['generic_continue_btn'])
+                    self.driver.execute_script("arguments[0].click();", continue_button)
+                    print(f"    - Clicked 'Continue' for {city_name}.")
+                    city_found = True
+                    break
+            except Exception as e:
+                print(f"    - Error processing a city card: {e}")
+                continue
+                
+        if not city_found:
+            print(f"[❌] CRITICAL: Could not find city card for '{city_name}'")
+            time.sleep(10)
 
     def _workflow_info_page(self) -> None:
         print(f"[ℹ️] {self.account} found info page. Navigating to login...")
         self.actor.human_click(TLS_SELECTORS['info_page']['header_login_btn'])
+
+    def _workflow_application_list(self) -> None:
+        print(f"[📋] {self.account} on application list page. Clicking 'Select'...")
+        try:
+            self.actor.human_click(TLS_SELECTORS['application_list']['select_application_button'])
+            print(f"    - 'Select' button clicked.")
+            time.sleep(3) # Wait for next page
+        except Exception as e:
+            print(f"[❌] {self.account} could not find or click the 'Select' button on the application list page: {e}")
+            time.sleep(5)
 ```
 
 
@@ -542,9 +581,37 @@ class CaptchaHandler:
     def solve_interstitial_captcha(self) -> None:
         """
         Triggered when the bot hits a full-page Cloudflare block ("Just a moment...").
+        This method waits for the Cloudflare Turnstile challenge to complete, clicking if necessary.
         """
         print("[🧩] CaptchaHandler: Interstitial Cloudflare block detected. Waiting for resolution...")
-        pass
+        
+        # Cloudflare Turnstile can be passive or interactive.
+        # We'll first try to click the checkbox if it becomes available.
+        try:
+            # SeleniumBase's ">>>" operator can pierce shadow-roots.
+            # The selector targets the checkbox inside the Turnstile iframe.
+            checkbox_selector = f"{TLS_SELECTORS['cloudflare']['turnstile_iframe']} >>> {TLS_SELECTORS['cloudflare']['turnstile_checkbox']}"
+            
+            # We give it a few seconds to appear. If not, we assume it's a passive check.
+            self.driver.wait_for_element_visible(checkbox_selector, timeout=10)
+            print("    - Found interactive Cloudflare Turnstile. Clicking checkbox...")
+            self.driver.click(checkbox_selector)
+            print("    - Clicked Turnstile checkbox.")
+        except Exception:
+            # If the checkbox isn't found or an error occurs, it's likely a passive challenge.
+            # We'll just wait for it to resolve on its own.
+            print("    - No interactive element found, or it resolved automatically. Waiting for page to proceed...")
+
+        # After clicking (or not), we wait for the page to navigate away.
+        # A good indicator is the main "Performing security verification" heading disappearing.
+        try:
+            print("    - Waiting for challenge to complete...")
+            self.driver.wait_for_element_not_visible(TLS_SELECTORS['cloudflare']['heading_text'], timeout=30)
+            print("[✅] CaptchaHandler: Cloudflare interstitial page seems to have passed.")
+        except Exception:
+            print("[⚠️] CaptchaHandler: Timed out waiting for Cloudflare page to resolve. The page might be stuck.")
+        
+        time.sleep(3) # Give it a moment to redirect.
         
     def _solve_audio_challenge_modal(self, thread_id: int) -> bool:
         """
@@ -1035,6 +1102,8 @@ TLS_SELECTORS = {
         "map_view_search_input": "input#search-vac-map-view",
         "list_view_search_input": "input#search-vac-list-view",
         "search_submit_btn": "input#search-vac-map-view + button",
+        "vac_list_container": "ul.flex.flex-wrap",  # Container for the city cards
+        "city_card_title": "p.TlsVacCard_tls-vac-card_title__qk6jS",
         "generic_continue_btn": "button[data-testid='btn-select-vac']",
 
         # Specific regional routing links
@@ -1069,7 +1138,15 @@ TLS_SELECTORS = {
         "logged_in_anchor": "a[href*='/logout'], button.user-profile, div.dashboard-container"
     },
 
-    # [5] Google reCAPTCHA v2 Elements
+    # [5] Application List Page
+    "application_list": {
+        "page_title_header": "h1#page-title",
+        # XPath ذكي ومضمون للبحث عن الزر بناءً على الكلمة المكتوبة داخله
+        "select_application_button": "//button[contains(., 'Select') and @type='submit']",
+        "create_new_button": "span[data-testid='btn-create-new-travel-group']"
+    },
+
+    # [6] Google reCAPTCHA v2 Elements
     "recaptcha_v2": {
         "checkbox_iframe": "iframe[title='reCAPTCHA']",
         "checkbox": "span#recaptcha-anchor",
@@ -1092,6 +1169,15 @@ TLS_SELECTORS = {
         "image_challenge_error_select_more": "div.rc-imageselect-error-select-more",
         "image_challenge_error_dynamic_more": "div.rc-imageselect-error-dynamic-more",
         "image_challenge_error_select_something": "div.rc-imageselect-error-select-something",
+    },
+
+    # [7] Cloudflare Interstitial Page
+    "cloudflare": {
+        "page_title": "Just a moment...", 
+        "heading_text": "h2#fTjHU3", 
+        "turnstile_iframe": "iframe[src*='challenges.cloudflare.com']",
+        "turnstile_checkbox": "input[type='checkbox']", 
+        "verification_successful_text": "h2#yZFa8" 
     }
 }
 ```

@@ -32,9 +32,37 @@ class CaptchaHandler:
     def solve_interstitial_captcha(self) -> None:
         """
         Triggered when the bot hits a full-page Cloudflare block ("Just a moment...").
+        This method waits for the Cloudflare Turnstile challenge to complete, clicking if necessary.
         """
         print("[🧩] CaptchaHandler: Interstitial Cloudflare block detected. Waiting for resolution...")
-        pass
+        
+        # Cloudflare Turnstile can be passive or interactive.
+        # We'll first try to click the checkbox if it becomes available.
+        try:
+            # SeleniumBase's ">>>" operator can pierce shadow-roots.
+            # The selector targets the checkbox inside the Turnstile iframe.
+            checkbox_selector = f"{TLS_SELECTORS['cloudflare']['turnstile_iframe']} >>> {TLS_SELECTORS['cloudflare']['turnstile_checkbox']}"
+            
+            # We give it a few seconds to appear. If not, we assume it's a passive check.
+            self.driver.wait_for_element_visible(checkbox_selector, timeout=10)
+            print("    - Found interactive Cloudflare Turnstile. Clicking checkbox...")
+            self.driver.click(checkbox_selector)
+            print("    - Clicked Turnstile checkbox.")
+        except Exception:
+            # If the checkbox isn't found or an error occurs, it's likely a passive challenge.
+            # We'll just wait for it to resolve on its own.
+            print("    - No interactive element found, or it resolved automatically. Waiting for page to proceed...")
+
+        # After clicking (or not), we wait for the page to navigate away.
+        # A good indicator is the main "Performing security verification" heading disappearing.
+        try:
+            print("    - Waiting for challenge to complete...")
+            self.driver.wait_for_element_not_visible(TLS_SELECTORS['cloudflare']['heading_text'], timeout=30)
+            print("[✅] CaptchaHandler: Cloudflare interstitial page seems to have passed.")
+        except Exception:
+            print("[⚠️] CaptchaHandler: Timed out waiting for Cloudflare page to resolve. The page might be stuck.")
+        
+        time.sleep(3) # Give it a moment to redirect.
         
     def _solve_audio_challenge_modal(self, thread_id: int) -> bool:
         """

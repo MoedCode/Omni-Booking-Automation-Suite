@@ -19,6 +19,8 @@ TLS_SELECTORS = {
         "map_view_search_input": "input#search-vac-map-view",
         "list_view_search_input": "input#search-vac-list-view",
         "search_submit_btn": "input#search-vac-map-view + button",
+        "vac_list_container": "ul.flex.flex-wrap",  
+        "city_card_title": "p.TlsVacCard_tls-vac-card_title__qk6jS",
         "generic_continue_btn": "button[data-testid='btn-select-vac']",
 
         # Specific regional routing links
@@ -53,7 +55,15 @@ TLS_SELECTORS = {
         "logged_in_anchor": "a[href*='/logout'], button.user-profile, div.dashboard-container"
     },
 
-    # [5] Google reCAPTCHA v2 Elements
+    # [5] Application List Page
+    "application_list": {
+        "page_title_header": "h1#page-title",
+        # XPath ذكي وشامل جداً: يبحث عن أي زر يحتوي على نص "Select" بغض النظر عن نوعه (submit أو button)
+        "select_application_button": "//button[contains(normalize-space(), 'Select')]",
+        "create_new_button": "span[data-testid='btn-create-new-travel-group']"
+    },
+
+    # [6] Google reCAPTCHA v2 Elements
     "recaptcha_v2": {
         "checkbox_iframe": "iframe[title='reCAPTCHA']",
         "checkbox": "span#recaptcha-anchor",
@@ -65,16 +75,14 @@ TLS_SELECTORS = {
         "audio_response_input": "input#audio-response",
         "verify_button": "button#recaptcha-verify-button",
         "error_message": "div.rc-audiochallenge-error-message",
-        # Image Challenge selectors
-        "image_challenge_payload": "div.rc-imageselect-payload",
-        "image_challenge_instruction_desc": "div.rc-imageselect-desc",
-        "image_challenge_instruction_strong": "div.rc-imageselect-desc strong",
-        "image_challenge_tiles": "td.rc-imageselect-tile",
-        "image_challenge_img": "img.rc-image-tile-33",
-        "image_challenge_checkbox": "div.rc-imageselect-checkbox",
-        "image_challenge_incorrect_response": "div.rc-imageselect-incorrect-response",
-        "image_challenge_error_select_more": "div.rc-imageselect-error-select-more",
-        "image_challenge_error_dynamic_more": "div.rc-imageselect-error-dynamic-more",
-        "image_challenge_error_select_something": "div.rc-imageselect-error-select-something",
+    },
+
+    # [7] Cloudflare Interstitial Page
+    "cloudflare": {
+        "page_title": "Just a moment...", 
+        "heading_text": "h2#fTjHU3", 
+        "turnstile_iframe": "iframe[src*='challenges.cloudflare.com']",
+        "turnstile_checkbox": "input[type='checkbox']", 
+        "verification_successful_text": "h2#yZFa8" 
     }
 }
