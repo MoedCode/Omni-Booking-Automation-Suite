@@ -30,7 +30,7 @@ TLS_SELECTORS = {
 
     # [2] info_page
     "info_page": {
-        "header_login_btn": "a[href='/en-us/login']",
+        "header_login_btn": "a[href*='/login']",
         "login_btn_inner_span": "a[href='/en-us/login'] span.TlsButton_tls-button__syUS5",
         "services_tab_link": "a[href$='/services']",
         "application_process_link": "a[href$='/application-process']",

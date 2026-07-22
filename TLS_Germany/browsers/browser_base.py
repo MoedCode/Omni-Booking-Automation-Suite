@@ -28,18 +28,28 @@ class BrowserBase:
             lambda d: d.execute_script('return document.readyState') == 'complete'
         )
 
+        # Priority 1: Check for the final logged-in state.
+        if self.driver.is_element_visible(TLS_SELECTORS['dashboard']['logged_in_anchor']):
+            return "dashboard_ready"
+
+        # Priority 2: Check for the login form itself.
         if self.driver.is_element_visible(TLS_SELECTORS['login_form']['email_input_field']):
             return "login_form"
+
+        # Priority 3 & 4: Check for specific pre-login setup pages.
         if self.driver.is_element_visible(TLS_SELECTORS['choose_country']['select_dropdown']):
             return "choose_country"
-        elif self.driver.is_element_visible(TLS_SELECTORS['choose_city']['page_title_header']):
+        
+        if self.driver.is_element_visible(TLS_SELECTORS['choose_city']['page_title_header']):
             # Add a text check for robustness, as the page title ID might be generic
             if "Select your Visa Application Centre" in self.driver.get_text(TLS_SELECTORS['choose_city']['page_title_header']):
                 return "choose_city"
-        elif self.driver.is_element_visible(TLS_SELECTORS['info_page']['header_login_btn']):
+
+        # Priority 5: As a fallback, if a login button is visible in the header,
+        # we're on a generic info page and need to log in. This implements your request
+        # for a global "logged-out" check.
+        if self.driver.is_element_visible(TLS_SELECTORS['info_page']['header_login_btn']):
             return "info_page"
-        elif self.driver.is_element_visible(TLS_SELECTORS['dashboard']['logged_in_anchor']):
-            return "dashboard_ready"
 
         return "unknown"
 
