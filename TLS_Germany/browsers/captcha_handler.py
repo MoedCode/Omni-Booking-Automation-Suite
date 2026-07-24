@@ -29,41 +29,53 @@ class CaptchaHandler:
         except Exception:
             pass
 
-    def solve_interstitial_captcha(self) -> None:
+    def cloudflare(self) -> None:
         """
-        Triggered when the bot hits a full-page Cloudflare block ("Just a moment...").
-        This method waits for the Cloudflare Turnstile challenge to complete, clicking if necessary.
+        Handles the Cloudflare Turnstile challenge page ("Performing security verification").
+        This method waits in a loop, checking for multiple success conditions:
+        1. The URL changing, which means the challenge was passed.
+        2. A "Verification successful" message appearing.
+        It will also attempt to click the interactive checkbox if it appears.
         """
-        print("[🧩] CaptchaHandler: Interstitial Cloudflare block detected. Waiting for resolution...")
-        
-        # Cloudflare Turnstile can be passive or interactive.
-        # We'll first try to click the checkbox if it becomes available.
-        try:
-            # SeleniumBase's ">>>" operator can pierce shadow-roots.
-            # The selector targets the checkbox inside the Turnstile iframe.
-            checkbox_selector = f"{TLS_SELECTORS['cloudflare']['turnstile_iframe']} >>> {TLS_SELECTORS['cloudflare']['turnstile_checkbox']}"
-            
-            # We give it a few seconds to appear. If not, we assume it's a passive check.
-            self.driver.wait_for_element_visible(checkbox_selector, timeout=10)
-            print("    - Found interactive Cloudflare Turnstile. Clicking checkbox...")
-            self.driver.click(checkbox_selector)
-            print("    - Clicked Turnstile checkbox.")
-        except Exception:
-            # If the checkbox isn't found or an error occurs, it's likely a passive challenge.
-            # We'll just wait for it to resolve on its own.
-            print("    - No interactive element found, or it resolved automatically. Waiting for page to proceed...")
+        print("[🧩] CaptchaHandler: Cloudflare challenge detected. Waiting for resolution...")
+        current_url = self.driver.current_url
 
-        # After clicking (or not), we wait for the page to navigate away.
-        # A good indicator is the main "Performing security verification" heading disappearing.
-        try:
-            print("    - Waiting for challenge to complete...")
-            self.driver.wait_for_element_not_visible(TLS_SELECTORS['cloudflare']['heading_text'], timeout=30)
-            print("[✅] CaptchaHandler: Cloudflare interstitial page seems to have passed.")
-        except Exception:
-            print("[⚠️] CaptchaHandler: Timed out waiting for Cloudflare page to resolve. The page might be stuck.")
-        
-        time.sleep(3) # Give it a moment to redirect.
-        
+        # Wait up to 45 seconds for the challenge to be solved.
+        for i in range(45):
+            # Primary success condition: URL has changed.
+            if self.driver.current_url != current_url:
+                print(f"[✅] CaptchaHandler: Cloudflare challenge passed (URL changed after {i+1}s).")
+                time.sleep(3) # Allow next page to load
+                return
+
+            # Secondary success condition: "Verification successful" text appears.
+            if self.driver.is_element_visible(TLS_SELECTORS['cloudflare']['verification_successful_text']):
+                print("    - Cloudflare verification successful text found. Waiting for redirect...")
+                try:
+                    # Now, we must wait for the URL to change.
+                    self.driver.wait_for_url_change(current_url, timeout=15)
+                    print("[✅] CaptchaHandler: Cloudflare challenge passed and redirected.")
+                    time.sleep(3)
+                    return
+                except Exception:
+                    print("[⚠️] CaptchaHandler: Found success text but did not redirect in time.")
+                    return # Exit, as something is wrong.
+
+            # Interactive element handling: Periodically check for and click the checkbox.
+            if i > 2 and i % 4 == 0:
+                try:
+                    checkbox_selector = f"{TLS_SELECTORS['cloudflare']['turnstile_iframe']} >>> {TLS_SELECTORS['cloudflare']['turnstile_checkbox']}"
+                    if self.driver.is_element_visible(checkbox_selector):
+                        print("    - Found interactive Cloudflare Turnstile. Attempting to click...")
+                        self.driver.click(checkbox_selector)
+                        print("    - Clicked Turnstile checkbox.")
+                except Exception:
+                    pass # It's fine if it's not there or fails; we'll just keep waiting.
+
+            time.sleep(1)
+
+        print("[⚠️] CaptchaHandler: Timed out waiting for Cloudflare page to resolve. The page might be stuck.")
+
     def _solve_audio_challenge_modal(self, thread_id: int) -> bool:
         """
         Handles the audio challenge modal after switching to its iframe.

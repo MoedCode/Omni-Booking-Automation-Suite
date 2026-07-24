@@ -28,37 +28,51 @@ class BrowserBase:
             lambda d: d.execute_script('return document.readyState') == 'complete'
         )
 
-        # Priority 0: Check for Cloudflare interstitial page.
+        # Priority 0: Check for Cloudflare interstitial page
         if "Just a moment..." in self.driver.get_title() and self.driver.is_element_visible(TLS_SELECTORS['cloudflare']['heading_text']):
             return "cloudflare_interstitial"
 
-        # Priority 1: Check for the application list page, a key post-login state.
+        # Priority 1: Check for the Service Level page (Insurance / Additional Services)
+        if self.driver.is_element_visible(TLS_SELECTORS['service_level']['continue_btn']):
+            return "service_level"
+
+        # Priority 2: Check for the Application List page
         if self.driver.is_element_visible(TLS_SELECTORS['application_list']['page_title_header']):
             if "Application manager" in self.driver.get_text(TLS_SELECTORS['application_list']['page_title_header']):
                 return "application_list"
 
-        # Priority 2: Check for the final logged-in state (the main dashboard for appointment checking).
-        if self.driver.is_element_visible(TLS_SELECTORS['dashboard']['logged_in_anchor']):
-            return "dashboard_ready"
-
-        # Priority 3: Check for the login form itself.
+        # Priority 3: Check for the login form itself
         if self.driver.is_element_visible(TLS_SELECTORS['login_form']['email_input_field']):
             return "login_form"
 
-        # Priority 4 & 5: Check for specific pre-login setup pages.
+        # Priority 4 & 5: Pre-login setup pages (Country & City)
         if self.driver.is_element_visible(TLS_SELECTORS['choose_country']['select_dropdown']):
             return "choose_country"
         
-        if self.driver.is_element_visible(TLS_SELECTORS['choose_city']['page_title_header']):
-            if "Select your Visa Application Centre" in self.driver.get_text(TLS_SELECTORS['choose_city']['page_title_header']):
-                return "choose_city"
+        # Using is_element_present for robustness against rendering delays
+        if self.driver.is_element_present(TLS_SELECTORS['choose_city']['page_title_header']):
+            try:
+                if "Select your Visa Application Centre" in self.driver.get_text(TLS_SELECTORS['choose_city']['page_title_header']):
+                    return "choose_city"
+            except Exception:
+                pass # Element might be present but not yet have text, or other stale element issues.
 
-        # Priority 6: As a fallback, if a login button is visible in the header,
-        # we're on a generic info page and need to log in. This implements your request
-        # for a global "logged-out" check.
+        # Priority 6: Info page fallback
         if self.driver.is_element_visible(TLS_SELECTORS['info_page']['header_login_btn']):
             return "info_page"
 
+        # After login, we might land on a generic info page. This handles that state.
+        if self.driver.is_element_visible(TLS_SELECTORS['info_page']['user_icon_button']):
+            if self.driver.is_element_present("h1#page-title") and "Welcome to the Visa Application Centre" in self.driver.get_text("h1#page-title"):
+                return "logged_in_info_page"
+
+        # Priority 7: Dashboard / Target Calendar Page
+        # We keep this as the LAST priority so it doesn't trigger on intermediate pages that share the logout button
+        if self.driver.is_element_visible(TLS_SELECTORS['dashboard']['logged_in_anchor']):
+            # Ensure we are definitively on the booking screen before halting navigation
+            if "/appointment-booking/" in self.driver.current_url:
+                return "dashboard_ready"
+                
         return "unknown"
 
     def navigate_to_target_state(self) -> None:
@@ -69,7 +83,7 @@ class BrowserBase:
                 self.login_attempted_on_this_page = False
             
             if current_state == "dashboard_ready":
-                print(f"[🎯] {self.account} reached Dashboard. Handing over to timing engine...")
+                print(f"[🎯] {self.account} reached Dashboard (Calendar). Handing over to timing engine...")
                 break 
 
             elif current_state != "unknown":
@@ -84,7 +98,7 @@ class BrowserBase:
     def _handle_current_state(self, current_state: str) -> None:
         try:
             if current_state == "cloudflare_interstitial":
-                self.captcha_handler.solve_interstitial_captcha()
+                self.captcha_handler.cloudflare()
             elif current_state == "login_form":
                 self._workflow_login()
             elif current_state == "choose_country":
@@ -93,8 +107,12 @@ class BrowserBase:
                 self._workflow_choose_city()
             elif current_state == "application_list":
                 self._workflow_application_list()
+            elif current_state == "service_level":
+                self._workflow_service_level()
             elif current_state == "info_page":
                 self._workflow_info_page()
+            elif current_state == "logged_in_info_page":
+                self._workflow_logged_in_info_page()
         except Exception as e:
             print(f"[❌] {self.account} failed to handle {current_state}: {e}")
 
@@ -111,22 +129,17 @@ class BrowserBase:
         # Step 2: Check for CAPTCHA.
         if self.driver.is_element_visible(TLS_SELECTORS['login_form']['captcha_widget']):
             print(f"[🧩] {self.account} CAPTCHA detected on login form.")
-            
-            # Attempt to solve automatically
             success = self.captcha_handler.solve_google_recaptcha() 
             
             if success:
                 print(f"    - CAPTCHA solved successfully. Submitting credentials.")
                 self.actor.human_click(TLS_SELECTORS['login_form']['submit_login_btn'])
                 print(f"[✅] {self.account} login submitted.")
-                time.sleep(3) # Wait for page to route
+                time.sleep(3)
             else:
                 print(f"    - Audio Bypass Blocked or Failed. Waiting 10 seconds for manual CAPTCHA solve...")
                 time.sleep(10)
-                
-                # Fallback: Check if user solved it manually during the wait
                 try:
-                    # Use standard Selenium API for frame switching for better stability
                     checkbox_iframe = self.driver.find_element("css selector", TLS_SELECTORS['recaptcha_v2']['checkbox_iframe'])
                     self.driver.switch_to.frame(checkbox_iframe)
                     is_checked = self.driver.get_attribute(TLS_SELECTORS['recaptcha_v2']['checkbox'], "aria-checked")
@@ -176,9 +189,7 @@ class BrowserBase:
         print(f"[🏢] {self.account} handling city selection...")
         city_name = settings.RESIDENCE['city']
         
-        # This is a more robust way to find the city, by iterating through the cards
-        # and matching the city name by text, rather than relying on a hardcoded href.
-        city_cards_selector = "div.TlsVacCard_tls-vac-card__DLGQr"
+        city_cards_selector = TLS_SELECTORS['choose_city']['city_card']
         self.driver.wait_for_element_visible(city_cards_selector)
         cards = self.driver.find_elements(city_cards_selector)
         
@@ -206,12 +217,46 @@ class BrowserBase:
         print(f"[ℹ️] {self.account} found info page. Navigating to login...")
         self.actor.human_click(TLS_SELECTORS['info_page']['header_login_btn'])
 
+    def _workflow_logged_in_info_page(self) -> None:
+        print(f"[👤] {self.account} on logged-in info page. Navigating to 'My Application'...")
+        # Click user icon to reveal dropdown
+        self.actor.human_click(TLS_SELECTORS['info_page']['user_icon_button'])
+        self.actor.natural_delay()
+        # Click 'My Application' in the dropdown
+        self.driver.wait_for_element_visible(TLS_SELECTORS['info_page']['my_application_button'])
+        self.actor.human_click(TLS_SELECTORS['info_page']['my_application_button'])
+        print(f"    - Clicked 'My Application'.")
+
     def _workflow_application_list(self) -> None:
-        print(f"[📋] {self.account} on application list page. Clicking 'Select'...")
+        print(f"[📋] {self.account} on application list page. Looking for 'Select' button...")
         try:
-            self.actor.human_click(TLS_SELECTORS['application_list']['select_application_button'])
-            print(f"    - 'Select' button clicked.")
-            time.sleep(3) # Wait for next page
+            selector = TLS_SELECTORS['application_list']['select_application_button']
+            
+            # Using wait_for_element_present because React renders it dynamically
+            self.driver.wait_for_element_present(selector, timeout=15)
+            
+            # Using js_click to pierce through the CSS layers
+            self.driver.js_click(selector)
+            print(f"[✅] {self.account} successfully clicked 'Select'.")
+            time.sleep(4) 
+            
         except Exception as e:
-            print(f"[❌] {self.account} could not find or click the 'Select' button on the application list page: {e}")
+            error_msg = str(e).split('\n')[0]
+            print(f"[❌] {self.account} failed to click 'Select' button: {error_msg}")
+            
+            if self.driver.is_element_visible(TLS_SELECTORS['application_list']['create_new_button']):
+                print(f"    - ⚠️ Hint: No active applications were found. You might need to click 'Create a new application' manually.")
+            time.sleep(5)
+
+    def _workflow_service_level(self) -> None:
+        print(f"[⚙️] {self.account} on Service Level page. Clicking 'Continue'...")
+        try:
+            selector = TLS_SELECTORS['service_level']['continue_btn']
+            self.driver.wait_for_element_present(selector, timeout=15)
+            self.driver.js_click(selector)
+            print(f"[✅] {self.account} skipped additional services successfully.")
+            time.sleep(4)
+        except Exception as e:
+            error_msg = str(e).split('\n')[0]
+            print(f"[❌] {self.account} failed to click 'Continue' on Service page: {error_msg}")
             time.sleep(5)

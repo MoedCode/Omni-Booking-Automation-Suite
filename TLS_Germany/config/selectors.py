@@ -20,14 +20,9 @@ TLS_SELECTORS = {
         "list_view_search_input": "input#search-vac-list-view",
         "search_submit_btn": "input#search-vac-map-view + button",
         "vac_list_container": "ul.flex.flex-wrap",  
+        "city_card": "div.TlsVacCard_tls-vac-card__DLGQr",
         "city_card_title": "p.TlsVacCard_tls-vac-card_title__qk6jS",
-        "generic_continue_btn": "button[data-testid='btn-select-vac']",
-
-        # Specific regional routing links
-        "alexandria_center_route": "a[href*='/vac/egALY2de'] button[data-testid='btn-select-vac']",
-        "cairo_center_route": "a[href*='/vac/egCAI2de'] button[data-testid='btn-select-vac']",
-        "hurghada_center_route": "a[href*='/vac/egHRG2de'] button[data-testid='btn-select-vac']",
-        "6th_of_october_route": "a[href*='/vac/egHAC2de'] button[data-testid='btn-select-vac']"
+        "generic_continue_btn": "button[data-testid='btn-select-vac']"
     },
 
     # [2] info_page
@@ -37,7 +32,9 @@ TLS_SELECTORS = {
         "services_tab_link": "a[href$='/services']",
         "application_process_link": "a[href$='/application-process']",
         "news_bulletins_link": "a[href$='/news']",
-        "address_hours_footer_link": "a[href$='/address-opening-hours']"
+        "address_hours_footer_link": "a[href$='/address-opening-hours']",
+        "user_icon_button": "svg[aria-label='User icon']",
+        "my_application_button": "div#my-application"
     },
 
     # [3] login_form
@@ -49,21 +46,25 @@ TLS_SELECTORS = {
         "submit_login_btn": "button#btn-login",
         "captcha_widget": "iframe[title='reCAPTCHA']"
     },
-    
-    # [4] Dashboard Ready State
+
+    # [4] Application List Page
+    "application_list": {
+        "page_title_header": "h1#page-title",
+        "select_application_button": "//button[contains(., 'Select')]",
+        "create_new_button": "span[data-testid='btn-create-new-travel-group']"
+    },
+
+    # [5] Service Level Page (Upsells/Insurance)
+    "service_level": {
+        "continue_btn": "a#book-appointment-btn, a[data-testid='btn-book-appointment']"
+    },
+
+    # [6] Dashboard Ready State (Calendar Page)
     "dashboard": {
         "logged_in_anchor": "a[href*='/logout'], button.user-profile, div.dashboard-container"
     },
 
-    # [5] Application List Page
-    "application_list": {
-        "page_title_header": "h1#page-title",
-        # XPath ذكي وشامل جداً: يبحث عن أي زر يحتوي على نص "Select" بغض النظر عن نوعه (submit أو button)
-        "select_application_button": "//button[contains(normalize-space(), 'Select')]",
-        "create_new_button": "span[data-testid='btn-create-new-travel-group']"
-    },
-
-    # [6] Google reCAPTCHA v2 Elements
+    # [7] Google reCAPTCHA v2 Elements
     "recaptcha_v2": {
         "checkbox_iframe": "iframe[title='reCAPTCHA']",
         "checkbox": "span#recaptcha-anchor",
@@ -77,12 +78,12 @@ TLS_SELECTORS = {
         "error_message": "div.rc-audiochallenge-error-message",
     },
 
-    # [7] Cloudflare Interstitial Page
+    # [8] Cloudflare Interstitial Page
     "cloudflare": {
         "page_title": "Just a moment...", 
-        "heading_text": "h2#fTjHU3", 
+        "heading_text": "h2:contains('Performing security verification')", 
         "turnstile_iframe": "iframe[src*='challenges.cloudflare.com']",
         "turnstile_checkbox": "input[type='checkbox']", 
-        "verification_successful_text": "h2#yZFa8" 
+        "verification_successful_text": "h2:contains('Verification successful')" 
     }
 }

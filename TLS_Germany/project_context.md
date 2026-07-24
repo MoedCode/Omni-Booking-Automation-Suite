@@ -354,24 +354,24 @@ class BrowserBase:
             lambda d: d.execute_script('return document.readyState') == 'complete'
         )
 
-        # Priority 0: Check for Cloudflare interstitial page.
+        # Priority 0: Check for Cloudflare interstitial page
         if "Just a moment..." in self.driver.get_title() and self.driver.is_element_visible(TLS_SELECTORS['cloudflare']['heading_text']):
             return "cloudflare_interstitial"
 
-        # Priority 1: Check for the application list page, a key post-login state.
+        # Priority 1: Check for the Service Level page (Insurance / Additional Services)
+        if self.driver.is_element_visible(TLS_SELECTORS['service_level']['continue_btn']):
+            return "service_level"
+
+        # Priority 2: Check for the Application List page
         if self.driver.is_element_visible(TLS_SELECTORS['application_list']['page_title_header']):
             if "Application manager" in self.driver.get_text(TLS_SELECTORS['application_list']['page_title_header']):
                 return "application_list"
 
-        # Priority 2: Check for the final logged-in state (the main dashboard for appointment checking).
-        if self.driver.is_element_visible(TLS_SELECTORS['dashboard']['logged_in_anchor']):
-            return "dashboard_ready"
-
-        # Priority 3: Check for the login form itself.
+        # Priority 3: Check for the login form itself
         if self.driver.is_element_visible(TLS_SELECTORS['login_form']['email_input_field']):
             return "login_form"
 
-        # Priority 4 & 5: Check for specific pre-login setup pages.
+        # Priority 4 & 5: Pre-login setup pages (Country & City)
         if self.driver.is_element_visible(TLS_SELECTORS['choose_country']['select_dropdown']):
             return "choose_country"
         
@@ -379,12 +379,17 @@ class BrowserBase:
             if "Select your Visa Application Centre" in self.driver.get_text(TLS_SELECTORS['choose_city']['page_title_header']):
                 return "choose_city"
 
-        # Priority 6: As a fallback, if a login button is visible in the header,
-        # we're on a generic info page and need to log in. This implements your request
-        # for a global "logged-out" check.
+        # Priority 6: Info page fallback
         if self.driver.is_element_visible(TLS_SELECTORS['info_page']['header_login_btn']):
             return "info_page"
 
+        # Priority 7: Dashboard / Target Calendar Page
+        # We keep this as the LAST priority so it doesn't trigger on intermediate pages that share the logout button
+        if self.driver.is_element_visible(TLS_SELECTORS['dashboard']['logged_in_anchor']):
+            # Ensure we are definitively on the booking screen before halting navigation
+            if "/appointment-booking/" in self.driver.current_url:
+                return "dashboard_ready"
+                
         return "unknown"
 
     def navigate_to_target_state(self) -> None:
@@ -395,7 +400,7 @@ class BrowserBase:
                 self.login_attempted_on_this_page = False
             
             if current_state == "dashboard_ready":
-                print(f"[🎯] {self.account} reached Dashboard. Handing over to timing engine...")
+                print(f"[🎯] {self.account} reached Dashboard (Calendar). Handing over to timing engine...")
                 break 
 
             elif current_state != "unknown":
@@ -419,6 +424,8 @@ class BrowserBase:
                 self._workflow_choose_city()
             elif current_state == "application_list":
                 self._workflow_application_list()
+            elif current_state == "service_level":
+                self._workflow_service_level()
             elif current_state == "info_page":
                 self._workflow_info_page()
         except Exception as e:
@@ -437,22 +444,17 @@ class BrowserBase:
         # Step 2: Check for CAPTCHA.
         if self.driver.is_element_visible(TLS_SELECTORS['login_form']['captcha_widget']):
             print(f"[🧩] {self.account} CAPTCHA detected on login form.")
-            
-            # Attempt to solve automatically
             success = self.captcha_handler.solve_google_recaptcha() 
             
             if success:
                 print(f"    - CAPTCHA solved successfully. Submitting credentials.")
                 self.actor.human_click(TLS_SELECTORS['login_form']['submit_login_btn'])
                 print(f"[✅] {self.account} login submitted.")
-                time.sleep(3) # Wait for page to route
+                time.sleep(3)
             else:
                 print(f"    - Audio Bypass Blocked or Failed. Waiting 10 seconds for manual CAPTCHA solve...")
                 time.sleep(10)
-                
-                # Fallback: Check if user solved it manually during the wait
                 try:
-                    # Use standard Selenium API for frame switching for better stability
                     checkbox_iframe = self.driver.find_element("css selector", TLS_SELECTORS['recaptcha_v2']['checkbox_iframe'])
                     self.driver.switch_to.frame(checkbox_iframe)
                     is_checked = self.driver.get_attribute(TLS_SELECTORS['recaptcha_v2']['checkbox'], "aria-checked")
@@ -502,8 +504,6 @@ class BrowserBase:
         print(f"[🏢] {self.account} handling city selection...")
         city_name = settings.RESIDENCE['city']
         
-        # This is a more robust way to find the city, by iterating through the cards
-        # and matching the city name by text, rather than relying on a hardcoded href.
         city_cards_selector = "div.TlsVacCard_tls-vac-card__DLGQr"
         self.driver.wait_for_element_visible(city_cards_selector)
         cards = self.driver.find_elements(city_cards_selector)
@@ -533,13 +533,37 @@ class BrowserBase:
         self.actor.human_click(TLS_SELECTORS['info_page']['header_login_btn'])
 
     def _workflow_application_list(self) -> None:
-        print(f"[📋] {self.account} on application list page. Clicking 'Select'...")
+        print(f"[📋] {self.account} on application list page. Looking for 'Select' button...")
         try:
-            self.actor.human_click(TLS_SELECTORS['application_list']['select_application_button'])
-            print(f"    - 'Select' button clicked.")
-            time.sleep(3) # Wait for next page
+            selector = TLS_SELECTORS['application_list']['select_application_button']
+            
+            # Using wait_for_element_present because React renders it dynamically
+            self.driver.wait_for_element_present(selector, timeout=15)
+            
+            # Using js_click to pierce through the CSS layers
+            self.driver.js_click(selector)
+            print(f"[✅] {self.account} successfully clicked 'Select'.")
+            time.sleep(4) 
+            
         except Exception as e:
-            print(f"[❌] {self.account} could not find or click the 'Select' button on the application list page: {e}")
+            error_msg = str(e).split('\n')[0]
+            print(f"[❌] {self.account} failed to click 'Select' button: {error_msg}")
+            
+            if self.driver.is_element_visible(TLS_SELECTORS['application_list']['create_new_button']):
+                print(f"    - ⚠️ Hint: No active applications were found. You might need to click 'Create a new application' manually.")
+            time.sleep(5)
+
+    def _workflow_service_level(self) -> None:
+        print(f"[⚙️] {self.account} on Service Level page. Clicking 'Continue'...")
+        try:
+            selector = TLS_SELECTORS['service_level']['continue_btn']
+            self.driver.wait_for_element_present(selector, timeout=15)
+            self.driver.js_click(selector)
+            print(f"[✅] {self.account} skipped additional services successfully.")
+            time.sleep(4)
+        except Exception as e:
+            error_msg = str(e).split('\n')[0]
+            print(f"[❌] {self.account} failed to click 'Continue' on Service page: {error_msg}")
             time.sleep(5)
 ```
 
@@ -1102,15 +1126,9 @@ TLS_SELECTORS = {
         "map_view_search_input": "input#search-vac-map-view",
         "list_view_search_input": "input#search-vac-list-view",
         "search_submit_btn": "input#search-vac-map-view + button",
-        "vac_list_container": "ul.flex.flex-wrap",  # Container for the city cards
+        "vac_list_container": "ul.flex.flex-wrap",  
         "city_card_title": "p.TlsVacCard_tls-vac-card_title__qk6jS",
-        "generic_continue_btn": "button[data-testid='btn-select-vac']",
-
-        # Specific regional routing links
-        "alexandria_center_route": "a[href*='/vac/egALY2de'] button[data-testid='btn-select-vac']",
-        "cairo_center_route": "a[href*='/vac/egCAI2de'] button[data-testid='btn-select-vac']",
-        "hurghada_center_route": "a[href*='/vac/egHRG2de'] button[data-testid='btn-select-vac']",
-        "6th_of_october_route": "a[href*='/vac/egHAC2de'] button[data-testid='btn-select-vac']"
+        "generic_continue_btn": "button[data-testid='btn-select-vac']"
     },
 
     # [2] info_page
@@ -1132,21 +1150,25 @@ TLS_SELECTORS = {
         "submit_login_btn": "button#btn-login",
         "captcha_widget": "iframe[title='reCAPTCHA']"
     },
-    
-    # [4] Dashboard Ready State
+
+    # [4] Application List Page
+    "application_list": {
+        "page_title_header": "h1#page-title",
+        "select_application_button": "//button[contains(., 'Select')]",
+        "create_new_button": "span[data-testid='btn-create-new-travel-group']"
+    },
+
+    # [5] Service Level Page (Upsells/Insurance)
+    "service_level": {
+        "continue_btn": "a#book-appointment-btn, a[data-testid='btn-book-appointment']"
+    },
+
+    # [6] Dashboard Ready State (Calendar Page)
     "dashboard": {
         "logged_in_anchor": "a[href*='/logout'], button.user-profile, div.dashboard-container"
     },
 
-    # [5] Application List Page
-    "application_list": {
-        "page_title_header": "h1#page-title",
-        # XPath ذكي ومضمون للبحث عن الزر بناءً على الكلمة المكتوبة داخله
-        "select_application_button": "//button[contains(., 'Select') and @type='submit']",
-        "create_new_button": "span[data-testid='btn-create-new-travel-group']"
-    },
-
-    # [6] Google reCAPTCHA v2 Elements
+    # [7] Google reCAPTCHA v2 Elements
     "recaptcha_v2": {
         "checkbox_iframe": "iframe[title='reCAPTCHA']",
         "checkbox": "span#recaptcha-anchor",
@@ -1158,20 +1180,9 @@ TLS_SELECTORS = {
         "audio_response_input": "input#audio-response",
         "verify_button": "button#recaptcha-verify-button",
         "error_message": "div.rc-audiochallenge-error-message",
-        # Image Challenge selectors
-        "image_challenge_payload": "div.rc-imageselect-payload",
-        "image_challenge_instruction_desc": "div.rc-imageselect-desc",
-        "image_challenge_instruction_strong": "div.rc-imageselect-desc strong",
-        "image_challenge_tiles": "td.rc-imageselect-tile",
-        "image_challenge_img": "img.rc-image-tile-33",
-        "image_challenge_checkbox": "div.rc-imageselect-checkbox",
-        "image_challenge_incorrect_response": "div.rc-imageselect-incorrect-response",
-        "image_challenge_error_select_more": "div.rc-imageselect-error-select-more",
-        "image_challenge_error_dynamic_more": "div.rc-imageselect-error-dynamic-more",
-        "image_challenge_error_select_something": "div.rc-imageselect-error-select-something",
     },
 
-    # [7] Cloudflare Interstitial Page
+    # [8] Cloudflare Interstitial Page
     "cloudflare": {
         "page_title": "Just a moment...", 
         "heading_text": "h2#fTjHU3", 
