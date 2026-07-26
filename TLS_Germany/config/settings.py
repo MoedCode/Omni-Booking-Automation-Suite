@@ -13,7 +13,8 @@ START_URL = URLS[1]
 # This dictionary drives the workflow dynamically
 RESIDENCE = {
     "country": "Egypt", 
-    "city": "Alexandria"
+    "city": "Alexandria",
+    "month": "September"
 }
 ACCOUNTS_FOR_TEST ={
     "test1":{
@@ -40,3 +41,18 @@ PERSONA_DELAY_JITTER = 0.2
 
 # --- TIMEOUTS ---
 WAIT_TIMEOUT_ELEMENT_READY = 10
+APPOINTMENT_CHECK_INTERVAL_SECONDS = 60
+appointment_results = [
+    "We currently don’t have any appointment",
+
+"there are no appointment",
+
+"no appointment",
+
+"no slots",
+
+"we hav'nt slots",
+"No slots are currently available",
+"We currently don’t have any appointment slots available",
+"No slots are currently available. Please check this page regularly, as new appointments are constantly added",
+]

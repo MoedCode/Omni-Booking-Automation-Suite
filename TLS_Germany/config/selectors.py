@@ -59,9 +59,14 @@ TLS_SELECTORS = {
         "continue_btn": "a#book-appointment-btn, a[data-testid='btn-book-appointment']"
     },
 
-    # [6] Dashboard Ready State (Calendar Page)
-    "dashboard": {
-        "logged_in_anchor": "a[href*='/logout'], button.user-profile, div.dashboard-container"
+    # [6] Appointment Booking Page (Calendar)
+    "appointment_booking": {
+        "page_title": "h1#page-title",
+        "month_selector_container": "div.relative.flex.items-center.overflow-hidden",
+        "month_button": "button.MonthSelector_month-selector_button__An0eF, p.MonthSelector_month-selector_button__An0eF",
+        "no_slots_message": "p:contains('We currently don’t have any appointment slots available.')",
+        "available_slot": "button[data-testid^='appointment-slot-']",
+        "book_appointment_button": "button:contains('Book your appointment')"
     },
 
     # [7] Google reCAPTCHA v2 Elements

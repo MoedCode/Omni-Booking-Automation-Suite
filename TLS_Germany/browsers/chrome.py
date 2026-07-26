@@ -12,7 +12,8 @@ import time
 from typing import Optional, Dict
 import datetime
 from seleniumbase import Driver
-
+from config.selectors import TLS_SELECTORS
+from config import settings
 from browsers.browser_base import BrowserBase
 from config.settings import *
 
@@ -32,6 +33,7 @@ class ChromeManager:
         account: str,
         password: str,
         url: str,
+        target_month: str,
         target_hr: int = 0,
         target_min: int = 0,
         target_sec: int = 0,
@@ -41,6 +43,7 @@ class ChromeManager:
         self.account = account
         self.password = password
         self.target_url = url
+        self.target_month = target_month
         self.target_hr = int(target_hr)
         self.target_min = int(target_min)
         self.target_sec = int(target_sec)
@@ -56,6 +59,7 @@ class ChromeManager:
         self.thread: Optional[threading.Thread] = None
         self.is_running = False
         self.driver: Optional[Driver] = None
+        self.appointment_found = False
         self.status = "Idle"
 
     def _build_stealth_profile(self) -> list:
@@ -120,19 +124,9 @@ class ChromeManager:
             # 4. START THE INFINITE ROUTING LOOP
             navigator.navigate_to_target_state()
 
-            # 5. Precision Timing (Wait for the exact millisecond)
+            # 5. APPOINTMENT CHECKING LOOP
             if self.is_running:
-                self._wait_until_target()
-
-            # 6. Trigger Action
-            if self.is_running:
-                self.status = "Executing Action"
-                self._execute_action()
-                self.status = "Finished"
-                
-                # Idle loop: Keep browser open until stopped from the GUI
-                while self.is_running:
-                    time.sleep(0.5)
+                self._appointment_check_loop()
 
         except Exception as e:
             # This block is entered if an error occurs during automation,
@@ -145,50 +139,106 @@ class ChromeManager:
         # When the loop breaks (is_running=False) or an exception occurs, the thread ends.
         print(f"[💡] Thread for {self.account} has exited.")
 
-    def _wait_until_target(self) -> None:
+    def _appointment_check_loop(self) -> None:
         """
-        Waits until the specified H:M:S.ms. This loop is designed to be
-        responsive to on-the-fly changes of the target time attributes from the GUI.
+        Continuously checks for appointments on the booking page at a set interval.
         """
+        print(f"[{self.account}] Now monitoring for appointments...")
         while self.is_running:
-            # Re-calculate target_datetime in every loop to allow for hot-patching
-            now = datetime.datetime.now()
-            try:
-                target_datetime = now.replace(
-                    hour=self.target_hr, 
-                    minute=self.target_min, 
-                    second=self.target_sec, 
-                    microsecond=self.target_ms * 1000,
-                )
-            except ValueError:
-                self.status = f"Error: Invalid time {self.target_hr}:{self.target_min}:{self.target_sec}"
+            # 1. Check if we are still on the correct page
+            if "/appointment-booking/" not in self.driver.current_url:
+                self.status = "Error: Navigated away from booking page."
                 print(f"❌ [{self.account}] {self.status}")
-                # Do not self-terminate. Instead, idle here with an error status
-                # to allow the user to see the problem and take manual action.
+                # Stop checking and idle with error status
                 while self.is_running:
                     time.sleep(1)
                 return
+            
+            # 2. Perform the check
+            found = self.check_appointment()
+            
+            if found:
+                self.status = "Appointments Found!"
+                self.appointment_found = True
+                print(f"✅✅✅ [{self.account}] APPOINTMENTS FOUND! ✅✅✅")
+                # Keep the browser open and status active until manually stopped
+                while self.is_running:
+                    time.sleep(1)
+                return # Exit loop once found
+            
+            # 3. If not found, wait for the next interval
+            self.status = f"No appointments. Retrying in {settings.APPOINTMENT_CHECK_INTERVAL_SECONDS}s..."
+            
+            # Sleep in small chunks to remain responsive to the stop signal
+            for _ in range(settings.APPOINTMENT_CHECK_INTERVAL_SECONDS):
+                if not self.is_running:
+                    return
+                time.sleep(1)
+            
+            # 4. Refresh the page to get new data
+            if self.is_running:
+                print(f"[{self.account}] Refreshing page to check again...")
+                self.status = "Refreshing..."
+                self.driver.refresh()
+                time.sleep(5) # Wait for page to settle after refresh
 
-            # If target time has already passed for today, aim for the next day
-            if now > target_datetime:
-                target_datetime += datetime.timedelta(days=1)
+    def check_appointment(self) -> bool:
+        """
+        Performs a single check on the current page for available appointments.
+        Returns True if an appointment is found, False otherwise.
+        """
+        try:
+            self.status = f"Checking for month: {self.target_month}"
+            
+            # 1. Select the target month
+            self.driver.wait_for_element_visible(TLS_SELECTORS['appointment_booking']['month_selector_container'])
+            month_buttons = self.driver.find_elements(TLS_SELECTORS['appointment_booking']['month_button'])
+            
+            month_found_and_clicked = False
+            for button in month_buttons:
+                if self.target_month.lower() in button.text.lower():
+                    if "selected" not in button.get_attribute("class"):
+                        self.driver.js_click(button)
+                        print(f"    - Switched to month: {self.target_month}")
+                        time.sleep(2) # Wait for calendar to update
+                    month_found_and_clicked = True
+                    break
+            
+            if not month_found_and_clicked:
+                self.status = f"Error: Month '{self.target_month}' not found."
+                print(f"❌ [{self.account}] {self.status}")
+                return False
 
-            self.status = f"Armed for {target_datetime.strftime('%H:%M:%S')}.{self.target_ms:03d}"
+            # 2. Check for any "no slots" messages.
+            # We get all text from the page's body and convert to lowercase for a case-insensitive search.
+            page_text = self.driver.get_text("body").lower()
+            
+            no_slots_message_found = False
+            for message in settings.appointment_results:
+                if message.lower() in page_text:
+                    print(f"    - No appointment slots available for {self.target_month}. Found text: '{message}'")
+                    no_slots_message_found = True
+                    break
+            
+            if no_slots_message_found:
+                return False
 
-            # This is a busy-wait loop for high precision. A small sleep prevents 100% CPU usage
-            # while remaining highly responsive to the exact target millisecond.
-            while self.is_running and datetime.datetime.now() < target_datetime:
-                time.sleep(0.001) # 1ms sleep for precision
+            # 3. As a positive confirmation, check if an actual appointment slot element is visible.
+            # This avoids false positives if the "no slots" message is missing for some reason.
+            if self.driver.is_element_visible(TLS_SELECTORS['appointment_booking']['available_slot']):
+                print(f"    - 'No slots' message not found AND an available slot is visible. Appointments are available.")
+                return True
+            
+            # 4. Fallback: If no negative message is found, but also no positive slot is found,
+            # it's safer to assume there are no appointments. This can happen during page loads or with unexpected layouts.
+            print(f"    - 'No slots' message not found, but no available slots were detected either. Assuming no appointments for now.")
+            return False
 
-            # If the loop was exited because the thread was stopped, just return.
-            if not self.is_running:
-                return
-
-            # If we reached here, it's time to fire. Break the outer loop.
-            break
-
-    def _execute_action(self) -> None:
-        print(f"🚀 [💥 FIRE] {self.account} executed at {time.time()}")
+        except Exception as e:
+            error_msg = str(e).split('\n')[0]
+            self.status = f"Error checking page: {error_msg}"
+            print(f"❌ [{self.account}] {self.status}")
+            return False
 
     def stop_engine(self) -> None:
         if not self.is_running: return
@@ -203,13 +253,14 @@ class ChromeManager:
                 pass
             self.driver = None
             
-        if "Error" not in self.status and self.status != "Finished":
+        if "Error" not in self.status and self.status != "Finished" and not self.appointment_found:
             self.status = "Terminated"
 
 if __name__ == "__main__":
     bot = ChromeManager(
         account="tivime8259@preparmy.com",
         password="Yallavisa@@123",
+        target_month="September",
         target_hr=datetime.datetime.now().hour,
         target_min=datetime.datetime.now().minute,
         target_sec=(datetime.datetime.now().second + 10) % 60, # 10 seconds from now

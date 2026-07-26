@@ -45,6 +45,7 @@ class MainWindow(QMainWindow):
         self.active_instances: Dict[str, ChromeManager] = {}
         # Performance optimization: Maps an account's email to its current row index in the table for fast UI updates.
         self.account_to_row: Dict[str, int] = {}
+        self.flash_state = False # For blinking effect
 
         # --- UI Initialization ---
         self._init_ui()
@@ -52,7 +53,7 @@ class MainWindow(QMainWindow):
         # --- Background Processes ---
         # This timer is the heart of the live dashboard, periodically calling a method to refresh the UI.
         self.monitor_timer = QTimer(self)
-        self.monitor_timer.timeout.connect(self._update_dashboard_from_state)
+        self.monitor_timer.timeout.connect(self._update_dashboard)
         self.monitor_timer.start(500) # Poll every 500ms
 
     def _init_ui(self):
@@ -79,9 +80,9 @@ class MainWindow(QMainWindow):
 
         # --- MIDDLE FRAME: Instance Tracker Table ---
         self.table = QTableWidget()
-        self.table.setColumnCount(6)
+        self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels([
-            "", "Target Account Context", "Operational State (Status)",
+            "🔔", "", "Target Account Context", "Operational State (Status)",
             "Trigger Matrix (H:M:S.ms)", "Network Tunnel Routing (Proxy)", "Actions"
         ])
         
@@ -90,10 +91,11 @@ class MainWindow(QMainWindow):
         
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) # Checkbox
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)   # Account
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents) # Actions
-        self.table.setColumnWidth(1, 350)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) # Status Icon
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents) # Checkbox
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)   # Account
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents) # Actions
+        self.table.setColumnWidth(2, 350)
 
         # Allow selecting rows or individual cells for copy-pasting text.
         # Editing is disabled by default on QTableWidgetItems unless the 'ItemIsEditable' flag is set.
@@ -193,6 +195,7 @@ class MainWindow(QMainWindow):
             manager = ChromeManager(
                 account=account,
                 password=row_data.get('Password', ''),
+                target_month=row_data.get('Month', ''),
                 url=BASE_URL,
                 target_hr=int(row_data.get('Hour', 0)),
                 target_min=int(row_data.get('Minute', 0)),
@@ -205,28 +208,34 @@ class MainWindow(QMainWindow):
 
             self.table.insertRow(i)
 
-            # Column 0: Checkbox
+            # Column 0: Status Icon
+            status_icon_item = QTableWidgetItem("")
+            status_icon_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            status_icon_item.setFlags(status_icon_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(i, 0, status_icon_item)
+
+            # Column 1: Checkbox
             check_item = QTableWidgetItem()
             check_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
             check_item.setCheckState(Qt.CheckState.Unchecked)
-            self.table.setItem(i, 0, check_item)
+            self.table.setItem(i, 1, check_item)
 
-            # Column 1: Account
-            self.table.setItem(i, 1, QTableWidgetItem(account))
-            # Column 2: Status
-            self.table.setItem(i, 2, QTableWidgetItem(manager.status))
-            # Column 3: Time
+            # Column 2: Account
+            self.table.setItem(i, 2, QTableWidgetItem(account))
+            # Column 3: Status
+            self.table.setItem(i, 3, QTableWidgetItem(manager.status))
+            # Column 4: Time
             time_str = f"{manager.target_hr:02}:{manager.target_min:02}:{manager.target_sec:02}.{manager.target_ms:03}"
-            self.table.setItem(i, 3, QTableWidgetItem(time_str))
-            # Column 4: Proxy
-            self.table.setItem(i, 4, QTableWidgetItem(str(manager.proxy_address or 'None')))
-            # Column 5: Actions
+            self.table.setItem(i, 4, QTableWidgetItem(time_str))
+            # Column 5: Proxy
+            self.table.setItem(i, 5, QTableWidgetItem(str(manager.proxy_address or 'None')))
+            # Column 6: Actions
             self._add_action_buttons(i, account)
 
         self.table.resizeColumnsToContents()
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch) # Status column
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents) # Actions
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch) # Status column
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents) # Actions
 
     def _add_action_buttons(self, row: int, account: str):
         """
@@ -297,7 +306,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(term_btn)
         layout.addWidget(del_btn)
         layout.addStretch()
-        self.table.setCellWidget(row, 5, actions_widget)
+        self.table.setCellWidget(row, 6, actions_widget)
 
     def _deploy_all(self):
         """Starts the automation engine for all loaded instances that are not already running."""
@@ -396,7 +405,7 @@ class MainWindow(QMainWindow):
 
         for row in rows_to_remove:
             # Find account for this row before it's deleted (account is in column 1)
-            account = self.table.item(row, 1).text()
+            account = self.table.item(row, 2).text()
             self._terminate_instance(account) # Stop thread
             if account in self.active_instances:
                 del self.active_instances[account]
@@ -412,10 +421,10 @@ class MainWindow(QMainWindow):
         """Returns a list of account names for all checked rows."""
         checked_accounts = []
         for row in range(self.table.rowCount()):
-            # Checkbox is in column 0
-            if self.table.item(row, 0).checkState() == Qt.CheckState.Checked:
-                # Account is in column 1
-                account_item = self.table.item(row, 1)
+            # Checkbox is in column 1
+            if self.table.item(row, 1).checkState() == Qt.CheckState.Checked:
+                # Account is in column 2
+                account_item = self.table.item(row, 2)
                 if account_item:
                     checked_accounts.append(account_item.text())
         return checked_accounts
@@ -426,40 +435,61 @@ class MainWindow(QMainWindow):
         if not selected_rows:
             QMessageBox.warning(self, "No Selection", "Please highlight a single instance to edit.")
             return
-        # Account is in column 1
-        account = self.table.item(selected_rows[0].row(), 1).text()
+        # Account is in column 2
+        account = self.table.item(selected_rows[0].row(), 2).text()
         instance = self.active_instances.get(account)
         if instance:
             dialog = EditInstanceDialog(self, instance)
             dialog.exec()
 
-    def _update_dashboard_from_state(self):
+    def _update_dashboard(self):
         """
         The heart of the dashboard's live updates. This method is called by a QTimer.
         It iterates through all active instances, reads their current state (status, time), and updates the UI table.
         """
+        self.flash_state = not self.flash_state # Toggle for blinking
         status_colors = {
             "active": QColor("#00FF66"), "error": QColor("#FF4D4D"),
-            "loading": QColor("#FFD633"), "default": QColor("#0F1420")
+            "loading": QColor("#FFD633"), "default": QColor("#0F1420"),
+            "no_appointment": QColor("#475569"),
+            "appointment_found": QColor("#10B981"),
+            "appointment_flash": QColor("#34D399")
         }
 
         for account, manager in self.active_instances.items():
             row = self.account_to_row.get(account)
             if row is None: continue
 
+            status_icon_item = self.table.item(row, 0)
+            status_item = self.table.item(row, 3)
+
+            # Update status icon
+            if manager.appointment_found:
+                status_icon_item.setText("🟢")
+                flash_color = status_colors['appointment_found'] if self.flash_state else status_colors['appointment_flash']
+                status_icon_item.setBackground(QBrush(flash_color))
+            elif "No appointments" in manager.status:
+                status_icon_item.setText("∅")
+                status_icon_item.setBackground(QBrush(status_colors['no_appointment']))
+            elif "Error" in manager.status:
+                status_icon_item.setText("🔴")
+                status_icon_item.setBackground(QBrush(status_colors['error']))
+            else:
+                status_icon_item.setText("")
+                status_icon_item.setBackground(QBrush(QColor("transparent")))
+
             # Update the 'Operational State (Status)' column and apply color-coding.
-            status_item = self.table.item(row, 2)
             if status_item.text() != manager.status:
                 status_item.setText(manager.status)
                 status_lower = manager.status.lower()
                 color_key = "default"
                 if "error" in status_lower or "terminated" in status_lower: color_key = "error"
-                elif "armed" in status_lower or "executing" in status_lower or "dashboard" in status_lower: color_key = "active"
+                elif "armed" in status_lower or "executing" in status_lower or "checking" in status_lower: color_key = "active"
                 elif "init" in status_lower or "launching" in status_lower or "navigating" in status_lower or "routing" in status_lower: color_key = "loading"
                 status_item.setBackground(QBrush(status_colors[color_key]))
 
             # Update the 'Trigger Matrix' column. This ensures changes from the Hot-Patch dialog are reflected.
-            time_item = self.table.item(row, 3)
+            time_item = self.table.item(row, 4)
             new_time_str = f"{manager.target_hr:02}:{manager.target_min:02}:{manager.target_sec:02}.{manager.target_ms:03}"
             if time_item.text() != new_time_str:
                 time_item.setText(new_time_str)
@@ -467,12 +497,12 @@ class MainWindow(QMainWindow):
     def _select_all(self):
         """Sets all row checkboxes to checked."""
         for row in range(self.table.rowCount()):
-            self.table.item(row, 0).setCheckState(Qt.CheckState.Checked)
+            self.table.item(row, 1).setCheckState(Qt.CheckState.Checked)
 
     def _deselect_all(self):
         """Sets all row checkboxes to unchecked."""
         for row in range(self.table.rowCount()):
-            self.table.item(row, 0).setCheckState(Qt.CheckState.Unchecked)
+            self.table.item(row, 1).setCheckState(Qt.CheckState.Unchecked)
 
     def _rebuild_row_map(self):
         """
@@ -482,7 +512,7 @@ class MainWindow(QMainWindow):
         """
         self.account_to_row.clear()
         for row in range(self.table.rowCount()):
-            self.account_to_row[self.table.item(row, 1).text()] = row
+            self.account_to_row[self.table.item(row, 2).text()] = row
 
     def closeEvent(self, event):
         """Handles the application close event, ensuring all threads are terminated."""

@@ -28,50 +28,57 @@ class BrowserBase:
             lambda d: d.execute_script('return document.readyState') == 'complete'
         )
 
-        # Priority 0: Check for Cloudflare interstitial page
+        # Priority 0: Cloudflare
         if "Just a moment..." in self.driver.get_title() and self.driver.is_element_visible(TLS_SELECTORS['cloudflare']['heading_text']):
             return "cloudflare_interstitial"
 
-        # Priority 1: Check for the Service Level page (Insurance / Additional Services)
+        # Priority 1: Target Page - Appointment Booking (check this early)
+        if self.driver.is_element_present(TLS_SELECTORS['appointment_booking']['page_title']):
+            try:
+                if "book your appointment" in self.driver.get_text(TLS_SELECTORS['appointment_booking']['page_title']).lower():
+                    return "appointment_booking"
+            except Exception:
+                pass
+
+        # Priority 2: Service Level (precedes appointment booking)
         if self.driver.is_element_visible(TLS_SELECTORS['service_level']['continue_btn']):
             return "service_level"
 
-        # Priority 2: Check for the Application List page
-        if self.driver.is_element_visible(TLS_SELECTORS['application_list']['page_title_header']):
-            if "Application manager" in self.driver.get_text(TLS_SELECTORS['application_list']['page_title_header']):
-                return "application_list"
+        # Priority 3: Application List
+        if self.driver.is_element_present(TLS_SELECTORS['application_list']['page_title_header']):
+            try:
+                if "application manager" in self.driver.get_text(TLS_SELECTORS['application_list']['page_title_header']).lower():
+                    return "application_list"
+            except Exception:
+                pass
 
-        # Priority 3: Check for the login form itself
+        # Priority 4: Login Form
         if self.driver.is_element_visible(TLS_SELECTORS['login_form']['email_input_field']):
             return "login_form"
 
-        # Priority 4 & 5: Pre-login setup pages (Country & City)
+        # Priority 5 & 6: Pre-login setup
         if self.driver.is_element_visible(TLS_SELECTORS['choose_country']['select_dropdown']):
             return "choose_country"
         
-        # Using is_element_present for robustness against rendering delays
         if self.driver.is_element_present(TLS_SELECTORS['choose_city']['page_title_header']):
             try:
-                if "Select your Visa Application Centre" in self.driver.get_text(TLS_SELECTORS['choose_city']['page_title_header']):
+                if "select your visa application centre" in self.driver.get_text(TLS_SELECTORS['choose_city']['page_title_header']).lower():
                     return "choose_city"
             except Exception:
-                pass # Element might be present but not yet have text, or other stale element issues.
+                pass
 
-        # Priority 6: Info page fallback
+        # Priority 7: Logged-in Welcome/Info Page
+        if self.driver.is_element_visible(TLS_SELECTORS['info_page']['user_icon_button']):
+            if self.driver.is_element_present("h1#page-title"):
+                try:
+                    if "welcome to the visa application centre" in self.driver.get_text("h1#page-title").lower():
+                        return "logged_in_info_page"
+                except Exception:
+                    pass
+        
+        # Priority 8: Generic pre-login info page
         if self.driver.is_element_visible(TLS_SELECTORS['info_page']['header_login_btn']):
             return "info_page"
-
-        # After login, we might land on a generic info page. This handles that state.
-        if self.driver.is_element_visible(TLS_SELECTORS['info_page']['user_icon_button']):
-            if self.driver.is_element_present("h1#page-title") and "Welcome to the Visa Application Centre" in self.driver.get_text("h1#page-title"):
-                return "logged_in_info_page"
-
-        # Priority 7: Dashboard / Target Calendar Page
-        # We keep this as the LAST priority so it doesn't trigger on intermediate pages that share the logout button
-        if self.driver.is_element_visible(TLS_SELECTORS['dashboard']['logged_in_anchor']):
-            # Ensure we are definitively on the booking screen before halting navigation
-            if "/appointment-booking/" in self.driver.current_url:
-                return "dashboard_ready"
                 
         return "unknown"
 
@@ -82,8 +89,8 @@ class BrowserBase:
             if current_state != "login_form":
                 self.login_attempted_on_this_page = False
             
-            if current_state == "dashboard_ready":
-                print(f"[🎯] {self.account} reached Dashboard (Calendar). Handing over to timing engine...")
+            if current_state == "appointment_booking":
+                print(f"[🎯] {self.account} reached Appointment Booking page. Handing over to appointment checker...")
                 break 
 
             elif current_state != "unknown":
