@@ -80,9 +80,10 @@ class MainWindow(QMainWindow):
 
         # --- MIDDLE FRAME: Instance Tracker Table ---
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels([
             "🔔", "", "Target Account Context", "Operational State (Status)",
+            "Next Check",
             "Trigger Matrix (H:M:S.ms)", "Network Tunnel Routing (Proxy)", "Actions"
         ])
         
@@ -94,7 +95,7 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) # Status Icon
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents) # Checkbox
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)   # Account
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents) # Actions
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents) # Actions
         self.table.setColumnWidth(2, 350)
 
         # Allow selecting rows or individual cells for copy-pasting text.
@@ -224,18 +225,20 @@ class MainWindow(QMainWindow):
             self.table.setItem(i, 2, QTableWidgetItem(account))
             # Column 3: Status
             self.table.setItem(i, 3, QTableWidgetItem(manager.status))
-            # Column 4: Time
+            # Column 4: Next Check (Countdown)
+            self.table.setItem(i, 4, QTableWidgetItem(""))
+            # Column 5: Time
             time_str = f"{manager.target_hr:02}:{manager.target_min:02}:{manager.target_sec:02}.{manager.target_ms:03}"
-            self.table.setItem(i, 4, QTableWidgetItem(time_str))
-            # Column 5: Proxy
-            self.table.setItem(i, 5, QTableWidgetItem(str(manager.proxy_address or 'None')))
-            # Column 6: Actions
+            self.table.setItem(i, 5, QTableWidgetItem(time_str))
+            # Column 6: Proxy
+            self.table.setItem(i, 6, QTableWidgetItem(str(manager.proxy_address or 'None')))
+            # Column 7: Actions
             self._add_action_buttons(i, account)
 
         self.table.resizeColumnsToContents()
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch) # Status column
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents) # Actions
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents) # Actions
 
     def _add_action_buttons(self, row: int, account: str):
         """
@@ -306,7 +309,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(term_btn)
         layout.addWidget(del_btn)
         layout.addStretch()
-        self.table.setCellWidget(row, 6, actions_widget)
+        self.table.setCellWidget(row, 7, actions_widget)
 
     def _deploy_all(self):
         """Starts the automation engine for all loaded instances that are not already running."""

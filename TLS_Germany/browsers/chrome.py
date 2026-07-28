@@ -49,6 +49,7 @@ class ChromeManager:
         self.target_sec = int(target_sec)
         self.target_ms = int(target_ms)
         self.proxy_address = proxy_address
+        self.countdown = 0
         
         # --- Unique Identifiers for Isolation & Viewing ---
         # Create a filesystem-safe name for the profile directory
@@ -167,13 +168,15 @@ class ChromeManager:
                 return # Exit loop once found
             
             # 3. If not found, wait for the next interval
-            self.status = f"No appointments. Retrying in {settings.APPOINTMENT_CHECK_INTERVAL_SECONDS}s..."
-            
             # Sleep in small chunks to remain responsive to the stop signal
-            for _ in range(settings.APPOINTMENT_CHECK_INTERVAL_SECONDS):
+            for i in range(settings.APPOINTMENT_CHECK_INTERVAL_SECONDS, 0, -1):
                 if not self.is_running:
+                    self.countdown = 0
                     return
+                self.countdown = i
+                self.status = f"No appointments. Retrying in {i}s..."
                 time.sleep(1)
+            self.countdown = 0
             
             # 4. Refresh the page to get new data
             if self.is_running:
@@ -198,7 +201,7 @@ class ChromeManager:
             for button in month_buttons:
                 if self.target_month.lower() in button.text.lower():
                     if "selected" not in button.get_attribute("class"):
-                        self.driver.js_click(button)
+                        self.driver.execute_script("arguments[0].click();", button)
                         print(f"    - Switched to month: {self.target_month}")
                         time.sleep(2) # Wait for calendar to update
                     month_found_and_clicked = True
