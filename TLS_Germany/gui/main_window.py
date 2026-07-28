@@ -193,10 +193,21 @@ class MainWindow(QMainWindow):
 
         for i, row_data in enumerate(data):
             account = row_data.get('Account', f'N/A_{i}')
+
+            # Dynamically find and combine month and year from flexible column names
+            month_key = next((k for k in row_data if 'month' in str(k).lower()), None)
+            year_key = next((k for k in row_data if 'year' in str(k).lower()), None)
+
+            month = str(row_data.get(month_key, ''))
+            year_val = row_data.get(year_key, '')
+            # Sanitize year: handle floats like 2026.0 and ensure it's a string
+            year = str(int(float(year_val))) if year_val and str(year_val).replace('.', '', 1).isdigit() else ''
+            target_month_str = f"{month} {year}".strip()
+
             manager = ChromeManager(
                 account=account,
                 password=row_data.get('Password', ''),
-                target_month=row_data.get('Month', ''),
+                target_month=target_month_str,
                 url=BASE_URL,
                 target_hr=int(row_data.get('Hour', 0)),
                 target_min=int(row_data.get('Minute', 0)),
@@ -451,13 +462,6 @@ class MainWindow(QMainWindow):
         It iterates through all active instances, reads their current state (status, time), and updates the UI table.
         """
         self.flash_state = not self.flash_state # Toggle for blinking
-        status_colors = {
-            "active": QColor("#00FF66"), "error": QColor("#FF4D4D"),
-            "loading": QColor("#FFD633"), "default": QColor("#0F1420"),
-            "no_appointment": QColor("#475569"),
-            "appointment_found": QColor("#10B981"),
-            "appointment_flash": QColor("#34D399")
-        }
 
         for account, manager in self.active_instances.items():
             row = self.account_to_row.get(account)
@@ -466,33 +470,50 @@ class MainWindow(QMainWindow):
             status_icon_item = self.table.item(row, 0)
             status_item = self.table.item(row, 3)
 
-            # Update status icon
-            if manager.appointment_found:
-                status_icon_item.setText("🟢")
-                flash_color = status_colors['appointment_found'] if self.flash_state else status_colors['appointment_flash']
-                status_icon_item.setBackground(QBrush(flash_color))
-            elif "No appointments" in manager.status:
-                status_icon_item.setText("∅")
-                status_icon_item.setBackground(QBrush(status_colors['no_appointment']))
-            elif "Error" in manager.status:
-                status_icon_item.setText("🔴")
-                status_icon_item.setBackground(QBrush(status_colors['error']))
-            else:
-                status_icon_item.setText("")
-                status_icon_item.setBackground(QBrush(QColor("transparent")))
-
-            # Update the 'Operational State (Status)' column and apply color-coding.
+            # Update status text first
             if status_item.text() != manager.status:
                 status_item.setText(manager.status)
-                status_lower = manager.status.lower()
-                color_key = "default"
-                if "error" in status_lower or "terminated" in status_lower: color_key = "error"
-                elif "armed" in status_lower or "executing" in status_lower or "checking" in status_lower: color_key = "active"
-                elif "init" in status_lower or "launching" in status_lower or "navigating" in status_lower or "routing" in status_lower: color_key = "loading"
-                status_item.setBackground(QBrush(status_colors[color_key]))
+
+            status_lower = manager.status.lower()
+
+            # --- Icon and Status Background Color Logic ---
+            if manager.appointment_found:
+                status_icon_item.setText("🟢")
+                flash_color = QColor("#10B981") if self.flash_state else QColor("#34D399")
+                status_icon_item.setBackground(QBrush(flash_color))
+                status_item.setBackground(QBrush(QColor("#00E5FF")))  # Aqua
+            elif "no appointment" in status_lower or "not available" in status_lower:
+                status_icon_item.setText("∅")
+                status_icon_item.setBackground(QBrush(QColor("#475569")))
+                status_item.setBackground(QBrush(QColor("#EF4444")))  # Red
+            elif "error" in status_lower:
+                status_icon_item.setText("🔴")
+                status_icon_item.setBackground(QBrush(QColor("#FF4D4D")))
+                status_item.setBackground(QBrush(QColor("#FF4D4D")))
+            else:
+                # Reset icon for general states
+                status_icon_item.setText("")
+                status_icon_item.setBackground(QBrush(QColor("transparent")))
+                
+                # Set background for general operational states
+                if "refreshing" in status_lower:
+                    status_item.setBackground(QBrush(QColor("#3B82F6"))) # Blue
+                elif "armed" in status_lower or "executing" in status_lower or "checking" in status_lower or "scanning" in status_lower:
+                    status_item.setBackground(QBrush(QColor("#00FF66"))) # Active Green
+                elif "init" in status_lower or "launching" in status_lower or "navigating" in status_lower or "routing" in status_lower:
+                    status_item.setBackground(QBrush(QColor("#FFD633"))) # Loading Yellow
+                else:
+                    status_item.setBackground(QBrush(QColor("#0F1420"))) # Default
+
+            # Update countdown
+            countdown_item = self.table.item(row, 4)
+            if manager.countdown > 0:
+                countdown_item.setText(f"{manager.countdown}s")
+            elif countdown_item.text() != "":
+                countdown_item.setText("")
 
             # Update the 'Trigger Matrix' column. This ensures changes from the Hot-Patch dialog are reflected.
-            time_item = self.table.item(row, 4)
+            time_item = self.table.item(row, 5)
             new_time_str = f"{manager.target_hr:02}:{manager.target_min:02}:{manager.target_sec:02}.{manager.target_ms:03}"
             if time_item.text() != new_time_str:
                 time_item.setText(new_time_str)

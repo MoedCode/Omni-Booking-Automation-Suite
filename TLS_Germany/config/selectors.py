@@ -50,7 +50,8 @@ TLS_SELECTORS = {
     # [4] Application List Page
     "application_list": {
         "page_title_header": "h1#page-title",
-        "select_application_button": "//button[contains(., 'Select')]",
+        # XPATH ذكي وشامل يبحث عن كلمة Select داخل الأزرار أو الروابط أو أي عنصر يحتويها
+        "select_application_button": "//*[contains(text(), 'Select') and (local-name()='button' or local-name()='a' or local-name()='span' or local-name()='div')]",
         "create_new_button": "span[data-testid='btn-create-new-travel-group']"
     },
 
@@ -61,12 +62,19 @@ TLS_SELECTORS = {
 
     # [6] Appointment Booking Page (Calendar)
     "appointment_booking": {
-        "page_title": "h1#page-title",
+        "page_title": "h1[data-test-id='page-title']",
         "month_selector_container": "div.relative.flex.items-center.overflow-hidden",
-        "month_button": "button.MonthSelector_month-selector_button__An0eF, p.MonthSelector_month-selector_button__An0eF",
-        "no_slots_message": "p:contains('We currently don’t have any appointment slots available.')",
+        
+        # --- Month Navigation ---
+        "current_month_button": "p[data-testid='btn-current-month-available']",
+        "next_month_button": "button[data-testid='btn-next-month-available']",
+        "prev_month_button": "button[data-testid='btn-prev-month-available']",
+        
+        # --- Slot Detection ---
         "available_slot": "button[data-testid^='appointment-slot-']",
-        "book_appointment_button": "button:contains('Book your appointment')"
+        "book_appointment_button": "button:contains('Book your appointment')",
+        "services_breadcrumb": "a[href*='/service-level']",
+        "booking_breadcrumb": "a[href*='/appointment-booking']"
     },
 
     # [7] Google reCAPTCHA v2 Elements
@@ -86,9 +94,9 @@ TLS_SELECTORS = {
     # [8] Cloudflare Interstitial Page
     "cloudflare": {
         "page_title": "Just a moment...", 
-        "heading_text": "h2:contains('Performing security verification')", 
+        "heading_text": "h2#fTjHU3", 
         "turnstile_iframe": "iframe[src*='challenges.cloudflare.com']",
         "turnstile_checkbox": "input[type='checkbox']", 
-        "verification_successful_text": "h2:contains('Verification successful')" 
+        "verification_successful_text": "h2#yZFa8" 
     }
 }

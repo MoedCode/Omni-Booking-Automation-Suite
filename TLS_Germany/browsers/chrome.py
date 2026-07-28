@@ -141,79 +141,83 @@ class ChromeManager:
         print(f"[💡] Thread for {self.account} has exited.")
 
     def _appointment_check_loop(self) -> None:
-        """
-        Continuously checks for appointments on the booking page at a set interval.
-        """
-        print(f"[{self.account}] Now monitoring for appointments...")
-        while self.is_running:
-            # 1. Check if we are still on the correct page
-            if "/appointment-booking/" not in self.driver.current_url:
-                self.status = "Error: Navigated away from booking page."
-                print(f"❌ [{self.account}] {self.status}")
-                # Stop checking and idle with error status
-                while self.is_running:
-                    time.sleep(1)
-                return
-            
-            # 2. Perform the check
-            found = self.check_appointment()
-            
-            if found:
-                self.status = "Appointments Found!"
-                self.appointment_found = True
-                print(f"✅✅✅ [{self.account}] APPOINTMENTS FOUND! ✅✅✅")
-                # Keep the browser open and status active until manually stopped
-                while self.is_running:
-                    time.sleep(1)
-                return # Exit loop once found
-            
-            # 3. If not found, wait for the next interval
-            # Sleep in small chunks to remain responsive to the stop signal
-            for i in range(settings.APPOINTMENT_CHECK_INTERVAL_SECONDS, 0, -1):
-                if not self.is_running:
-                    self.countdown = 0
+            """
+            Continuously checks for appointments on the booking page at a set interval.
+            """
+            print(f"[{self.account}] Now monitoring for appointments...")
+            while self.is_running:
+                # 1. Check if we are still on the correct page
+                if "/appointment-booking/" not in self.driver.current_url:
+                    self.status = "Error: Navigated away from booking page."
+                    print(f"❌ [{self.account}] {self.status}")
+                    # Stop checking and idle with error status
+                    while self.is_running:
+                        time.sleep(1)
                     return
-                self.countdown = i
-                self.status = f"No appointments. Retrying in {i}s..."
-                time.sleep(1)
-            self.countdown = 0
-            
-            # 4. Refresh the page to get new data
-            if self.is_running:
-                print(f"[{self.account}] Refreshing page to check again...")
-                self.status = "Refreshing..."
-                self.driver.refresh()
-                time.sleep(5) # Wait for page to settle after refresh
-
+                
+                # 2. Perform the check
+                found = self.check_appointment()
+                
+                if found:
+                    self.status = "Appointments Found!"
+                    self.appointment_found = True
+                    print(f"✅✅✅ [{self.account}] APPOINTMENTS FOUND! ✅✅✅")
+                    # Keep the browser open and status active until manually stopped
+                    while self.is_running:
+                        time.sleep(1)
+                    return # Exit loop once found
+                
+                # 3. If not found, wait for the next interval
+                # Sleep in small chunks to remain responsive to the stop signal and update GUI countdown
+                
+                # Use interval from GUI if > 0, else fallback to settings
+                interval = self.target_sec
+                if interval <= 0:
+                    interval = settings.APPOINTMENT_CHECK_INTERVAL_SECONDS
+                    
+                for i in range(interval, 0, -1):
+                    if not self.is_running:
+                        self.countdown = 0
+                        return
+                    self.countdown = i
+                    self.status = f"No appointments. Retrying in {i}s..."
+                    time.sleep(1)
+                self.countdown = 0
+                
+                # 4. Refresh the page to get new data
+                # Soft Refresh: Navigate away and back to the booking page to trigger a data fetch
+                # without a full page reload, which can cause React hydration errors on this SPA.
+                if self.is_running:
+                    print(f"[{self.account}] Performing soft refresh to check again...")
+                    self.status = "Refreshing..."
+                    try:
+                        self.driver.click(TLS_SELECTORS['appointment_booking']['services_breadcrumb'])
+                        time.sleep(1.5)
+                        self.driver.click(TLS_SELECTORS['appointment_booking']['booking_breadcrumb'])
+                        time.sleep(5) # Wait for page to settle after soft refresh
+                    except Exception as e:
+                        # Fallback to hard refresh if soft refresh fails for any reason
+                        print(f"    - Soft refresh failed: {str(e).splitlines()[0]}. Falling back to hard refresh.")
+                        self.driver.refresh()
+                        time.sleep(5)
     def check_appointment(self) -> bool:
         """
         Performs a single check on the current page for available appointments.
+        This involves navigating to the correct month first.
         Returns True if an appointment is found, False otherwise.
         """
         try:
             self.status = f"Checking for month: {self.target_month}"
             
-            # 1. Select the target month
-            self.driver.wait_for_element_visible(TLS_SELECTORS['appointment_booking']['month_selector_container'])
-            month_buttons = self.driver.find_elements(TLS_SELECTORS['appointment_booking']['month_button'])
-            
-            month_found_and_clicked = False
-            for button in month_buttons:
-                if self.target_month.lower() in button.text.lower():
-                    if "selected" not in button.get_attribute("class"):
-                        self.driver.execute_script("arguments[0].click();", button)
-                        print(f"    - Switched to month: {self.target_month}")
-                        time.sleep(2) # Wait for calendar to update
-                    month_found_and_clicked = True
-                    break
-            
-            if not month_found_and_clicked:
-                self.status = f"Error: Month '{self.target_month}' not found."
-                print(f"❌ [{self.account}] {self.status}")
+            # 1. Navigate to the correct month
+            month_found = self._navigate_to_target_month()
+            if not month_found:
+                # Status is already set by the navigation method on failure
                 return False
 
             # 2. Check for any "no slots" messages.
             # We get all text from the page's body and convert to lowercase for a case-insensitive search.
+            self.status = f"Scanning {self.target_month} for slots..."
             page_text = self.driver.get_text("body").lower()
             
             no_slots_message_found = False
@@ -242,6 +246,52 @@ class ChromeManager:
             self.status = f"Error checking page: {error_msg}"
             print(f"❌ [{self.account}] {self.status}")
             return False
+
+    def _navigate_to_target_month(self) -> bool:
+        """
+        Checks the currently visible months in the selector.
+        If the target month is a button, it's clicked. If it's a <p> tag, it's already selected.
+        This is a direct-action method and does not perform sequential navigation.
+        Returns True on success, False on failure.
+        """
+        try:
+            # Wait for the container holding the month buttons/labels to be visible
+            container_selector = TLS_SELECTORS['appointment_booking']['month_selector_container']
+            self.driver.wait_for_element_visible(container_selector, timeout=10)
+            
+            # Find all clickable buttons and non-clickable labels within the container
+            month_elements = self.driver.find_elements(f"{container_selector} > *")
+
+            if not month_elements:
+                self.status = "Error: Month selector container is empty."
+                print(f"❌ [{self.account}] {self.status}")
+                return False
+
+            for element in month_elements:
+                # Check if the element's text matches the target month (e.g., "August 2026")
+                if self.target_month.lower() in element.text.lower():
+                    # If it's a <p> tag, it's the currently selected month.
+                    if element.tag_name == 'p':
+                        print(f"    - Month '{self.target_month}' is already selected.")
+                        return True
+                    
+                    # If it's a <button> tag, it's an available (but not selected) month.
+                    elif element.tag_name == 'button':
+                        print(f"    - Found month '{self.target_month}' as a button. Clicking it...")
+                        self.driver.execute_script("arguments[0].click();", element)
+                        time.sleep(2) # Wait for the calendar to update after the click
+                        return True
+
+            # If the loop completes, the target month was not found in the visible elements.
+            self.status = f"Error: Target month '{self.target_month}' not visible in the selector."
+            print(f"❌ [{self.account}] {self.status}")
+            return False
+
+        except Exception as e:
+            error_msg = str(e).split('\n')[0]
+            self.status = f"Error during month navigation: {error_msg}"
+        print(f"❌ [{self.account}] {self.status}")
+        return False
 
     def stop_engine(self) -> None:
         if not self.is_running: return
