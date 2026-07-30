@@ -168,21 +168,32 @@ class ChromeManager:
                     return # Exit loop once found
                 
                 # 3. If not found, wait for the next interval
-                # Sleep in small chunks to remain responsive to the stop signal and update GUI countdown
+                # This logic supports two modes based on the value of `self.target_sec`:
+                # 1. Synchronized Refresh: If `target_sec` is 0-59, the refresh is synchronized
+                #    to that specific second of every minute. The countdown reflects time until that sync point.
+                # 2. Interval Refresh: If `target_sec` is outside the 0-59 range, it's treated as a
+                #    simple countdown interval in seconds.
                 
-                # Use interval from GUI if > 0, else fallback to settings
-                interval = self.target_sec
-                if interval <= 0:
-                    interval = settings.APPOINTMENT_CHECK_INTERVAL_SECONDS
-                    
-                for i in range(interval, 0, -1):
-                    if not self.is_running:
-                        self.countdown = 0
-                        return
-                    self.countdown = i
-                    self.status = f"No appointments. Retrying in {i}s..."
-                    time.sleep(1)
-                self.countdown = 0
+                target_second = self.target_sec
+                
+                # If target_sec is not a valid second (0-59), use simple interval mode.
+                if not (0 <= target_second <= 59):
+                    interval = self.target_sec if self.target_sec > 0 else settings.APPOINTMENT_CHECK_INTERVAL_SECONDS
+                    for i in range(interval, 0, -1):
+                        if not self.is_running:
+                            self.countdown = 0
+                            return
+                        self.countdown = i
+                        self.status = f"No appointments. Retrying in {i}s..."
+                        time.sleep(1)
+                else:
+                    # Synchronized refresh mode. This loop runs roughly once per second.
+                    while self.is_running and datetime.datetime.now().second != target_second:
+                        remaining_seconds = (target_second - datetime.datetime.now().second + 60) % 60
+                        self.countdown = remaining_seconds
+                        self.status = f"No appointments. Syncing for : {target_second:02d}. Retrying in {remaining_seconds}s..."
+                        # Sleep for almost a second, waking up just before the next second starts.
+                        time.sleep(1 - (datetime.datetime.now().microsecond / 1_000_000.0))
                 
                 # 4. Refresh the page to get new data
                 # Soft Refresh: Navigate away and back to the booking page to trigger a data fetch
