@@ -9,24 +9,23 @@ URLS = [
 BASE_URL = URLS[1]
 START_URL = URLS[1]
 
-# --- TARGET DYNAMICS ---
-# This dictionary drives the workflow dynamically
-RESIDENCE = {
-    "country": "Egypt", 
-    "city": "Alexandria",
-    "month": "September"
-}
-ACCOUNTS_FOR_TEST ={
-    "test1":{
-        "account": "tivime8259@preparmy.com",
-        "password": "Yallavisa@@123",
+# --- MANDATORY ATTRIBUTES ---
+# Columns that MUST be present in the data file for it to be considered valid.
+MANDATORY_ATTRIBUTES = ['Account', 'Password']
 
-    },
-    "me":{
-        "account":"mohamed71291@gmail.com",
-        "password":"moed-TLS-25",
-    }
+# --- DEFAULT INSTANCE SETTINGS ---
+# These values are used if they are not provided in the data file for a given row.
+DEFAULT_INSTANCE_SETTINGS = {
+    "country": "Egypt",
+    "city": "Alexandria",
+    "month": "August",
+    "year": 2026,
+    "Second": 1,
+    "Millisecond": 1,
+    "end_time": None # `None` means the bot runs indefinitely until manually terminated.
 }
+
+
 # --- TYPING PROFILES ---
 TYPING_SPEED_MIN = 0.05
 TYPING_SPEED_MAX = 0.15

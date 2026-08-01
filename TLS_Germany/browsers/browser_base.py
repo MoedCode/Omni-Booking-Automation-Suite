@@ -2,6 +2,7 @@
 Omni-Booking-Automation-Suite/TLS_Germany/browsers/browser_base.py
 Handles page identification and specific page interactions continuously.
 """
+import ctypes
 import time
 from typing import Callable
 from seleniumbase import Driver
@@ -14,10 +15,11 @@ from browsers.stealth_actions import StealthActions
 from browsers.captcha_handler import CaptchaHandler
 
 class BrowserBase:
-    def __init__(self, driver: Driver, account: str, password: str, is_running_flag: Callable[[], bool]):
+    def __init__(self, driver: Driver, account: str, password: str, target_city: str, is_running_flag: Callable[[], bool]):
         self.driver = driver
         self.account = account
         self.password = password
+        self.target_city = target_city
         self.is_running = is_running_flag
         self.actor = StealthActions(self.driver)
         self.captcha_handler = CaptchaHandler(self.driver)
@@ -102,6 +104,14 @@ class BrowserBase:
             
             time.sleep(2)
 
+    def _show_windows_alert(self, title: str, text: str) -> None:
+        """Shows a native Windows message box. This is a blocking call."""
+        try:
+            # MB_OK | MB_ICONERROR | MB_SYSTEMMODAL
+            ctypes.windll.user32.MessageBoxW(0, text, title, 0x10 | 0x1000)
+        except Exception as e:
+            print(f"[⚠️] Could not show Windows alert: {e}")
+
     def _handle_current_state(self, current_state: str) -> None:
         try:
             if current_state == "cloudflare_interstitial":
@@ -121,9 +131,25 @@ class BrowserBase:
             elif current_state == "logged_in_info_page":
                 self._workflow_logged_in_info_page()
         except Exception as e:
+            # Check for our specific fatal error to re-raise it.
+            if isinstance(e, ValueError) and "Invalid username or password" in str(e):
+                raise  # Propagate the fatal error up to the main thread loop to terminate.
+            
+            # Otherwise, log it as a non-fatal error and allow the bot to continue.
             print(f"[❌] {self.account} failed to handle {current_state}: {e}")
 
     def _workflow_login(self) -> None:
+        # Check for invalid credentials error first. This runs every time we land on the login page.
+        invalid_creds_selector = TLS_SELECTORS['login_form']['invalid_credentials_error']
+        if self.driver.is_element_visible(invalid_creds_selector):
+            print(f"[❌] {self.account} Invalid credentials detected on page.")
+            self._show_windows_alert(
+                "Invalid Credentials",
+                f"The account '{self.account}' has invalid login credentials.\n\nThe bot for this instance will be terminated."
+            )
+            # Raise a specific exception to be caught and handled by the main thread loop.
+            raise ValueError("Invalid username or password.")
+
         if not self.login_attempted_on_this_page:
             print(f"[🔐] {self.account} injecting credentials...")
             self.actor.smart_type(TLS_SELECTORS['login_form']['email_input_field'], self.account)
@@ -185,16 +211,16 @@ class BrowserBase:
         )
         
         select = Select(select_element)
-        select.select_by_visible_text(settings.RESIDENCE['country'])
+        select.select_by_visible_text(settings.DEFAULT_INSTANCE_SETTINGS['country'])
 
-        print(f"    - Selected country: {settings.RESIDENCE['country']}")
+        print(f"    - Selected country: {settings.DEFAULT_INSTANCE_SETTINGS['country']}")
         self.actor.natural_delay()
         self.actor.human_click(TLS_SELECTORS['choose_country']['confirm_country_btn'])
         print(f"    - Confirmed country selection.")
 
     def _workflow_choose_city(self) -> None:
         print(f"[🏢] {self.account} handling city selection...")
-        city_name = settings.RESIDENCE['city']
+        city_name = self.target_city
         
         city_cards_selector = TLS_SELECTORS['choose_city']['city_card']
         self.driver.wait_for_element_visible(city_cards_selector)
@@ -235,22 +261,50 @@ class BrowserBase:
         print(f"    - Clicked 'My Application'.")
 
     def _workflow_application_list(self) -> None:
-        print(f"[📋] {self.account} on application list page. Looking for 'Select' button...")
+        print(f"[📋] {self.account} on application list page.")
+
+        # --- Handle City Tabs if they exist ---
+        city_tabs_selector = TLS_SELECTORS['application_list']['city_tabs']
+        if self.driver.is_element_visible(city_tabs_selector):
+            print(f"    - Multiple city centers detected. Ensuring '{self.target_city}' is selected...")
+
+            try:
+                selected_tab_text = self.driver.get_text(TLS_SELECTORS['application_list']['selected_city_tab_text']).strip()
+
+                if self.target_city.lower() in selected_tab_text.lower():
+                    print(f"    - Correct city tab '{self.target_city}' is already selected.")
+                else:
+                    print(f"    - Current tab is '{selected_tab_text}'. Switching to '{self.target_city}'...")
+                    all_tabs = self.driver.find_elements(city_tabs_selector)
+                    tab_found_and_clicked = False
+                    for tab in all_tabs:
+                        try:
+                            tab_text = tab.find_element(By.CSS_SELECTOR, "p").text.strip()
+                            if self.target_city.lower() in tab_text.lower():
+                                self.driver.js_click(tab)
+                                print(f"    - Clicked tab for '{self.target_city}'.")
+                                tab_found_and_clicked = True
+                                time.sleep(4)  # Wait for content to reload
+                                break
+                        except Exception:
+                            continue
+                    
+                    if not tab_found_and_clicked:
+                        print(f"    - [⚠️] Warning: Could not find a tab for city '{self.target_city}'. Proceeding with the current selection.")
+            except Exception as e:
+                print(f"    - [⚠️] Could not process city tabs: {e}. Proceeding with default.")
+
+        # --- Proceed to click the 'Select' button ---
+        print(f"    - Looking for 'Select' button...")
         try:
-            selector = TLS_SELECTORS['application_list']['select_application_button']
-            
-            # Using wait_for_element_present because React renders it dynamically
-            self.driver.wait_for_element_present(selector, timeout=15)
-            
-            # Using js_click to pierce through the CSS layers
-            self.driver.js_click(selector)
+            select_button_selector = TLS_SELECTORS['application_list']['select_application_button']
+            self.driver.wait_for_element_present(select_button_selector, timeout=15)
+            self.driver.js_click(select_button_selector)
             print(f"[✅] {self.account} successfully clicked 'Select'.")
-            time.sleep(4) 
-            
+            time.sleep(4)
         except Exception as e:
             error_msg = str(e).split('\n')[0]
             print(f"[❌] {self.account} failed to click 'Select' button: {error_msg}")
-            
             if self.driver.is_element_visible(TLS_SELECTORS['application_list']['create_new_button']):
                 print(f"    - ⚠️ Hint: No active applications were found. You might need to click 'Create a new application' manually.")
             time.sleep(5)

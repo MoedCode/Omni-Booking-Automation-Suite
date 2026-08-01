@@ -44,12 +44,15 @@ TLS_SELECTORS = {
         "password_input_field": "input#password-input-field",
         "forgot_password_btn": "a#forget-password",
         "submit_login_btn": "button#btn-login",
-        "captcha_widget": "iframe[title='reCAPTCHA']"
+        "captcha_widget": "iframe[title='reCAPTCHA']",
+        "invalid_credentials_error": "p.tls-input_error-label:contains('Invalid username or password')"
     },
 
     # [4] Application List Page
     "application_list": {
         "page_title_header": "h1#page-title",
+        "city_tabs": "div.light-scroll a",
+        "selected_city_tab_text": "div.TlsTab_--selected__85uu4 p",
         # XPATH ذكي وشامل يبحث عن كلمة Select داخل الأزرار أو الروابط أو أي عنصر يحتويها
         "select_application_button": "//*[contains(text(), 'Select') and (local-name()='button' or local-name()='a' or local-name()='span' or local-name()='div')]",
         "create_new_button": "span[data-testid='btn-create-new-travel-group']"

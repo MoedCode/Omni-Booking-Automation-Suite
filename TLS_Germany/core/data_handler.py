@@ -6,6 +6,7 @@ import os
 import re
 import pandas as pd
 from typing import List, Dict, Any, Optional
+from config import settings
 
 class DataIngestor:
     """
@@ -16,7 +17,7 @@ class DataIngestor:
 
     def __init__(self, target_columns: Optional[List[str]] = None) -> None:
         # Default mandatory columns if none are provided
-        self.required_columns: List[str] = target_columns or ['Account', 'Password']
+        self.required_columns: List[str] = target_columns or settings.MANDATORY_ATTRIBUTES
 
     def _sanitize_and_parse(self, df: pd.DataFrame) -> Dict[str, Any]:
         """

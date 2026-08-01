@@ -34,6 +34,7 @@ class ChromeManager:
         password: str,
         url: str,
         target_month: str,
+        target_city: str,
         target_hr: int = 0,
         target_min: int = 0,
         target_sec: int = 0,
@@ -44,6 +45,7 @@ class ChromeManager:
         self.password = password
         self.target_url = url
         self.target_month = target_month
+        self.target_city = target_city
         self.target_hr = int(target_hr)
         self.target_min = int(target_min)
         self.target_sec = int(target_sec)
@@ -119,15 +121,26 @@ class ChromeManager:
                 driver=self.driver, 
                 account=self.account, 
                 password=self.password,
+                target_city=self.target_city,
                 is_running_flag=lambda: self.is_running
             )
 
-            # 4. START THE INFINITE ROUTING LOOP
-            navigator.navigate_to_target_state()
+            # 4. Master control loop. This makes the bot resilient.
+            # If it gets navigated away from the appointment page, it will
+            # automatically re-run the navigation logic to get back.
+            while self.is_running:
+                # This will navigate to the appointment page. If it's already there, it will break quickly.
+                navigator.navigate_to_target_state()
+                if not self.is_running: break
 
-            # 5. APPOINTMENT CHECKING LOOP
-            if self.is_running:
+                # This will run its own loop, checking for appointments.
+                # If it ever gets navigated away, it will return.
                 self._appointment_check_loop()
+                if not self.is_running: break
+
+                # If _appointment_check_loop returned, it means we are off-track.
+                print(f"[{self.account}] Returned from check loop. Re-validating state...")
+                time.sleep(3) # Small delay before re-navigating
 
         except Exception as e:
             # This block is entered if an error occurs during automation,
@@ -148,12 +161,9 @@ class ChromeManager:
             while self.is_running:
                 # 1. Check if we are still on the correct page
                 if "/appointment-booking/" not in self.driver.current_url:
-                    self.status = "Error: Navigated away from booking page."
-                    print(f"❌ [{self.account}] {self.status}")
-                    # Stop checking and idle with error status
-                    while self.is_running:
-                        time.sleep(1)
-                    return
+                    self.status = "Re-routing: Off booking page."
+                    print(f"🗺️ [{self.account}] {self.status} - returning to navigator.")
+                    return # Exit the check loop to re-trigger navigation
                 
                 # 2. Perform the check
                 found = self.check_appointment()
@@ -168,49 +178,31 @@ class ChromeManager:
                     return # Exit loop once found
                 
                 # 3. If not found, wait for the next interval
-                # This logic supports two modes based on the value of `self.target_sec`:
-                # 1. Synchronized Refresh: If `target_sec` is 0-59, the refresh is synchronized
-                #    to that specific second of every minute. The countdown reflects time until that sync point.
-                # 2. Interval Refresh: If `target_sec` is outside the 0-59 range, it's treated as a
-                #    simple countdown interval in seconds.
+                # This logic supports two modes: synchronized (0-59s) and interval (>59s).
                 
                 target_second = self.target_sec
-                
-                # If target_sec is not a valid second (0-59), use simple interval mode.
                 if not (0 <= target_second <= 59):
+                    # Interval Refresh Mode
                     interval = self.target_sec if self.target_sec > 0 else settings.APPOINTMENT_CHECK_INTERVAL_SECONDS
                     for i in range(interval, 0, -1):
-                        if not self.is_running:
-                            self.countdown = 0
-                            return
+                        if not self.is_running: return
                         self.countdown = i
                         self.status = f"No appointments. Retrying in {i}s..."
                         time.sleep(1)
                 else:
-                    # Synchronized refresh mode. This loop runs roughly once per second.
+                    # Synchronized Refresh Mode
                     while self.is_running and datetime.datetime.now().second != target_second:
                         remaining_seconds = (target_second - datetime.datetime.now().second + 60) % 60
                         self.countdown = remaining_seconds
                         self.status = f"No appointments. Syncing for : {target_second:02d}. Retrying in {remaining_seconds}s..."
-                        # Sleep for almost a second, waking up just before the next second starts.
                         time.sleep(1 - (datetime.datetime.now().microsecond / 1_000_000.0))
                 
                 # 4. Refresh the page to get new data
-                # Soft Refresh: Navigate away and back to the booking page to trigger a data fetch
-                # without a full page reload, which can cause React hydration errors on this SPA.
                 if self.is_running:
-                    print(f"[{self.account}] Performing soft refresh to check again...")
+                    print(f"[{self.account}] Performing direct refresh to check again...")
                     self.status = "Refreshing..."
-                    try:
-                        self.driver.click(TLS_SELECTORS['appointment_booking']['services_breadcrumb'])
-                        time.sleep(1.5)
-                        self.driver.click(TLS_SELECTORS['appointment_booking']['booking_breadcrumb'])
-                        time.sleep(5) # Wait for page to settle after soft refresh
-                    except Exception as e:
-                        # Fallback to hard refresh if soft refresh fails for any reason
-                        print(f"    - Soft refresh failed: {str(e).splitlines()[0]}. Falling back to hard refresh.")
-                        self.driver.refresh()
-                        time.sleep(5)
+                    self.driver.refresh()
+                    time.sleep(5) # Wait for page to settle after refresh
     def check_appointment(self) -> bool:
         """
         Performs a single check on the current page for available appointments.
@@ -260,49 +252,67 @@ class ChromeManager:
 
     def _navigate_to_target_month(self) -> bool:
         """
-        Checks the currently visible months in the selector.
-        If the target month is a button, it's clicked. If it's a <p> tag, it's already selected.
-        This is a direct-action method and does not perform sequential navigation.
+        Navigates the calendar month-by-month until the target month is selected.
         Returns True on success, False on failure.
         """
         try:
-            # Wait for the container holding the month buttons/labels to be visible
-            container_selector = TLS_SELECTORS['appointment_booking']['month_selector_container']
-            self.driver.wait_for_element_visible(container_selector, timeout=10)
-            
-            # Find all clickable buttons and non-clickable labels within the container
-            month_elements = self.driver.find_elements(f"{container_selector} > *")
-
-            if not month_elements:
-                self.status = "Error: Month selector container is empty."
+            try:
+                target_date = datetime.datetime.strptime(self.target_month, "%B %Y")
+            except ValueError:
+                self.status = f"Error: Invalid month format '{self.target_month}'. Must be 'Month Year'."
                 print(f"❌ [{self.account}] {self.status}")
                 return False
 
-            for element in month_elements:
-                # Check if the element's text matches the target month (e.g., "August 2026")
-                if self.target_month.lower() in element.text.lower():
-                    # If it's a <p> tag, it's the currently selected month.
-                    if element.tag_name == 'p':
-                        print(f"    - Month '{self.target_month}' is already selected.")
-                        return True
-                    
-                    # If it's a <button> tag, it's an available (but not selected) month.
-                    elif element.tag_name == 'button':
-                        print(f"    - Found month '{self.target_month}' as a button. Clicking it...")
-                        self.driver.execute_script("arguments[0].click();", element)
-                        time.sleep(2) # Wait for the calendar to update after the click
-                        return True
+            # Loop a max of 24 times to prevent infinite loops (e.g., 2 years of navigation)
+            for _ in range(24):
+                if not self.is_running: return False
 
-            # If the loop completes, the target month was not found in the visible elements.
-            self.status = f"Error: Target month '{self.target_month}' not visible in the selector."
+                self.driver.wait_for_element_visible(TLS_SELECTORS['appointment_booking']['month_selector_container'])
+                
+                current_month_element = self.driver.find_element(TLS_SELECTORS['appointment_booking']['current_month_button'])
+                current_month_text = current_month_element.text.strip()
+                
+                try:
+                    current_date = datetime.datetime.strptime(current_month_text, "%B %Y")
+                except ValueError:
+                    self.status = f"Error: Could not parse current month '{current_month_text}'."
+                    print(f"❌ [{self.account}] {self.status}")
+                    return False
+
+                if current_date.year == target_date.year and current_date.month == target_date.month:
+                    print(f"    - Correct month '{self.target_month}' is displayed.")
+                    return True
+
+                if target_date > current_date:
+                    next_button_selector = TLS_SELECTORS['appointment_booking']['next_month_button']
+                    if self.driver.is_element_visible(next_button_selector) and self.driver.is_element_clickable(next_button_selector):
+                        print(f"    - Navigating from {current_month_text} to next month...")
+                        self.driver.js_click(next_button_selector)
+                        time.sleep(1.5)
+                    else:
+                        self.status = f"Error: Cannot reach '{self.target_month}'. 'Next' button is disabled."
+                        print(f"❌ [{self.account}] {self.status}")
+                        return False
+                else: # target_date < current_date
+                    prev_button_selector = TLS_SELECTORS['appointment_booking']['prev_month_button']
+                    if self.driver.is_element_visible(prev_button_selector) and self.driver.is_element_clickable(prev_button_selector):
+                        print(f"    - Navigating from {current_month_text} to previous month...")
+                        self.driver.js_click(prev_button_selector)
+                        time.sleep(1.5)
+                    else:
+                        self.status = f"Error: Cannot reach '{self.target_month}'. 'Previous' button is disabled."
+                        print(f"❌ [{self.account}] {self.status}")
+                        return False
+            
+            self.status = f"Error: Failed to navigate to '{self.target_month}' after multiple attempts."
             print(f"❌ [{self.account}] {self.status}")
             return False
 
         except Exception as e:
             error_msg = str(e).split('\n')[0]
             self.status = f"Error during month navigation: {error_msg}"
-        print(f"❌ [{self.account}] {self.status}")
-        return False
+            print(f"❌ [{self.account}] {self.status}")
+            return False
 
     def stop_engine(self) -> None:
         if not self.is_running: return
@@ -323,8 +333,9 @@ class ChromeManager:
 if __name__ == "__main__":
     bot = ChromeManager(
         account="tivime8259@preparmy.com",
-        password="Yallavisa@@123",
-        target_month="September",
+        password="Yallavisa@@123", # Note: This is a test password
+        target_month="September 2026", # Must include year
+        target_city="Alexandria",
         target_hr=datetime.datetime.now().hour,
         target_min=datetime.datetime.now().minute,
         target_sec=(datetime.datetime.now().second + 10) % 60, # 10 seconds from now

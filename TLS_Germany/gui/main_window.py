@@ -14,9 +14,9 @@ from PyQt6.QtGui import QColor, QBrush
 
 from core.data_handler import DataIngestor
 from browsers.chrome import ChromeManager
-from config.settings import BASE_URL
+from config import settings
 from .theme import CYBER_DARK_STYLESHEET
-from .dialogs import EditInstanceDialog
+from .dialogs import EditInstanceDialog, AddInstanceDialog
 
 # Attempt to import pywin32 for the "View" functionality on Windows
 try:
@@ -80,23 +80,27 @@ class MainWindow(QMainWindow):
 
         # --- MIDDLE FRAME: Instance Tracker Table ---
         self.table = QTableWidget()
-        self.table.setColumnCount(8)
+        self.table.setColumnCount(10)
         self.table.setHorizontalHeaderLabels([
-            "🔔", "", "Target Account Context", "Operational State (Status)",
-            "Next Check",
-            "Trigger Matrix (H:M:S.ms)", "Network Tunnel Routing (Proxy)", "Actions"
+            "🔔", "", "Target Account Context", "Target City", "Target Month", 
+            "Operational State (Status)", "Next Check", "Trigger Matrix (H:M:S.ms)", 
+            "Network Tunnel Routing (Proxy)", "Actions"
         ])
         
         # Enforce comfortable vertical row section height so custom button layouts fit perfectly
         self.table.verticalHeader().setDefaultSectionSize(36)
         
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) # Status Icon
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents) # Checkbox
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)   # Account
-        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents) # Actions
-        self.table.setColumnWidth(2, 350)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)   # 🔔 Status Icon
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)   # Checkbox
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)            # Target Account Context
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)   # Target City
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)   # Target Month
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)            # Operational State (Status)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)   # Next Check
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)   # Trigger Matrix (H:M:S.ms)
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)   # Network Tunnel Routing (Proxy)
+        header.setSectionResizeMode(9, QHeaderView.ResizeMode.ResizeToContents)   # Actions
 
         # Allow selecting rows or individual cells for copy-pasting text.
         # Editing is disabled by default on QTableWidgetItems unless the 'ItemIsEditable' flag is set.
@@ -111,6 +115,9 @@ class MainWindow(QMainWindow):
         deploy_btn = QPushButton("⚡ Deploy All Engines")
         deploy_btn.setObjectName("deployButton")
         deploy_btn.clicked.connect(self._deploy_all)
+
+        add_instance_btn = QPushButton("➕ Add Instance")
+        add_instance_btn.clicked.connect(self._add_instance_manually)
 
         edit_btn = QPushButton("⚙️ Hot-Patch Highlighted")
         edit_btn.clicked.connect(self._open_edit_dialog)
@@ -133,6 +140,7 @@ class MainWindow(QMainWindow):
         terminate_all_btn.clicked.connect(self._terminate_all)
 
         bottom_layout.addWidget(deploy_btn)
+        bottom_layout.addWidget(add_instance_btn)
         bottom_layout.addWidget(edit_btn)
         bottom_layout.addStretch(1)
         bottom_layout.addWidget(select_all_btn)
@@ -198,21 +206,24 @@ class MainWindow(QMainWindow):
             month_key = next((k for k in row_data if 'month' in str(k).lower()), None)
             year_key = next((k for k in row_data if 'year' in str(k).lower()), None)
 
-            month = str(row_data.get(month_key, ''))
+            month = str(row_data.get(month_key, '')).strip() or settings.DEFAULT_INSTANCE_SETTINGS['month']
             year_val = row_data.get(year_key, '')
-            # Sanitize year: handle floats like 2026.0 and ensure it's a string
-            year = str(int(float(year_val))) if year_val and str(year_val).replace('.', '', 1).isdigit() else ''
+            year = str(int(float(year_val))) if year_val and str(year_val).replace('.', '', 1).isdigit() else str(settings.DEFAULT_INSTANCE_SETTINGS['year'])
             target_month_str = f"{month} {year}".strip()
+
+            # Read city from data, fallback to settings default
+            target_city_str = str(row_data.get('City', '')).strip() or settings.DEFAULT_INSTANCE_SETTINGS['city']
 
             manager = ChromeManager(
                 account=account,
                 password=row_data.get('Password', ''),
                 target_month=target_month_str,
-                url=BASE_URL,
-                target_hr=int(row_data.get('Hour', 0)),
-                target_min=int(row_data.get('Minute', 0)),
-                target_sec=int(row_data.get('Second', 0)),
-                target_ms=int(row_data.get('Millisecond', 0)),
+                target_city=target_city_str,
+                url=settings.BASE_URL,
+                target_hr=int(row_data.get('Hour') or settings.DEFAULT_INSTANCE_SETTINGS.get('Hour', 0)),
+                target_min=int(row_data.get('Minute') or settings.DEFAULT_INSTANCE_SETTINGS.get('Minute', 0)),
+                target_sec=int(row_data.get('Second') or settings.DEFAULT_INSTANCE_SETTINGS['Second']),
+                target_ms=int(row_data.get('Millisecond') or settings.DEFAULT_INSTANCE_SETTINGS['Millisecond']),
                 proxy_address=row_data.get('Proxy') if row_data.get('Proxy') != 'None' else None
             )
             self.active_instances[account] = manager
@@ -234,22 +245,21 @@ class MainWindow(QMainWindow):
 
             # Column 2: Account
             self.table.setItem(i, 2, QTableWidgetItem(account))
-            # Column 3: Status
-            self.table.setItem(i, 3, QTableWidgetItem(manager.status))
-            # Column 4: Next Check (Countdown)
-            self.table.setItem(i, 4, QTableWidgetItem(""))
-            # Column 5: Time
+            # Column 3: Target City
+            self.table.setItem(i, 3, QTableWidgetItem(manager.target_city))
+            # Column 4: Target Month
+            self.table.setItem(i, 4, QTableWidgetItem(manager.target_month))
+            # Column 5: Status
+            self.table.setItem(i, 5, QTableWidgetItem(manager.status))
+            # Column 6: Next Check (Countdown)
+            self.table.setItem(i, 6, QTableWidgetItem(""))
+            # Column 7: Time
             time_str = f"{manager.target_hr:02}:{manager.target_min:02}:{manager.target_sec:02}.{manager.target_ms:03}"
-            self.table.setItem(i, 5, QTableWidgetItem(time_str))
-            # Column 6: Proxy
-            self.table.setItem(i, 6, QTableWidgetItem(str(manager.proxy_address or 'None')))
-            # Column 7: Actions
+            self.table.setItem(i, 7, QTableWidgetItem(time_str))
+            # Column 8: Proxy
+            self.table.setItem(i, 8, QTableWidgetItem(str(manager.proxy_address or 'None')))
+            # Column 9: Actions
             self._add_action_buttons(i, account)
-
-        self.table.resizeColumnsToContents()
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch) # Status column
-        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents) # Actions
 
     def _add_action_buttons(self, row: int, account: str):
         """
@@ -320,7 +330,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(term_btn)
         layout.addWidget(del_btn)
         layout.addStretch()
-        self.table.setCellWidget(row, 7, actions_widget)
+        self.table.setCellWidget(row, 9, actions_widget)
 
     def _deploy_all(self):
         """Starts the automation engine for all loaded instances that are not already running."""
@@ -330,6 +340,64 @@ class MainWindow(QMainWindow):
         for manager in self.active_instances.values():
             if not manager.is_running:
                 manager.start_engine()
+
+    def _add_instance_manually(self):
+        """Opens a dialog to add a new instance with default settings."""
+        dialog = AddInstanceDialog(self)
+        if dialog.exec():
+            account = dialog.account
+            password = dialog.password
+
+            if account in self.active_instances:
+                QMessageBox.critical(self, "Instance Exists", f"An instance for '{account}' already exists.")
+                return
+
+            # Create manager with defaults from settings
+            defaults = settings.DEFAULT_INSTANCE_SETTINGS
+            target_month_str = f"{defaults['month']} {defaults['year']}".strip()
+
+            manager = ChromeManager(
+                account=account,
+                password=password,
+                target_month=target_month_str,
+                target_city=defaults['city'],
+                url=settings.BASE_URL,
+                target_hr=0,
+                target_min=0,
+                target_sec=defaults['Second'],
+                target_ms=defaults['Millisecond'],
+                proxy_address=None
+            )
+
+            self.active_instances[account] = manager
+            i = self.table.rowCount()
+            self.account_to_row[account] = i
+
+            self.table.insertRow(i)
+
+            # --- Populate the new row ---
+            status_icon_item = QTableWidgetItem("")
+            status_icon_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            status_icon_item.setFlags(status_icon_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(i, 0, status_icon_item)
+
+            check_item = QTableWidgetItem()
+            check_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            check_item.setCheckState(Qt.CheckState.Unchecked)
+            self.table.setItem(i, 1, check_item)
+
+            self.table.setItem(i, 2, QTableWidgetItem(account))
+            self.table.setItem(i, 3, QTableWidgetItem(manager.target_city))
+            self.table.setItem(i, 4, QTableWidgetItem(manager.target_month))
+            self.table.setItem(i, 5, QTableWidgetItem(manager.status))
+            self.table.setItem(i, 6, QTableWidgetItem(""))
+            
+            time_str = f"{manager.target_hr:02}:{manager.target_min:02}:{manager.target_sec:02}.{manager.target_ms:03}"
+            self.table.setItem(i, 7, QTableWidgetItem(time_str))
+            self.table.setItem(i, 8, QTableWidgetItem("None"))
+            self._add_action_buttons(i, account)
+
+            print(f"[+] Manually added instance for: {account}")
 
     def _terminate_all(self, silent: bool = False):
         """Stops the automation engine for all running instances."""
@@ -468,11 +536,20 @@ class MainWindow(QMainWindow):
             if row is None: continue
 
             status_icon_item = self.table.item(row, 0)
-            status_item = self.table.item(row, 3)
+            city_item = self.table.item(row, 3)
+            month_item = self.table.item(row, 4)
+            status_item = self.table.item(row, 5)
 
             # Update status text first
             if status_item.text() != manager.status:
                 status_item.setText(manager.status)
+            
+            # Update live-editable fields
+            if city_item.text() != manager.target_city:
+                city_item.setText(manager.target_city)
+
+            if month_item.text() != manager.target_month:
+                month_item.setText(manager.target_month)
 
             status_lower = manager.status.lower()
 
@@ -506,14 +583,14 @@ class MainWindow(QMainWindow):
                     status_item.setBackground(QBrush(QColor("#0F1420"))) # Default
 
             # Update countdown
-            countdown_item = self.table.item(row, 4)
+            countdown_item = self.table.item(row, 6)
             if manager.countdown > 0:
                 countdown_item.setText(f"{manager.countdown}s")
             elif countdown_item.text() != "":
                 countdown_item.setText("")
 
             # Update the 'Trigger Matrix' column. This ensures changes from the Hot-Patch dialog are reflected.
-            time_item = self.table.item(row, 5)
+            time_item = self.table.item(row, 7)
             new_time_str = f"{manager.target_hr:02}:{manager.target_min:02}:{manager.target_sec:02}.{manager.target_ms:03}"
             if time_item.text() != new_time_str:
                 time_item.setText(new_time_str)
