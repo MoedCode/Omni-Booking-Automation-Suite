@@ -3,6 +3,7 @@ The main application window class. Manages UI, data loading, thread orchestratio
 and state monitoring for the browser automation suite.
 """
 from typing import Dict, List, Any, Optional
+import pandas as pd
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
@@ -206,9 +207,9 @@ class MainWindow(QMainWindow):
             month_key = next((k for k in row_data if 'month' in str(k).lower()), None)
             year_key = next((k for k in row_data if 'year' in str(k).lower()), None)
 
-            month = str(row_data.get(month_key, '')).strip() or settings.DEFAULT_INSTANCE_SETTINGS['month']
-            year_val = row_data.get(year_key, '')
-            year = str(int(float(year_val))) if year_val and str(year_val).replace('.', '', 1).isdigit() else str(settings.DEFAULT_INSTANCE_SETTINGS['year'])
+            month = str(row_data.get(month_key, '')).strip() if month_key and pd.notna(row_data.get(month_key)) else settings.DEFAULT_INSTANCE_SETTINGS['month']
+            year_val = row_data.get(year_key) if year_key else None
+            year = str(int(float(year_val))) if year_val and pd.notna(year_val) and str(year_val).replace('.', '', 1).isdigit() else str(settings.DEFAULT_INSTANCE_SETTINGS['year'])
             target_month_str = f"{month} {year}".strip()
 
             # Read city from data, fallback to settings default
@@ -220,10 +221,10 @@ class MainWindow(QMainWindow):
                 target_month=target_month_str,
                 target_city=target_city_str,
                 url=settings.BASE_URL,
-                target_hr=int(row_data.get('Hour') or settings.DEFAULT_INSTANCE_SETTINGS.get('Hour', 0)),
-                target_min=int(row_data.get('Minute') or settings.DEFAULT_INSTANCE_SETTINGS.get('Minute', 0)),
-                target_sec=int(row_data.get('Second') or settings.DEFAULT_INSTANCE_SETTINGS['Second']),
-                target_ms=int(row_data.get('Millisecond') or settings.DEFAULT_INSTANCE_SETTINGS['Millisecond']),
+                target_hr=int(row_data.get('Hour') if pd.notna(row_data.get('Hour')) else settings.DEFAULT_INSTANCE_SETTINGS.get('Hour', 0)),
+                target_min=int(row_data.get('Minute') if pd.notna(row_data.get('Minute')) else settings.DEFAULT_INSTANCE_SETTINGS.get('Minute', 0)),
+                target_sec=int(row_data.get('Second') if pd.notna(row_data.get('Second')) else settings.DEFAULT_INSTANCE_SETTINGS['Second']),
+                target_ms=int(row_data.get('Millisecond') if pd.notna(row_data.get('Millisecond')) else settings.DEFAULT_INSTANCE_SETTINGS['Millisecond']),
                 proxy_address=row_data.get('Proxy') if row_data.get('Proxy') != 'None' else None
             )
             self.active_instances[account] = manager

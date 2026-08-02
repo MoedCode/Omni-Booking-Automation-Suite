@@ -58,27 +58,35 @@ class BrowserBase:
         if self.driver.is_element_visible(TLS_SELECTORS['login_form']['email_input_field']):
             return "login_form"
 
-        # Priority 5 & 6: Pre-login setup
+        # Priority 5: Pre-login Country / Welcome Page
         if self.driver.is_element_visible(TLS_SELECTORS['choose_country']['select_dropdown']):
             return "choose_country"
-        
-        if self.driver.is_element_present(TLS_SELECTORS['choose_city']['page_title_header']):
-            try:
-                if "select your visa application centre" in self.driver.get_text(TLS_SELECTORS['choose_city']['page_title_header']).lower():
-                    return "choose_city"
-            except Exception:
-                pass
 
-        # Priority 7: Logged-in Welcome/Info Page
-        if self.driver.is_element_visible(TLS_SELECTORS['info_page']['user_icon_button']):
+        # Priority 6: Logged-in Welcome/Info Page (must be checked before broad landing page).
+        # A key differentiator: a logged-in page has the user icon but NOT the main login button.
+        if self.driver.is_element_visible(TLS_SELECTORS['info_page']['user_icon_button']) and \
+           not self.driver.is_element_present(TLS_SELECTORS['info_page']['header_login_btn']):
             if self.driver.is_element_present("h1#page-title"):
                 try:
                     if "welcome to the visa application centre" in self.driver.get_text("h1#page-title").lower():
                         return "logged_in_info_page"
                 except Exception:
                     pass
+
+        # Priority 7: Pre-login Welcome Page (the one we get stuck on)
+        if "welcome to the visa application centre" in self.driver.get_text("body").lower() or \
+           "welcome to the tlscontact visa application website" in self.driver.get_text("body").lower():
+            return "landing_welcome_page"
         
-        # Priority 8: Generic pre-login info page
+        # Priority 8: Choose City
+        if self.driver.is_element_present(TLS_SELECTORS['choose_city']['page_title_header']):
+            try:
+                if "select your visa application centre" in self.driver.get_text(TLS_SELECTORS['choose_city']['page_title_header']).lower():
+                    return "choose_city"
+            except Exception:
+                pass
+        
+        # Priority 9: Generic pre-login info page
         if self.driver.is_element_visible(TLS_SELECTORS['info_page']['header_login_btn']):
             return "info_page"
                 
@@ -118,6 +126,8 @@ class BrowserBase:
                 self.captcha_handler.cloudflare()
             elif current_state == "login_form":
                 self._workflow_login()
+            elif current_state == "landing_welcome_page":
+                self._workflow_landing_welcome_page()
             elif current_state == "choose_country":
                 self._workflow_choose_country()
             elif current_state == "choose_city":
@@ -131,38 +141,77 @@ class BrowserBase:
             elif current_state == "logged_in_info_page":
                 self._workflow_logged_in_info_page()
         except Exception as e:
-            # Check for our specific fatal error to re-raise it.
+            # Propagate fatal login credential errors up to ChromeManager to terminate immediately
             if isinstance(e, ValueError) and "Invalid username or password" in str(e):
-                raise  # Propagate the fatal error up to the main thread loop to terminate.
+                raise  
             
-            # Otherwise, log it as a non-fatal error and allow the bot to continue.
             print(f"[❌] {self.account} failed to handle {current_state}: {e}")
 
+    def _workflow_landing_welcome_page(self) -> None:
+        """Handles the Welcome landing page by clicking the User Icon and then clicking LOGIN."""
+        print(f"[🌐] {self.account} on Welcome page. Looking for Login option...")
+        try:
+            # Check if there is an explicit LOGIN button/link visible first
+            login_link_selector = TLS_SELECTORS['choose_country']['login_link']
+            if self.driver.is_element_visible(login_link_selector):
+                self.driver.js_click(login_link_selector)
+                print(f"    - Clicked direct Login link.")
+                time.sleep(2)
+                return
+
+            # Otherwise open the user menu dropdown in top right
+            user_btn_selector = TLS_SELECTORS['choose_country']['user_dropdown_btn']
+            self.driver.wait_for_element_present(user_btn_selector, timeout=5)
+            self.driver.js_click(user_btn_selector)
+            print(f"    - Opened user account dropdown menu.")
+            time.sleep(1)
+
+            # Click the LOGIN option inside the popup menu
+            self.driver.wait_for_element_present(login_link_selector, timeout=5)
+            self.driver.js_click(login_link_selector)
+            print(f"    - Clicked LOGIN option.")
+            time.sleep(3)
+        except Exception as e:
+            print(f"[⚠️] Could not navigate from Welcome page to Login: {e}")
+            time.sleep(3)
+
     def _workflow_login(self) -> None:
-        # Check for invalid credentials error first. This runs every time we land on the login page.
-        invalid_creds_selector = TLS_SELECTORS['login_form']['invalid_credentials_error']
-        if self.driver.is_element_visible(invalid_creds_selector):
-            print(f"[❌] {self.account} Invalid credentials detected on page.")
-            self._show_windows_alert(
-                "Invalid Credentials",
-                f"The account '{self.account}' has invalid login credentials.\n\nThe bot for this instance will be terminated."
-            )
-            # Raise a specific exception to be caught and handled by the main thread loop.
-            raise ValueError("Invalid username or password.")
+        # Give the page a moment to render potential error messages from a previous attempt.
+        time.sleep(1.5)
 
-        if not self.login_attempted_on_this_page:
-            print(f"[🔐] {self.account} injecting credentials...")
-            self.actor.smart_type(TLS_SELECTORS['login_form']['email_input_field'], self.account)
-            self.actor.natural_delay()
-            self.actor.smart_type(TLS_SELECTORS['login_form']['password_input_field'], self.password)
-            self.login_attempted_on_this_page = True
-            print(f"    - Credentials entered. Checking for CAPTCHA...")
-            time.sleep(2) 
+        # CRITICAL: Check for invalid credentials error BEFORE doing anything else.
+        try:
+            error_el = self.driver.find_element(By.CSS_SELECTOR, TLS_SELECTORS['login_form']['invalid_credentials_error'])
+            error_text = error_el.text.strip().lower()
+            if "invalid username or password" in error_text:
+                print(f"[❌] {self.account} Invalid credentials detected. Terminating instance.")
+                self._show_windows_alert("Invalid Credentials", f"The account '{self.account}' has invalid login credentials.\nThe bot for this instance will be terminated.")
+                raise ValueError("Invalid username or password.")
+        except Exception as e:
+            if isinstance(e, ValueError): 
+                raise # Re-raise immediately if invalid credentials
+            pass # Continue normal login workflow
 
-        # Step 2: Check for CAPTCHA.
+        # If we have already tried to log in on this specific page load, do not try again.
+        if self.login_attempted_on_this_page:
+            print(f"[⚠️] Login stalled on this page. Waiting for manual intervention or page change.")
+            time.sleep(10)
+            return
+
+        # --- This is a fresh attempt on this page ---
+        self.login_attempted_on_this_page = True
+        
+        print(f"[🔐] {self.account} injecting credentials...")
+        self.actor.smart_type(TLS_SELECTORS['login_form']['email_input_field'], self.account)
+        self.actor.natural_delay()
+        self.actor.smart_type(TLS_SELECTORS['login_form']['password_input_field'], self.password)
+        print(f"    - Credentials entered. Checking for CAPTCHA...")
+        time.sleep(2)
+
+        # Check for CAPTCHA.
         if self.driver.is_element_visible(TLS_SELECTORS['login_form']['captcha_widget']):
             print(f"[🧩] {self.account} CAPTCHA detected on login form.")
-            success = self.captcha_handler.solve_google_recaptcha() 
+            success = self.captcha_handler.solve_google_recaptcha()
             
             if success:
                 print(f"    - CAPTCHA solved successfully. Submitting credentials.")
@@ -170,25 +219,7 @@ class BrowserBase:
                 print(f"[✅] {self.account} login submitted.")
                 time.sleep(3)
             else:
-                print(f"    - Audio Bypass Blocked or Failed. Waiting 10 seconds for manual CAPTCHA solve...")
-                time.sleep(10)
-                try:
-                    checkbox_iframe = self.driver.find_element("css selector", TLS_SELECTORS['recaptcha_v2']['checkbox_iframe'])
-                    self.driver.switch_to.frame(checkbox_iframe)
-                    is_checked = self.driver.get_attribute(TLS_SELECTORS['recaptcha_v2']['checkbox'], "aria-checked")
-                    self.driver.switch_to.default_content()
-                    
-                    if str(is_checked).lower() == "true":
-                        print(f"    - Manual CAPTCHA solve detected. Submitting credentials.")
-                        self.actor.human_click(TLS_SELECTORS['login_form']['submit_login_btn'])
-                        print(f"[✅] {self.account} login submitted.")
-                        time.sleep(3)
-                        return
-                except Exception:
-                    self.driver.switch_to.default_content()
-                
-                if self.identify_current_page() == "login_form":
-                     print(f"[⚠️] Login stalled. Please solve CAPTCHA and click 'Login' manually.")
+                print(f"    - CAPTCHA bypass failed. Waiting for manual intervention.")
         else:
             print(f"    - No CAPTCHA detected. Submitting credentials.")
             self.actor.human_click(TLS_SELECTORS['login_form']['submit_login_btn'])
@@ -269,7 +300,9 @@ class BrowserBase:
             print(f"    - Multiple city centers detected. Ensuring '{self.target_city}' is selected...")
 
             try:
-                selected_tab_text = self.driver.get_text(TLS_SELECTORS['application_list']['selected_city_tab_text']).strip()
+                # Use get_attribute("textContent") instead of .text to bypass React/Flexbox visibility hiding issues
+                selected_tab_element = self.driver.find_element(TLS_SELECTORS['application_list']['selected_city_tab_text'])
+                selected_tab_text = selected_tab_element.get_attribute("textContent").strip()
 
                 if self.target_city.lower() in selected_tab_text.lower():
                     print(f"    - Correct city tab '{self.target_city}' is already selected.")
@@ -277,14 +310,16 @@ class BrowserBase:
                     print(f"    - Current tab is '{selected_tab_text}'. Switching to '{self.target_city}'...")
                     all_tabs = self.driver.find_elements(city_tabs_selector)
                     tab_found_and_clicked = False
+                    
                     for tab in all_tabs:
                         try:
-                            tab_text = tab.find_element(By.CSS_SELECTOR, "p").text.strip()
+                            # Extract text directly from DOM to avoid empty string returns
+                            tab_text = tab.get_attribute("textContent").strip()
                             if self.target_city.lower() in tab_text.lower():
                                 self.driver.js_click(tab)
-                                print(f"    - Clicked tab for '{self.target_city}'.")
+                                print(f"    - Clicked tab for '{self.target_city}'. Waiting for page to reload...")
                                 tab_found_and_clicked = True
-                                time.sleep(4)  # Wait for content to reload
+                                time.sleep(4)  # Wait for the applications list to refresh for the new city
                                 break
                         except Exception:
                             continue
@@ -294,21 +329,27 @@ class BrowserBase:
             except Exception as e:
                 print(f"    - [⚠️] Could not process city tabs: {e}. Proceeding with default.")
 
+        # --- Check if an application actually exists ---
+        page_text = self.driver.get_text("body").lower()
+        if "no application created" in page_text:
+            error_msg = f"No application exists for '{self.target_city}'. Please click 'Create a new application' manually."
+            print(f"[❌] {self.account} {error_msg}")
+            self.status = "Error: No Application Created"
+            self._show_windows_alert("Missing Application", f"Account: {self.account}\nCity: {self.target_city}\n\n{error_msg}")
+            raise ValueError("No application created.") # Stop this bot instance
+
         # --- Proceed to click the 'Select' button ---
         print(f"    - Looking for 'Select' button...")
         try:
             select_button_selector = TLS_SELECTORS['application_list']['select_application_button']
-            self.driver.wait_for_element_present(select_button_selector, timeout=15)
+            self.driver.wait_for_element_present(select_button_selector, timeout=10)
             self.driver.js_click(select_button_selector)
             print(f"[✅] {self.account} successfully clicked 'Select'.")
             time.sleep(4)
         except Exception as e:
             error_msg = str(e).split('\n')[0]
             print(f"[❌] {self.account} failed to click 'Select' button: {error_msg}")
-            if self.driver.is_element_visible(TLS_SELECTORS['application_list']['create_new_button']):
-                print(f"    - ⚠️ Hint: No active applications were found. You might need to click 'Create a new application' manually.")
             time.sleep(5)
-
     def _workflow_service_level(self) -> None:
         print(f"[⚙️] {self.account} on Service Level page. Clicking 'Continue'...")
         try:

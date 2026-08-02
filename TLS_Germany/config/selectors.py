@@ -4,13 +4,15 @@ Fully mapped selectors for the TLScontact Germany workflow engines
 """
 
 TLS_SELECTORS = {
-    # [0] choose_country
+    # [0] choose_country & landing page navigation
     "choose_country": {
         "splash_container": "div#splash-country-selector",
         "select_dropdown": "select#select-country",
         "confirm_country_btn": "a#btn-confirm-country",
         "apply_for_visa_btn": "button#btn-apply-for-a-visa",
-        "cookie_close_btn": "button.osano-cm-close"
+        "cookie_close_btn": "button.osano-cm-close",
+        "user_dropdown_btn": "svg[aria-label='User icon']",
+        "login_link": "div#login"
     },
 
     # [1] choose_city
@@ -45,7 +47,7 @@ TLS_SELECTORS = {
         "forgot_password_btn": "a#forget-password",
         "submit_login_btn": "button#btn-login",
         "captcha_widget": "iframe[title='reCAPTCHA']",
-        "invalid_credentials_error": "p.tls-input_error-label:contains('Invalid username or password')"
+        "invalid_credentials_error": "p.tls-input_error-label"
     },
 
     # [4] Application List Page
@@ -53,7 +55,6 @@ TLS_SELECTORS = {
         "page_title_header": "h1#page-title",
         "city_tabs": "div.light-scroll a",
         "selected_city_tab_text": "div.TlsTab_--selected__85uu4 p",
-        # XPATH ذكي وشامل يبحث عن كلمة Select داخل الأزرار أو الروابط أو أي عنصر يحتويها
         "select_application_button": "//*[contains(text(), 'Select') and (local-name()='button' or local-name()='a' or local-name()='span' or local-name()='div')]",
         "create_new_button": "span[data-testid='btn-create-new-travel-group']"
     },

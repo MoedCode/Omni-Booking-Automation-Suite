@@ -142,13 +142,18 @@ class ChromeManager:
                 print(f"[{self.account}] Returned from check loop. Re-validating state...")
                 time.sleep(3) # Small delay before re-navigating
 
+        except ValueError as ve:
+            # Handle specific fatal credential or application errors
+            self.is_running = False
+            self.status = f"Error: {str(ve)}"
+            print(f"❌ [Fatal Error in {self.account}]: {ve}")
+
         except Exception as e:
-            # This block is entered if an error occurs during automation,
-            # or if driver.quit() is called by stop_engine, which raises an exception.
-            if self.is_running: # If it's an unexpected error, not a manual stop
+            if self.is_running:
                 error_msg = str(e).split('\n')[0]
                 print(f"❌ [Error in {self.account}]: {error_msg}")
                 self.status = f"Error: {error_msg}"
+                self.is_running = False
         
         # When the loop breaks (is_running=False) or an exception occurs, the thread ends.
         print(f"[💡] Thread for {self.account} has exited.")
@@ -331,20 +336,4 @@ class ChromeManager:
             self.status = "Terminated"
 
 if __name__ == "__main__":
-    bot = ChromeManager(
-        account="tivime8259@preparmy.com",
-        password="Yallavisa@@123", # Note: This is a test password
-        target_month="September 2026", # Must include year
-        target_city="Alexandria",
-        target_hr=datetime.datetime.now().hour,
-        target_min=datetime.datetime.now().minute,
-        target_sec=(datetime.datetime.now().second + 10) % 60, # 10 seconds from now
-        target_ms=0,
-        url=BASE_URL # Testing from the base URL to verify routing works
-    )
-
-    bot.start_engine()
-    try:
-        bot.thread.join()
-    except KeyboardInterrupt:
-        bot.stop_engine()
+    pass

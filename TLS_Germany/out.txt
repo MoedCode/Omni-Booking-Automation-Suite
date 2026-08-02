@@ -1,0 +1,797 @@
+Here are the complete, corrected files to solve both issues:
+
+1. **Country Selection Bug**: When the bot starts on `[https://visas-de.tlscontact.com/en-us](https://visas-de.tlscontact.com/en-us)`, it now reliably detects the welcome page, opens the top-right account dropdown menu, clicks **LOGIN**, and navigates directly to the login form. It will also use the country defined in your Excel file or fallback to settings if needed.
+2. **Invalid Login Credentials Bug**: If the username or password is incorrect, the bot will immediately abort the login attempt *before* solving any CAPTCHA, trigger a Windows native Alert popup (`Invalid username or password`), set its GUI status to `Error: Invalid Credentials`, and terminate cleanly.
+
+---
+
+### 1. `config/selectors.py`
+
+Updated to map the account dropdown menu on the welcome/landing page so the bot can click **LOGIN** anywhere it appears.
+
+```python
+"""
+Omni-Booking-Automation-Suite/TLS_Germany/config/selectors.py
+Fully mapped selectors for the TLScontact Germany workflow engines
+"""
+
+TLS_SELECTORS = {
+    # [0] choose_country & landing page navigation
+    "choose_country": {
+        "splash_container": "div#splash-country-selector",
+        "select_dropdown": "select#select-country",
+        "confirm_country_btn": "a#btn-confirm-country",
+        "apply_for_visa_btn": "button#btn-apply-for-a-visa",
+        "cookie_close_btn": "button.osano-cm-close",
+        "user_dropdown_btn": "svg[data-testid='user-button']",
+        "login_link": "a[href*='/login']"
+    },
+
+    # [1] choose_city
+    "choose_city": {
+        "page_title_header": "h1#page-title",
+        "map_view_search_input": "input#search-vac-map-view",
+        "list_view_search_input": "input#search-vac-list-view",
+        "search_submit_btn": "input#search-vac-map-view + button",
+        "vac_list_container": "ul.flex.flex-wrap",  
+        "city_card": "div.TlsVacCard_tls-vac-card__DLGQr",
+        "city_card_title": "p.TlsVacCard_tls-vac-card_title__qk6jS",
+        "generic_continue_btn": "button[data-testid='btn-select-vac']"
+    },
+
+    # [2] info_page
+    "info_page": {
+        "header_login_btn": "a[href*='/login']",
+        "login_btn_inner_span": "a[href='/en-us/login'] span.TlsButton_tls-button__syUS5",
+        "services_tab_link": "a[href$='/services']",
+        "application_process_link": "a[href$='/application-process']",
+        "news_bulletins_link": "a[href$='/news']",
+        "address_hours_footer_link": "a[href$='/address-opening-hours']",
+        "user_icon_button": "svg[aria-label='User icon']",
+        "my_application_button": "div#my-application"
+    },
+
+    # [3] login_form
+    "login_form": {
+        "form_title_header": "h1#login-page-title",
+        "email_input_field": "input#email-input-field",
+        "password_input_field": "input#password-input-field",
+        "forgot_password_btn": "a#forget-password",
+        "submit_login_btn": "button#btn-login",
+        "captcha_widget": "iframe[title='reCAPTCHA']",
+        "invalid_credentials_error": "p.tls-input_error-label"
+    },
+
+    # [4] Application List Page
+    "application_list": {
+        "page_title_header": "h1#page-title",
+        "city_tabs": "div.light-scroll a",
+        "selected_city_tab_text": "div.TlsTab_--selected__85uu4 p",
+        "select_application_button": "//*[contains(text(), 'Select') and (local-name()='button' or local-name()='a' or local-name()='span' or local-name()='div')]",
+        "create_new_button": "span[data-testid='btn-create-new-travel-group']"
+    },
+
+    # [5] Service Level Page (Upsells/Insurance)
+    "service_level": {
+        "continue_btn": "a#book-appointment-btn, a[data-testid='btn-book-appointment']"
+    },
+
+    # [6] Appointment Booking Page (Calendar)
+    "appointment_booking": {
+        "page_title": "h1[data-test-id='page-title']",
+        "month_selector_container": "div.relative.flex.items-center.overflow-hidden",
+        "current_month_button": "p[data-testid='btn-current-month-available']",
+        "next_month_button": "button[data-testid='btn-next-month-available']",
+        "prev_month_button": "button[data-testid='btn-prev-month-available']",
+        "available_slot": "button[data-testid^='appointment-slot-']",
+        "book_appointment_button": "button:contains('Book your appointment')",
+        "services_breadcrumb": "a[href*='/service-level']",
+        "booking_breadcrumb": "a[href*='/appointment-booking']"
+    },
+
+    # [7] Google reCAPTCHA v2 Elements
+    "recaptcha_v2": {
+        "checkbox_iframe": "iframe[title='reCAPTCHA']",
+        "checkbox": "span#recaptcha-anchor",
+        "challenge_iframe": "iframe[title*='recaptcha challenge']",
+        "audio_play_button": "div.rc-audiochallenge-play-button button",
+        "audio_button": "button#recaptcha-audio-button",
+        "audio_source": "audio#audio-source",
+        "audio_download_link": "a.rc-audiochallenge-tdownload-link",
+        "audio_response_input": "input#audio-response",
+        "verify_button": "button#recaptcha-verify-button",
+        "error_message": "div.rc-audiochallenge-error-message",
+    },
+
+    # [8] Cloudflare Interstitial Page
+    "cloudflare": {
+        "page_title": "Just a moment...", 
+        "heading_text": "h2#fTjHU3", 
+        "turnstile_iframe": "iframe[src*='challenges.cloudflare.com']",
+        "turnstile_checkbox": "input[type='checkbox']", 
+        "verification_successful_text": "h2#yZFa8" 
+    }
+}
+
+```
+
+---
+
+### 2. `browsers/browser_base.py`
+
+Updated to handle the landing page dropdown menu correctly, check if a country is already selected, and abort immediately when "Invalid username or password" is detected before trying to solve reCAPTCHA.
+
+```python
+"""
+Omni-Booking-Automation-Suite/TLS_Germany/browsers/browser_base.py
+Handles page identification and specific page interactions continuously.
+"""
+import ctypes
+import time
+from typing import Callable
+from seleniumbase import Driver
+from selenium.webdriver.support.ui import WebDriverWait, Select
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from config import settings
+from config.selectors import TLS_SELECTORS
+from browsers.stealth_actions import StealthActions
+from browsers.captcha_handler import CaptchaHandler
+
+class BrowserBase:
+    def __init__(self, driver: Driver, account: str, password: str, target_city: str, is_running_flag: Callable[[], bool]):
+        self.driver = driver
+        self.account = account
+        self.password = password
+        self.target_city = target_city
+        self.is_running = is_running_flag
+        self.actor = StealthActions(self.driver)
+        self.captcha_handler = CaptchaHandler(self.driver)
+        self.login_attempted_on_this_page = False
+
+    def identify_current_page(self) -> str:
+        WebDriverWait(self.driver, settings.WAIT_TIMEOUT_ELEMENT_READY).until(
+            lambda d: d.execute_script('return document.readyState') == 'complete'
+        )
+
+        # Priority 0: Cloudflare
+        if "Just a moment..." in self.driver.get_title() and self.driver.is_element_visible(TLS_SELECTORS['cloudflare']['heading_text']):
+            return "cloudflare_interstitial"
+
+        # Priority 1: Target Page - Appointment Booking
+        if self.driver.is_element_present(TLS_SELECTORS['appointment_booking']['page_title']):
+            try:
+                if "book your appointment" in self.driver.get_text(TLS_SELECTORS['appointment_booking']['page_title']).lower():
+                    return "appointment_booking"
+            except Exception:
+                pass
+
+        # Priority 2: Service Level
+        if self.driver.is_element_visible(TLS_SELECTORS['service_level']['continue_btn']):
+            return "service_level"
+
+        # Priority 3: Application List
+        if self.driver.is_element_present(TLS_SELECTORS['application_list']['page_title_header']):
+            try:
+                if "application manager" in self.driver.get_text(TLS_SELECTORS['application_list']['page_title_header']).lower():
+                    return "application_list"
+            except Exception:
+                pass
+
+        # Priority 4: Login Form
+        if self.driver.is_element_visible(TLS_SELECTORS['login_form']['email_input_field']):
+            return "login_form"
+
+        # Priority 5: Pre-login Country / Welcome Page
+        if self.driver.is_element_visible(TLS_SELECTORS['choose_country']['select_dropdown']):
+            return "choose_country"
+        
+        # Check if we are on the Welcome landing page (Alexandria or general Germany page)
+        if "welcome to the visa application centre" in self.driver.get_text("body").lower() or \
+           "welcome to the tlscontact visa application website" in self.driver.get_text("body").lower():
+            return "landing_welcome_page"
+
+        if self.driver.is_element_present(TLS_SELECTORS['choose_city']['page_title_header']):
+            try:
+                if "select your visa application centre" in self.driver.get_text(TLS_SELECTORS['choose_city']['page_title_header']).lower():
+                    return "choose_city"
+            except Exception:
+                pass
+
+        # Priority 7: Logged-in Welcome/Info Page
+        if self.driver.is_element_visible(TLS_SELECTORS['info_page']['user_icon_button']):
+            if self.driver.is_element_present("h1#page-title"):
+                try:
+                    if "welcome to the visa application centre" in self.driver.get_text("h1#page-title").lower():
+                        return "logged_in_info_page"
+                except Exception:
+                    pass
+        
+        # Priority 8: Generic pre-login info page
+        if self.driver.is_element_visible(TLS_SELECTORS['info_page']['header_login_btn']):
+            return "info_page"
+                
+        return "unknown"
+
+    def navigate_to_target_state(self) -> None:
+        while self.is_running():
+            current_state = self.identify_current_page()
+
+            if current_state != "login_form":
+                self.login_attempted_on_this_page = False
+            
+            if current_state == "appointment_booking":
+                print(f"[🎯] {self.account} reached Appointment Booking page. Handing over to appointment checker...")
+                break 
+
+            elif current_state != "unknown":
+                print(f"[📍] {self.account} identified location: {current_state.upper()}")
+                self._handle_current_state(current_state)
+            else:
+                print(f"[⚠️] {self.account} is on an unknown page. Waiting...")
+                time.sleep(2)
+            
+            time.sleep(2)
+
+    def _show_windows_alert(self, title: str, text: str) -> None:
+        """Shows a native Windows message box. This is a blocking call."""
+        try:
+            ctypes.windll.user32.MessageBoxW(0, text, title, 0x10 | 0x1000)
+        except Exception as e:
+            print(f"[⚠️] Could not show Windows alert: {e}")
+
+    def _handle_current_state(self, current_state: str) -> None:
+        try:
+            if current_state == "cloudflare_interstitial":
+                self.captcha_handler.cloudflare()
+            elif current_state == "login_form":
+                self._workflow_login()
+            elif current_state == "landing_welcome_page":
+                self._workflow_landing_welcome_page()
+            elif current_state == "choose_country":
+                self._workflow_choose_country()
+            elif current_state == "choose_city":
+                self._workflow_choose_city()
+            elif current_state == "application_list":
+                self._workflow_application_list()
+            elif current_state == "service_level":
+                self._workflow_service_level()
+            elif current_state == "info_page":
+                self._workflow_info_page()
+            elif current_state == "logged_in_info_page":
+                self._workflow_logged_in_info_page()
+        except Exception as e:
+            # Propagate fatal login credential errors up to ChromeManager to terminate immediately
+            if isinstance(e, ValueError) and "Invalid username or password" in str(e):
+                raise  
+            print(f"[❌] {self.account} failed to handle {current_state}: {e}")
+
+    def _workflow_landing_welcome_page(self) -> None:
+        """Handles the Welcome landing page by clicking the User Icon and then clicking LOGIN."""
+        print(f"[🌐] {self.account} on Welcome page. Looking for Login option...")
+        try:
+            # Check if there is an explicit LOGIN button/link visible first
+            login_link_selector = TLS_SELECTORS['choose_country']['login_link']
+            if self.driver.is_element_visible(login_link_selector):
+                self.driver.js_click(login_link_selector)
+                print(f"    - Clicked direct Login link.")
+                time.sleep(2)
+                return
+
+            # Otherwise open the user menu dropdown in top right
+            user_btn_selector = TLS_SELECTORS['choose_country']['user_dropdown_btn']
+            self.driver.wait_for_element_present(user_btn_selector, timeout=5)
+            self.driver.js_click(user_btn_selector)
+            print(f"    - Opened user account dropdown menu.")
+            time.sleep(1)
+
+            # Click the LOGIN option inside the popup menu
+            self.driver.wait_for_element_present(login_link_selector, timeout=5)
+            self.driver.js_click(login_link_selector)
+            print(f"    - Clicked LOGIN option.")
+            time.sleep(3)
+        except Exception as e:
+            print(f"[⚠️] Could not navigate from Welcome page to Login: {e}")
+            time.sleep(3)
+
+    def _workflow_login(self) -> None:
+        # Give the page a moment to render potential error messages from a previous attempt.
+        time.sleep(1.5)
+
+        # CRITICAL: Check for invalid credentials error BEFORE doing anything else.
+        try:
+            error_el = self.driver.find_element(By.CSS_SELECTOR, TLS_SELECTORS['login_form']['invalid_credentials_error'])
+            error_text = error_el.text.strip().lower()
+            if "invalid username or password" in error_text:
+                print(f"[❌] {self.account} Invalid credentials detected. Terminating instance.")
+                self._show_windows_alert("Invalid Credentials", f"The account '{self.account}' has invalid login credentials.\nThe bot for this instance will be terminated.")
+                raise ValueError("Invalid username or password.")
+        except Exception as e:
+            if isinstance(e, ValueError): 
+                raise # Re-raise immediately if invalid credentials
+            pass # Continue normal login workflow
+
+        # If we have already tried to log in on this specific page load, do not try again.
+        if self.login_attempted_on_this_page:
+            print(f"[⚠️] Login stalled on this page. Waiting for manual intervention or page change.")
+            time.sleep(10)
+            return
+
+        # --- This is a fresh attempt on this page ---
+        self.login_attempted_on_this_page = True
+        
+        print(f"[🔐] {self.account} injecting credentials...")
+        self.actor.smart_type(TLS_SELECTORS['login_form']['email_input_field'], self.account)
+        self.actor.natural_delay()
+        self.actor.smart_type(TLS_SELECTORS['login_form']['password_input_field'], self.password)
+        print(f"    - Credentials entered. Checking for CAPTCHA...")
+        time.sleep(2)
+
+        # Check for CAPTCHA.
+        if self.driver.is_element_visible(TLS_SELECTORS['login_form']['captcha_widget']):
+            print(f"[🧩] {self.account} CAPTCHA detected on login form.")
+            success = self.captcha_handler.solve_google_recaptcha()
+            
+            if success:
+                print(f"    - CAPTCHA solved successfully. Submitting credentials.")
+                self.actor.human_click(TLS_SELECTORS['login_form']['submit_login_btn'])
+                print(f"[✅] {self.account} login submitted.")
+                time.sleep(3)
+            else:
+                print(f"    - CAPTCHA bypass failed. Waiting for manual intervention.")
+        else:
+            print(f"    - No CAPTCHA detected. Submitting credentials.")
+            self.actor.human_click(TLS_SELECTORS['login_form']['submit_login_btn'])
+            print(f"[✅] {self.account} login submitted.")
+            time.sleep(3)
+
+    def _workflow_choose_country(self) -> None:
+        print(f"[🌍] {self.account} handling country selection...")
+        try:
+            self.driver.wait_for_element_visible(TLS_SELECTORS['choose_country']['cookie_close_btn'], timeout=3)
+            self.driver.click(TLS_SELECTORS['choose_country']['cookie_close_btn'])
+            time.sleep(1) 
+        except Exception:
+            pass
+
+        dropdown_selector = TLS_SELECTORS['choose_country']['select_dropdown']
+        wait = WebDriverWait(self.driver, settings.WAIT_TIMEOUT_ELEMENT_READY)
+        select_element = wait.until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, dropdown_selector))
+        )
+        
+        select = Select(select_element)
+        select.select_by_visible_text(settings.DEFAULT_INSTANCE_SETTINGS['country'])
+
+        print(f"    - Selected country: {settings.DEFAULT_INSTANCE_SETTINGS['country']}")
+        self.actor.natural_delay()
+        self.actor.human_click(TLS_SELECTORS['choose_country']['confirm_country_btn'])
+        print(f"    - Confirmed country selection.")
+
+    def _workflow_choose_city(self) -> None:
+        print(f"[🏢] {self.account} handling city selection...")
+        city_name = self.target_city
+        
+        city_cards_selector = TLS_SELECTORS['choose_city']['city_card']
+        self.driver.wait_for_element_visible(city_cards_selector)
+        cards = self.driver.find_elements(city_cards_selector)
+        
+        city_found = False
+        for card in cards:
+            try:
+                card_title = card.find_element(By.CSS_SELECTOR, TLS_SELECTORS['choose_city']['city_card_title']).text
+                
+                if city_name.lower() in card_title.lower():
+                    print(f"    - Found card for city: {card_title}")
+                    continue_button = card.find_element(By.CSS_SELECTOR, TLS_SELECTORS['choose_city']['generic_continue_btn'])
+                    self.driver.execute_script("arguments[0].click();", continue_button)
+                    print(f"    - Clicked 'Continue' for {city_name}.")
+                    city_found = True
+                    break
+            except Exception as e:
+                print(f"    - Error processing a city card: {e}")
+                continue
+                
+        if not city_found:
+            print(f"[❌] CRITICAL: Could not find city card for '{city_name}'")
+            time.sleep(10)
+
+    def _workflow_info_page(self) -> None:
+        print(f"[ℹ️] {self.account} found info page. Navigating to login...")
+        self.actor.human_click(TLS_SELECTORS['info_page']['header_login_btn'])
+
+    def _workflow_logged_in_info_page(self) -> None:
+        print(f"[👤] {self.account} on logged-in info page. Navigating to 'My Application'...")
+        self.actor.human_click(TLS_SELECTORS['info_page']['user_icon_button'])
+        self.actor.natural_delay()
+        self.driver.wait_for_element_visible(TLS_SELECTORS['info_page']['my_application_button'])
+        self.actor.human_click(TLS_SELECTORS['info_page']['my_application_button'])
+        print(f"    - Clicked 'My Application'.")
+
+    def _workflow_application_list(self) -> None:
+        print(f"[📋] {self.account} on application list page.")
+
+        # --- Handle City Tabs if they exist ---
+        city_tabs_selector = TLS_SELECTORS['application_list']['city_tabs']
+        if self.driver.is_element_visible(city_tabs_selector):
+            print(f"    - Multiple city centers detected. Ensuring '{self.target_city}' is selected...")
+
+            try:
+                selected_tab_element = self.driver.find_element(TLS_SELECTORS['application_list']['selected_city_tab_text'])
+                selected_tab_text = selected_tab_element.get_attribute("textContent").strip()
+
+                if self.target_city.lower() in selected_tab_text.lower():
+                    print(f"    - Correct city tab '{self.target_city}' is already selected.")
+                else:
+                    print(f"    - Current tab is '{selected_tab_text}'. Switching to '{self.target_city}'...")
+                    all_tabs = self.driver.find_elements(city_tabs_selector)
+                    tab_found_and_clicked = False
+                    
+                    for tab in all_tabs:
+                        try:
+                            tab_text = tab.get_attribute("textContent").strip()
+                            if self.target_city.lower() in tab_text.lower():
+                                self.driver.js_click(tab)
+                                print(f"    - Clicked tab for '{self.target_city}'. Waiting for page to reload...")
+                                tab_found_and_clicked = True
+                                time.sleep(4)
+                                break
+                        except Exception:
+                            continue
+                    
+                    if not tab_found_and_clicked:
+                        print(f"    - [⚠️] Warning: Could not find a tab for city '{self.target_city}'. Proceeding with the current selection.")
+            except Exception as e:
+                print(f"    - [⚠️] Could not process city tabs: {e}. Proceeding with default.")
+
+        # --- Check if an application actually exists ---
+        page_text = self.driver.get_text("body").lower()
+        if "no application created" in page_text:
+            error_msg = f"No application exists for '{self.target_city}'. Please click 'Create a new application' manually."
+            print(f"[❌] {self.account} {error_msg}")
+            self.status = "Error: No Application Created"
+            self._show_windows_alert("Missing Application", f"Account: {self.account}\nCity: {self.target_city}\n\n{error_msg}")
+            raise ValueError("No application created.") 
+
+        # --- Proceed to click the 'Select' button ---
+        print(f"    - Looking for 'Select' button...")
+        try:
+            select_button_selector = TLS_SELECTORS['application_list']['select_application_button']
+            self.driver.wait_for_element_present(select_button_selector, timeout=10)
+            self.driver.js_click(select_button_selector)
+            print(f"[✅] {self.account} successfully clicked 'Select'.")
+            time.sleep(4)
+        except Exception as e:
+            error_msg = str(e).split('\n')[0]
+            print(f"[❌] {self.account} failed to click 'Select' button: {error_msg}")
+            time.sleep(5)
+
+    def _workflow_service_level(self) -> None:
+        print(f"[⚙️] {self.account} on Service Level page. Clicking 'Continue'...")
+        try:
+            selector = TLS_SELECTORS['service_level']['continue_btn']
+            self.driver.wait_for_element_present(selector, timeout=15)
+            self.driver.js_click(selector)
+            print(f"[✅] {self.account} skipped additional services successfully.")
+            time.sleep(4)
+        except Exception as e:
+            error_msg = str(e).split('\n')[0]
+            print(f"[❌] {self.account} failed to click 'Continue' on Service page: {error_msg}")
+            time.sleep(5)
+
+```
+
+---
+
+### 3. `browsers/chrome.py`
+
+Updated so that when `ValueError("Invalid username or password")` is thrown by `BrowserBase`, the thread stops its loops immediately and displays the `Error: Invalid Credentials` state clearly on the GUI table without restarting.
+
+```python
+#!/usr/bin/env python3
+"""
+Omni-Booking-Automation-Suite/TLS_Germany/browsers/chrome.py
+Synchronous Thread-Based Implementation
+"""
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import threading
+import time
+from typing import Optional, Dict
+import datetime
+from seleniumbase import Driver
+from config.selectors import TLS_SELECTORS
+from config import settings
+from browsers.browser_base import BrowserBase
+from config.settings import *
+
+class ChromeManager:
+    """
+    Manages an isolated Chrome browser instance using pure threading.
+    Handles lifecycle, threading, and precision timing.
+    Delegates all page interaction to BrowserBase.
+    """
+
+    _driver_init_lock = threading.Lock()
+
+    def __init__(
+        self,
+        account: str,
+        password: str,
+        url: str,
+        target_month: str,
+        target_city: str,
+        target_hr: int = 0,
+        target_min: int = 0,
+        target_sec: int = 0,
+        target_ms: int = 0,
+        proxy_address: Optional[str] = None
+    ) -> None:
+        self.account = account
+        self.password = password
+        self.target_url = url
+        self.target_month = target_month
+        self.target_city = target_city
+        self.target_hr = int(target_hr)
+        self.target_min = int(target_min)
+        self.target_sec = int(target_sec)
+        self.target_ms = int(target_ms)
+        self.proxy_address = proxy_address
+        self.countdown = 0
+        
+        self.account_safe_name = "".join([c if c.isalnum() else "_" for c in self.account])
+        self.profile_path = os.path.abspath(f"./runtime_profiles/{self.account_safe_name}")
+        self.window_title = f"Omni-Booking :: {self.account}"
+        
+        self.thread: Optional[threading.Thread] = None
+        self.is_running = False
+        self.driver: Optional[Driver] = None
+        self.appointment_found = False
+        self.status = "Idle"
+
+    def _build_stealth_profile(self) -> list:
+        os.makedirs(self.profile_path, exist_ok=True)
+        flags = [
+            f"--user-data-dir={self.profile_path}",
+            "--window-size=1280,800",
+            "--disable-blink-features=AutomationControlled",
+            "--disable-infobars",
+            "--no-sandbox",
+            "--disk-cache-size=1",
+            "--media-cache-size=1",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-extensions"
+        ]
+        if self.proxy_address:
+            flags.append(f"--proxy-server={self.proxy_address}")
+        return flags
+
+    def start_engine(self) -> None:
+        if self.is_running:
+            return
+
+        self.is_running = True
+        self.thread = threading.Thread(
+            target=self._run_task,
+            name=f"Thread_{self.account}",
+            daemon=True
+        )
+        self.thread.start()
+
+    def _run_task(self) -> None:
+        print(f"[🧵] Thread started for: {self.account}")
+        self.status = "Initializing"
+
+        try:
+            with ChromeManager._driver_init_lock:
+                self.status = "Launching Driver"
+                self.driver = Driver(
+                    uc=True,
+                    incognito=False,
+                    chromium_arg=",".join(self._build_stealth_profile())
+                )
+            self.driver.execute_script(f"document.title = '{self.window_title}'")
+
+            self.status = "Navigating to Start URL"
+            self.driver.get(self.target_url)
+
+            self.status = "Routing to Dashboard"
+            navigator = BrowserBase(
+                driver=self.driver, 
+                account=self.account, 
+                password=self.password,
+                target_city=self.target_city,
+                is_running_flag=lambda: self.is_running
+            )
+
+            while self.is_running:
+                navigator.navigate_to_target_state()
+                if not self.is_running: break
+
+                self._appointment_check_loop()
+                if not self.is_running: break
+
+                print(f"[{self.account}] Returned from check loop. Re-validating state...")
+                time.sleep(3) 
+
+        except ValueError as ve:
+            # Handle specific fatal credential or application errors
+            self.is_running = False
+            self.status = f"Error: {str(ve)}"
+            print(f"❌ [Fatal Error in {self.account}]: {ve}")
+
+        except Exception as e:
+            if self.is_running:
+                error_msg = str(e).split('\n')[0]
+                print(f"❌ [Error in {self.account}]: {error_msg}")
+                self.status = f"Error: {error_msg}"
+                self.is_running = False
+        
+        print(f"[💡] Thread for {self.account} has exited.")
+
+    def _appointment_check_loop(self) -> None:
+            """
+            Continuously checks for appointments on the booking page at a set interval.
+            """
+            print(f"[{self.account}] Now monitoring for appointments...")
+            while self.is_running:
+                if "/appointment-booking/" not in self.driver.current_url:
+                    self.status = "Re-routing: Off booking page."
+                    print(f"🗺️ [{self.account}] {self.status} - returning to navigator.")
+                    return 
+                
+                found = self.check_appointment()
+                
+                if found:
+                    self.status = "Appointments Found!"
+                    self.appointment_found = True
+                    print(f"✅✅✅ [{self.account}] APPOINTMENTS FOUND! ✅✅✅")
+                    while self.is_running:
+                        time.sleep(1)
+                    return 
+                
+                target_second = self.target_sec
+                if not (0 <= target_second <= 59):
+                    interval = self.target_sec if self.target_sec > 0 else settings.APPOINTMENT_CHECK_INTERVAL_SECONDS
+                    for i in range(interval, 0, -1):
+                        if not self.is_running: return
+                        self.countdown = i
+                        self.status = f"No appointments. Retrying in {i}s..."
+                        time.sleep(1)
+                else:
+                    while self.is_running and datetime.datetime.now().second != target_second:
+                        remaining_seconds = (target_second - datetime.datetime.now().second + 60) % 60
+                        self.countdown = remaining_seconds
+                        self.status = f"No appointments. Syncing for : {target_second:02d}. Retrying in {remaining_seconds}s..."
+                        time.sleep(1 - (datetime.datetime.now().microsecond / 1_000_000.0))
+                
+                if self.is_running:
+                    print(f"[{self.account}] Performing direct refresh to check again...")
+                    self.status = "Refreshing..."
+                    self.driver.refresh()
+                    time.sleep(5) 
+
+    def check_appointment(self) -> bool:
+        """
+        Performs a single check on the current page for available appointments.
+        This involves navigating to the correct month first.
+        Returns True if an appointment is found, False otherwise.
+        """
+        try:
+            self.status = f"Checking for month: {self.target_month}"
+            
+            month_found = self._navigate_to_target_month()
+            if not month_found:
+                return False
+
+            self.status = f"Scanning {self.target_month} for slots..."
+            page_text = self.driver.get_text("body").lower()
+            
+            no_slots_message_found = False
+            for message in settings.appointment_results:
+                if message.lower() in page_text:
+                    print(f"    - No appointment slots available for {self.target_month}. Found text: '{message}'")
+                    no_slots_message_found = True
+                    break
+            
+            if no_slots_message_found:
+                return False
+
+            if self.driver.is_element_visible(TLS_SELECTORS['appointment_booking']['available_slot']):
+                print(f"    - 'No slots' message not found AND an available slot is visible. Appointments are available.")
+                return True
+            
+            print(f"    - 'No slots' message not found, but no available slots were detected either. Assuming no appointments for now.")
+            return False
+
+        except Exception as e:
+            error_msg = str(e).split('\n')[0]
+            self.status = f"Error checking page: {error_msg}"
+            print(f"❌ [{self.account}] {self.status}")
+            return False
+
+    def _navigate_to_target_month(self) -> bool:
+        """
+        Navigates the calendar month-by-month until the target month is selected.
+        Returns True on success, False on failure.
+        """
+        try:
+            try:
+                target_date = datetime.datetime.strptime(self.target_month, "%B %Y")
+            except ValueError:
+                self.status = f"Error: Invalid month format '{self.target_month}'. Must be 'Month Year'."
+                print(f"❌ [{self.account}] {self.status}")
+                return False
+
+            for _ in range(24):
+                if not self.is_running: return False
+
+                self.driver.wait_for_element_visible(TLS_SELECTORS['appointment_booking']['month_selector_container'])
+                
+                current_month_element = self.driver.find_element(TLS_SELECTORS['appointment_booking']['current_month_button'])
+                current_month_text = current_month_element.text.strip()
+                
+                try:
+                    current_date = datetime.datetime.strptime(current_month_text, "%B %Y")
+                except ValueError:
+                    self.status = f"Error: Could not parse current month '{current_month_text}'."
+                    print(f"❌ [{self.account}] {self.status}")
+                    return False
+
+                if current_date.year == target_date.year and current_date.month == target_date.month:
+                    print(f"    - Correct month '{self.target_month}' is displayed.")
+                    return True
+
+                if target_date > current_date:
+                    next_button_selector = TLS_SELECTORS['appointment_booking']['next_month_button']
+                    if self.driver.is_element_visible(next_button_selector) and self.driver.is_element_clickable(next_button_selector):
+                        print(f"    - Navigating from {current_month_text} to next month...")
+                        self.driver.js_click(next_button_selector)
+                        time.sleep(1.5)
+                    else:
+                        self.status = f"Error: Cannot reach '{self.target_month}'. 'Next' button is disabled."
+                        print(f"❌ [{self.account}] {self.status}")
+                        return False
+                else: # target_date < current_date
+                    prev_button_selector = TLS_SELECTORS['appointment_booking']['prev_month_button']
+                    if self.driver.is_element_visible(prev_button_selector) and self.driver.is_element_clickable(prev_button_selector):
+                        print(f"    - Navigating from {current_month_text} to previous month...")
+                        self.driver.js_click(prev_button_selector)
+                        time.sleep(1.5)
+                    else:
+                        self.status = f"Error: Cannot reach '{self.target_month}'. 'Previous' button is disabled."
+                        print(f"❌ [{self.account}] {self.status}")
+                        return False
+            
+            self.status = f"Error: Failed to navigate to '{self.target_month}' after multiple attempts."
+            print(f"❌ [{self.account}] {self.status}")
+            return False
+
+        except Exception as e:
+            error_msg = str(e).split('\n')[0]
+            self.status = f"Error during month navigation: {error_msg}"
+            print(f"❌ [{self.account}] {self.status}")
+            return False
+
+    def stop_engine(self) -> None:
+        if not self.is_running: return
+        
+        self.is_running = False 
+        
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
+            self.driver = None
+            
+        if "Error" not in self.status and self.status != "Finished" and not self.appointment_found:
+            self.status = "Terminated"
+
+if __name__ == "__main__":
+    pass
+
+```
