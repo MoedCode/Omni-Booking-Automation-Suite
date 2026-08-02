@@ -30,6 +30,8 @@ class BrowserBase:
             lambda d: d.execute_script('return document.readyState') == 'complete'
         )
 
+        page_source = self.driver.get_page_source().lower()
+
         # Priority 0: Cloudflare
         if "Just a moment..." in self.driver.get_title() and self.driver.is_element_visible(TLS_SELECTORS['cloudflare']['heading_text']):
             return "cloudflare_interstitial"
@@ -62,21 +64,21 @@ class BrowserBase:
         if self.driver.is_element_visible(TLS_SELECTORS['choose_country']['select_dropdown']):
             return "choose_country"
 
-        # Priority 6: Logged-in Welcome/Info Page (must be checked before broad landing page).
-        # A key differentiator: a logged-in page has the user icon but NOT the main login button.
-        if self.driver.is_element_visible(TLS_SELECTORS['info_page']['user_icon_button']) and \
-           not self.driver.is_element_present(TLS_SELECTORS['info_page']['header_login_btn']):
-            if self.driver.is_element_present("h1#page-title"):
-                try:
-                    if "welcome to the visa application centre" in self.driver.get_text("h1#page-title").lower():
-                        return "logged_in_info_page"
-                except Exception:
-                    pass
+        # Priority 6: Logged-in vs Logged-out Info Page Detection
+        # Check if user icon exists, then examine the hidden DOM to be 100% sure
+        if self.driver.is_element_present(TLS_SELECTORS['info_page']['user_icon_button']):
+            if 'id="my-application"' in page_source or 'my application' in page_source:
+                return "logged_in_info_page"
+            elif 'id="login"' in page_source or 'href="/en-us/login"' in page_source:
+                return "landing_welcome_page"
 
-        # Priority 7: Pre-login Welcome Page (the one we get stuck on)
-        if "welcome to the visa application centre" in self.driver.get_text("body").lower() or \
-           "welcome to the tlscontact visa application website" in self.driver.get_text("body").lower():
-            return "landing_welcome_page"
+        # Priority 7: Pre-login Welcome Page Text Fallback
+        if "welcome to the visa application centre" in page_source or \
+           "welcome to the tlscontact visa application website" in page_source:
+            if 'id="login"' in page_source or 'href="/en-us/login"' in page_source:
+                return "landing_welcome_page"
+            else:
+                return "logged_in_info_page"
         
         # Priority 8: Choose City
         if self.driver.is_element_present(TLS_SELECTORS['choose_city']['page_title_header']):
@@ -115,7 +117,6 @@ class BrowserBase:
     def _show_windows_alert(self, title: str, text: str) -> None:
         """Shows a native Windows message box. This is a blocking call."""
         try:
-            # MB_OK | MB_ICONERROR | MB_SYSTEMMODAL
             ctypes.windll.user32.MessageBoxW(0, text, title, 0x10 | 0x1000)
         except Exception as e:
             print(f"[⚠️] Could not show Windows alert: {e}")
@@ -142,7 +143,7 @@ class BrowserBase:
                 self._workflow_logged_in_info_page()
         except Exception as e:
             # Propagate fatal login credential errors up to ChromeManager to terminate immediately
-            if isinstance(e, ValueError) and "Invalid username or password" in str(e):
+            if isinstance(e, ValueError) and ("Invalid username or password" in str(e) or "No application created" in str(e)):
                 raise  
             
             print(f"[❌] {self.account} failed to handle {current_state}: {e}")
@@ -151,26 +152,26 @@ class BrowserBase:
         """Handles the Welcome landing page by clicking the User Icon and then clicking LOGIN."""
         print(f"[🌐] {self.account} on Welcome page. Looking for Login option...")
         try:
-            # Check if there is an explicit LOGIN button/link visible first
-            login_link_selector = TLS_SELECTORS['choose_country']['login_link']
+            # Check for Desktop LOGIN button
+            login_link_selector = "a[href*='/login']"
             if self.driver.is_element_visible(login_link_selector):
                 self.driver.js_click(login_link_selector)
                 print(f"    - Clicked direct Login link.")
                 time.sleep(2)
                 return
 
-            # Otherwise open the user menu dropdown in top right
-            user_btn_selector = TLS_SELECTORS['choose_country']['user_dropdown_btn']
-            self.driver.wait_for_element_present(user_btn_selector, timeout=5)
-            self.driver.js_click(user_btn_selector)
-            print(f"    - Opened user account dropdown menu.")
-            time.sleep(1)
+            # Check for Mobile User Icon
+            user_btn_selector = "svg[aria-label='User icon']"
+            if self.driver.is_element_present(user_btn_selector):
+                self.driver.js_click(user_btn_selector)
+                print(f"    - Opened user account dropdown menu.")
+                time.sleep(1.5)
 
-            # Click the LOGIN option inside the popup menu
-            self.driver.wait_for_element_present(login_link_selector, timeout=5)
-            self.driver.js_click(login_link_selector)
-            print(f"    - Clicked LOGIN option.")
-            time.sleep(3)
+                login_div = "div#login"
+                self.driver.wait_for_element_present(login_div, timeout=5)
+                self.driver.js_click(login_div)
+                print(f"    - Clicked LOGIN option.")
+                time.sleep(3)
         except Exception as e:
             print(f"[⚠️] Could not navigate from Welcome page to Login: {e}")
             time.sleep(3)
@@ -179,7 +180,7 @@ class BrowserBase:
         # Give the page a moment to render potential error messages from a previous attempt.
         time.sleep(1.5)
 
-        # CRITICAL: Check for invalid credentials error BEFORE doing anything else.
+        # 1. CRITICAL: Check for invalid credentials
         try:
             error_el = self.driver.find_element(By.CSS_SELECTOR, TLS_SELECTORS['login_form']['invalid_credentials_error'])
             error_text = error_el.text.strip().lower()
@@ -283,49 +284,51 @@ class BrowserBase:
 
     def _workflow_logged_in_info_page(self) -> None:
         print(f"[👤] {self.account} on logged-in info page. Navigating to 'My Application'...")
-        # Click user icon to reveal dropdown
         self.actor.human_click(TLS_SELECTORS['info_page']['user_icon_button'])
         self.actor.natural_delay()
-        # Click 'My Application' in the dropdown
-        self.driver.wait_for_element_visible(TLS_SELECTORS['info_page']['my_application_button'])
-        self.actor.human_click(TLS_SELECTORS['info_page']['my_application_button'])
+        
+        # Click 'My Application' directly
+        my_app_selector = "div#my-application"
+        self.driver.wait_for_element_present(my_app_selector, timeout=5)
+        self.driver.js_click(my_app_selector)
         print(f"    - Clicked 'My Application'.")
+        time.sleep(2)
 
     def _workflow_application_list(self) -> None:
         print(f"[📋] {self.account} on application list page.")
 
-        # --- Handle City Tabs if they exist ---
+        # --- Handle City Tabs via direct URL navigation ---
         city_tabs_selector = TLS_SELECTORS['application_list']['city_tabs']
         if self.driver.is_element_visible(city_tabs_selector):
-            print(f"    - Multiple city centers detected. Ensuring '{self.target_city}' is selected...")
+            print(f"    - Multiple city centers detected. Checking if '{self.target_city}' is selected...")
 
             try:
-                # Use get_attribute("textContent") instead of .text to bypass React/Flexbox visibility hiding issues
+                # 1. First, find if we are currently on the correct tab
                 selected_tab_element = self.driver.find_element(TLS_SELECTORS['application_list']['selected_city_tab_text'])
-                selected_tab_text = selected_tab_element.get_attribute("textContent").strip()
+                selected_tab_text = self.driver.execute_script("return arguments[0].textContent;", selected_tab_element).strip()
 
                 if self.target_city.lower() in selected_tab_text.lower():
                     print(f"    - Correct city tab '{self.target_city}' is already selected.")
                 else:
                     print(f"    - Current tab is '{selected_tab_text}'. Switching to '{self.target_city}'...")
+                    
+                    # 2. Extract the href attribute from the target city tab and navigate to it directly
                     all_tabs = self.driver.find_elements(city_tabs_selector)
-                    tab_found_and_clicked = False
+                    tab_found = False
                     
                     for tab in all_tabs:
-                        try:
-                            # Extract text directly from DOM to avoid empty string returns
-                            tab_text = tab.get_attribute("textContent").strip()
-                            if self.target_city.lower() in tab_text.lower():
-                                self.driver.js_click(tab)
-                                print(f"    - Clicked tab for '{self.target_city}'. Waiting for page to reload...")
-                                tab_found_and_clicked = True
-                                time.sleep(4)  # Wait for the applications list to refresh for the new city
+                        tab_html = tab.get_attribute("innerHTML").lower()
+                        if self.target_city.lower() in tab_html:
+                            target_url = tab.get_attribute("href")
+                            if target_url:
+                                print(f"    - Found link for '{self.target_city}'. Navigating directly to URL...")
+                                self.driver.get(target_url) # Force navigation instead of clicking
+                                tab_found = True
+                                time.sleep(4)  # Wait for page to reload
                                 break
-                        except Exception:
-                            continue
                     
-                    if not tab_found_and_clicked:
-                        print(f"    - [⚠️] Warning: Could not find a tab for city '{self.target_city}'. Proceeding with the current selection.")
+                    if not tab_found:
+                        print(f"    - [⚠️] Warning: Could not find a tab for city '{self.target_city}'.")
             except Exception as e:
                 print(f"    - [⚠️] Could not process city tabs: {e}. Proceeding with default.")
 
@@ -334,9 +337,10 @@ class BrowserBase:
         if "no application created" in page_text:
             error_msg = f"No application exists for '{self.target_city}'. Please click 'Create a new application' manually."
             print(f"[❌] {self.account} {error_msg}")
-            self.status = "Error: No Application Created"
+            
+            # Immediately show alert and stop the thread
             self._show_windows_alert("Missing Application", f"Account: {self.account}\nCity: {self.target_city}\n\n{error_msg}")
-            raise ValueError("No application created.") # Stop this bot instance
+            raise ValueError("No application created.") 
 
         # --- Proceed to click the 'Select' button ---
         print(f"    - Looking for 'Select' button...")
@@ -350,6 +354,7 @@ class BrowserBase:
             error_msg = str(e).split('\n')[0]
             print(f"[❌] {self.account} failed to click 'Select' button: {error_msg}")
             time.sleep(5)
+
     def _workflow_service_level(self) -> None:
         print(f"[⚙️] {self.account} on Service Level page. Clicking 'Continue'...")
         try:

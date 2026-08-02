@@ -24,8 +24,6 @@ class ChromeManager:
     Delegates all page interaction to BrowserBase.
     """
 
-    # Class-level lock to prevent race conditions during driver initialization,
-    # especially when using seleniumbase's uc=True mode, which patches files on the fly.
     _driver_init_lock = threading.Lock()
 
     def __init__(
@@ -53,8 +51,6 @@ class ChromeManager:
         self.proxy_address = proxy_address
         self.countdown = 0
         
-        # --- Unique Identifiers for Isolation & Viewing ---
-        # Create a filesystem-safe name for the profile directory
         self.account_safe_name = "".join([c if c.isalnum() else "_" for c in self.account])
         self.profile_path = os.path.abspath(f"./runtime_profiles/{self.account_safe_name}")
         self.window_title = f"Omni-Booking :: {self.account}"
@@ -100,7 +96,6 @@ class ChromeManager:
         self.status = "Initializing"
 
         try:
-            # 1. Initialize browser (synchronized to prevent race conditions)
             with ChromeManager._driver_init_lock:
                 self.status = "Launching Driver"
                 self.driver = Driver(
@@ -110,13 +105,10 @@ class ChromeManager:
                 )
             self.driver.execute_script(f"document.title = '{self.window_title}'")
 
-            # 2. Navigate to the start URL
             self.status = "Navigating to Start URL"
             self.driver.get(self.target_url)
 
-            # 3. Hand over control to the BrowserBase (The State Machine)
             self.status = "Routing to Dashboard"
-            # Pass lambda to allow the loop to monitor the thread's running state
             navigator = BrowserBase(
                 driver=self.driver, 
                 account=self.account, 
@@ -125,22 +117,15 @@ class ChromeManager:
                 is_running_flag=lambda: self.is_running
             )
 
-            # 4. Master control loop. This makes the bot resilient.
-            # If it gets navigated away from the appointment page, it will
-            # automatically re-run the navigation logic to get back.
             while self.is_running:
-                # This will navigate to the appointment page. If it's already there, it will break quickly.
                 navigator.navigate_to_target_state()
                 if not self.is_running: break
 
-                # This will run its own loop, checking for appointments.
-                # If it ever gets navigated away, it will return.
                 self._appointment_check_loop()
                 if not self.is_running: break
 
-                # If _appointment_check_loop returned, it means we are off-track.
                 print(f"[{self.account}] Returned from check loop. Re-validating state...")
-                time.sleep(3) # Small delay before re-navigating
+                time.sleep(3) 
 
         except ValueError as ve:
             # Handle specific fatal credential or application errors
@@ -155,7 +140,6 @@ class ChromeManager:
                 self.status = f"Error: {error_msg}"
                 self.is_running = False
         
-        # When the loop breaks (is_running=False) or an exception occurs, the thread ends.
         print(f"[💡] Thread for {self.account} has exited.")
 
     def _appointment_check_loop(self) -> None:
@@ -164,30 +148,23 @@ class ChromeManager:
             """
             print(f"[{self.account}] Now monitoring for appointments...")
             while self.is_running:
-                # 1. Check if we are still on the correct page
                 if "/appointment-booking/" not in self.driver.current_url:
                     self.status = "Re-routing: Off booking page."
                     print(f"🗺️ [{self.account}] {self.status} - returning to navigator.")
-                    return # Exit the check loop to re-trigger navigation
+                    return 
                 
-                # 2. Perform the check
                 found = self.check_appointment()
                 
                 if found:
                     self.status = "Appointments Found!"
                     self.appointment_found = True
                     print(f"✅✅✅ [{self.account}] APPOINTMENTS FOUND! ✅✅✅")
-                    # Keep the browser open and status active until manually stopped
                     while self.is_running:
                         time.sleep(1)
-                    return # Exit loop once found
-                
-                # 3. If not found, wait for the next interval
-                # This logic supports two modes: synchronized (0-59s) and interval (>59s).
+                    return 
                 
                 target_second = self.target_sec
                 if not (0 <= target_second <= 59):
-                    # Interval Refresh Mode
                     interval = self.target_sec if self.target_sec > 0 else settings.APPOINTMENT_CHECK_INTERVAL_SECONDS
                     for i in range(interval, 0, -1):
                         if not self.is_running: return
@@ -195,19 +172,18 @@ class ChromeManager:
                         self.status = f"No appointments. Retrying in {i}s..."
                         time.sleep(1)
                 else:
-                    # Synchronized Refresh Mode
                     while self.is_running and datetime.datetime.now().second != target_second:
                         remaining_seconds = (target_second - datetime.datetime.now().second + 60) % 60
                         self.countdown = remaining_seconds
                         self.status = f"No appointments. Syncing for : {target_second:02d}. Retrying in {remaining_seconds}s..."
                         time.sleep(1 - (datetime.datetime.now().microsecond / 1_000_000.0))
                 
-                # 4. Refresh the page to get new data
                 if self.is_running:
                     print(f"[{self.account}] Performing direct refresh to check again...")
                     self.status = "Refreshing..."
                     self.driver.refresh()
-                    time.sleep(5) # Wait for page to settle after refresh
+                    time.sleep(5) 
+
     def check_appointment(self) -> bool:
         """
         Performs a single check on the current page for available appointments.
@@ -217,14 +193,10 @@ class ChromeManager:
         try:
             self.status = f"Checking for month: {self.target_month}"
             
-            # 1. Navigate to the correct month
             month_found = self._navigate_to_target_month()
             if not month_found:
-                # Status is already set by the navigation method on failure
                 return False
 
-            # 2. Check for any "no slots" messages.
-            # We get all text from the page's body and convert to lowercase for a case-insensitive search.
             self.status = f"Scanning {self.target_month} for slots..."
             page_text = self.driver.get_text("body").lower()
             
@@ -238,14 +210,10 @@ class ChromeManager:
             if no_slots_message_found:
                 return False
 
-            # 3. As a positive confirmation, check if an actual appointment slot element is visible.
-            # This avoids false positives if the "no slots" message is missing for some reason.
             if self.driver.is_element_visible(TLS_SELECTORS['appointment_booking']['available_slot']):
                 print(f"    - 'No slots' message not found AND an available slot is visible. Appointments are available.")
                 return True
             
-            # 4. Fallback: If no negative message is found, but also no positive slot is found,
-            # it's safer to assume there are no appointments. This can happen during page loads or with unexpected layouts.
             print(f"    - 'No slots' message not found, but no available slots were detected either. Assuming no appointments for now.")
             return False
 
@@ -268,7 +236,6 @@ class ChromeManager:
                 print(f"❌ [{self.account}] {self.status}")
                 return False
 
-            # Loop a max of 24 times to prevent infinite loops (e.g., 2 years of navigation)
             for _ in range(24):
                 if not self.is_running: return False
 
@@ -322,13 +289,12 @@ class ChromeManager:
     def stop_engine(self) -> None:
         if not self.is_running: return
         
-        self.is_running = False # Signal thread to stop its loops
+        self.is_running = False 
         
         if self.driver:
             try:
                 self.driver.quit()
             except Exception:
-                # Ignore errors, e.g., if browser was already closed manually
                 pass
             self.driver = None
             

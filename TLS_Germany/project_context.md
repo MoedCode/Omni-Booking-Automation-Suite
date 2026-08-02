@@ -106,7 +106,157 @@ then do login
 ```
 should chose login 
 
+the issue it  clicks the div 
+```thml
+<div class="absolute right-0 z-[12] rounded-lg bg-white p-2 shadow-primary dropdown-enter-done"><div class="min-w-40"><div class="py-2"><a href="/en-us/login"><div id="login" class="cursor-pointer whitespace-nowrap rounded-lg px-2 py-2 text-sm text-primary-500 hover:bg-gray-100">LOGIN</div></a><a href="/en-us/registration?issuerId=egALY2de"><div id="register" class="cursor-pointer whitespace-nowrap rounded-lg px-2 py-2 text-sm text-primary-500 hover:bg-gray-100">REGISTER</div></a></div></div></div>
+```
+but dint click the login button 
+```html
+<div id="login" class="cursor-pointer whitespace-nowrap rounded-lg px-2 py-2 text-sm text-primary-500 hover:bg-gray-100">LOGIN</div>
+```
+here is teminal 
+```sh
+(wenv) PS C:\Users\Active\Desktop\Coding\Gradutaion\CustProjects\Omni-Booking-Automation-Suite\TLS_Germany> 
+:) python.exe .\app.py
+[▶️] 'View' clicked on idle instance. Launching tonil42212@rapplo.com...
+[🧵] Thread started for: tonil42212@rapplo.com
+[📍] tonil42212@rapplo.com identified location: LOGIN_FORM
+[🔐] tonil42212@rapplo.com injecting credentials...
+    - Credentials entered. Checking for CAPTCHA...
+[🧩] tonil42212@rapplo.com CAPTCHA detected on login form.
+[🧩][15452] reCAPTCHA v2 detected. Initiating Audio Bypass strategy...
+    - Clicked checkbox. Waiting for challenge...
+    - Switched to audio challenge.
+    - Looking for audio download link...
+    - Audio stream URL captured. Downloading silently...
+    - Transcription successful: 'no his objectives'
+    - Submitted transcription and clicked Verify.
+[✅][15452] CAPTCHA Audio Bypass successful!
+    - CAPTCHA solved successfully. Submitting credentials.
+[✅] tonil42212@rapplo.com login submitted.
+[📍] tonil42212@rapplo.com identified location: CHOOSE_COUNTRY
+[🌍] tonil42212@rapplo.com handling country selection...
+    - Selected country: Egypt
+    - Confirmed country selection.
+[📍] tonil42212@rapplo.com identified location: CHOOSE_CITY
+[🏢] tonil42212@rapplo.com handling city selection...
+    - Found card for city: Alexandria
+    - Clicked 'Continue' for Alexandria.
+[📍] tonil42212@rapplo.com identified location: LOGGED_IN_INFO_PAGE
+[👤] tonil42212@rapplo.com on logged-in info page. Navigating to 'My Application'...
+    - Clicked 'My Application'.
+[📍] tonil42212@rapplo.com identified location: INFO_PAGE
+[ℹ️] tonil42212@rapplo.com found info page. Navigating to login...
+[📍] tonil42212@rapplo.com identified location: APPLICATION_LIST
+[📋] tonil42212@rapplo.com on application list page.
+    - Multiple city centers detected. Ensuring 'Alexandria' is selected...
+    - Correct city tab 'Alexandria' is already selected.
+    - Looking for 'Select' button...
+[✅] tonil42212@rapplo.com successfully clicked 'Select'.
+[📍] tonil42212@rapplo.com identified location: APPLICATION_LIST
+[📋] tonil42212@rapplo.com on application list page.
+    - Multiple city centers detected. Ensuring 'Alexandria' is selected...
+    - Current tab is 'El-Sheikh Zayed'. Switching to 'Alexandria'...
+    - [⚠️] Warning: Could not find a tab for city 'Alexandria'. Proceeding with the current selection.
+[❌] tonil42212@rapplo.com No application exists for 'Alexandria'. Please click 'Create a new application' manually.
+[❌] tonil42212@rapplo.com failed to handle application_list: No application created.
+[📍] tonil42212@rapplo.com identified location: APPLICATION_LIST
+[📋] tonil42212@rapplo.com on application list page.
+    - Multiple city centers detected. Ensuring 'Alexandria' is selected...
+    - Current tab is 'El-Sheikh Zayed'. Switching to 'Alexandria'...
+    - [⚠️] Warning: Could not find a tab for city 'Alexandria'. Proceeding with the current selection.
+[❌] tonil42212@rapplo.com No application exists for 'Alexandria'. Please click 'Create a new application' manually.
+[❌] tonil42212@rapplo.com failed to handle application_list: No application created.
+[📍] tonil42212@rapplo.com identified location: APPLICATION_LIST
+[📋] tonil42212@rapplo.com on application list page.
+    - Multiple city centers detected. Ensuring 'Alexandria' is selected...
+    - Correct city tab 'Alexandria' is already selected.
+    - Looking for 'Select' button...
+[✅] tonil42212@rapplo.com successfully clicked 'Select'.
+[📍] tonil42212@rapplo.com identified location: SERVICE_LEVEL
+[⚙️] tonil42212@rapplo.com on Service Level page. Clicking 'Continue'...
+[✅] tonil42212@rapplo.com skipped additional services successfully.
+[🎯] tonil42212@rapplo.com reached Appointment Booking page. Handing over to appointment checker...
+[tonil42212@rapplo.com] Now monitoring for appointments...
+    - Correct month 'August 2026' is displayed.
+    - No appointment slots available for August 2026. Found text: 'We currently don’t have any appointment'
+[tonil42212@rapplo.com] Performing direct refresh to check again...
+    - Correct month 'August 2026' is displayed.
+    - No appointment slots available for August 2026. Found text: 'We currently don’t have any appointment'
+[tonil42212@rapplo.com] Performing direct refresh to check again...
+🗺️ [tonil42212@rapplo.com] Re-routing: Off booking page. - returning to navigator.
+[tonil42212@rapplo.com] Returned from check loop. Re-validating state...
+[📍] tonil42212@rapplo.com identified location: CHOOSE_COUNTRY
+[🌍] tonil42212@rapplo.com handling country selection...
+    - Selected country: Egypt
+    - Confirmed country selection.
+[📍] tonil42212@rapplo.com identified location: CHOOSE_CITY
+[🏢] tonil42212@rapplo.com handling city selection...
+    - Found card for city: Alexandria
+    - Clicked 'Continue' for Alexandria.
+[📍] tonil42212@rapplo.com identified location: LOGGED_IN_INFO_PAGE
+[👤] tonil42212@rapplo.com on logged-in info page. Navigating to 'My Application'...
+[❌] tonil42212@rapplo.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 10 seconds!
 
+[📍] tonil42212@rapplo.com identified location: LOGGED_IN_INFO_PAGE
+[👤] tonil42212@rapplo.com on logged-in info page. Navigating to 'My Application'...
+[❌] tonil42212@rapplo.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 10 seconds!
+
+[📍] tonil42212@rapplo.com identified location: CHOOSE_COUNTRY
+[🌍] tonil42212@rapplo.com handling country selection...
+    - Selected country: Egypt
+    - Confirmed country selection.
+[📍] tonil42212@rapplo.com identified location: CHOOSE_CITY
+[🏢] tonil42212@rapplo.com handling city selection...
+    - Found card for city: Alexandria
+    - Clicked 'Continue' for Alexandria.
+[📍] tonil42212@rapplo.com identified location: LOGGED_IN_INFO_PAGE
+[👤] tonil42212@rapplo.com on logged-in info page. Navigating to 'My Application'...
+[❌] tonil42212@rapplo.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 10 seconds!
+
+[📍] tonil42212@rapplo.com identified location: LOGGED_IN_INFO_PAGE
+[👤] tonil42212@rapplo.com on logged-in info page. Navigating to 'My Application'...
+[❌] tonil42212@rapplo.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 10 seconds!
+
+[📍] tonil42212@rapplo.com identified location: LOGGED_IN_INFO_PAGE
+[👤] tonil42212@rapplo.com on logged-in info page. Navigating to 'My Application'...
+[❌] tonil42212@rapplo.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 10 seconds!
+
+[📍] tonil42212@rapplo.com identified location: LOGGED_IN_INFO_PAGE
+[👤] tonil42212@rapplo.com on logged-in info page. Navigating to 'My Application'...
+[❌] tonil42212@rapplo.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 10 seconds!
+
+[📍] tonil42212@rapplo.com identified location: LOGGED_IN_INFO_PAGE
+[👤] tonil42212@rapplo.com on logged-in info page. Navigating to 'My Application'...
+[❌] tonil42212@rapplo.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 10 seconds!
+
+[📍] tonil42212@rapplo.com identified location: LOGGED_IN_INFO_PAGE
+[👤] tonil42212@rapplo.com on logged-in info page. Navigating to 'My Application'...
+[❌] tonil42212@rapplo.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 10 seconds!
+
+[📍] tonil42212@rapplo.com identified location: LOGGED_IN_INFO_PAGE
+[👤] tonil42212@rapplo.com on logged-in info page. Navigating to 'My Application'...
+[❌] tonil42212@rapplo.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 10 seconds!
+
+[📍] tonil42212@rapplo.com identified location: LOGGED_IN_INFO_PAGE
+[👤] tonil42212@rapplo.com on logged-in info page. Navigating to 'My Application'...
+[❌] tonil42212@rapplo.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 10 seconds!
+
+[📍] tonil42212@rapplo.com identified location: LOGGED_IN_INFO_PAGE
+[👤] tonil42212@rapplo.com on logged-in info page. Navigating to 'My Application'...
+[❌] tonil42212@ra
+
+```
 ```
 
 
@@ -369,8 +519,10 @@ class BrowserBase:
         if self.driver.is_element_visible(TLS_SELECTORS['choose_country']['select_dropdown']):
             return "choose_country"
 
-        # Priority 6: Logged-in Welcome/Info Page (must be checked before broad landing page)
-        if self.driver.is_element_visible(TLS_SELECTORS['info_page']['user_icon_button']):
+        # Priority 6: Logged-in Welcome/Info Page (must be checked before broad landing page).
+        # A key differentiator: a logged-in page has the user icon but NOT the main login button.
+        if self.driver.is_element_visible(TLS_SELECTORS['info_page']['user_icon_button']) and \
+           not self.driver.is_element_present(TLS_SELECTORS['info_page']['header_login_btn']):
             if self.driver.is_element_present("h1#page-title"):
                 try:
                     if "welcome to the visa application centre" in self.driver.get_text("h1#page-title").lower():
@@ -1351,7 +1503,7 @@ TLS_SELECTORS = {
         "apply_for_visa_btn": "button#btn-apply-for-a-visa",
         "cookie_close_btn": "button.osano-cm-close",
         "user_dropdown_btn": "svg[aria-label='User icon']",
-        "login_link": "a[href*='/login']"
+        "login_link": "div#login"
     },
 
     # [1] choose_city
