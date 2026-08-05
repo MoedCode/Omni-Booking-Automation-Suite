@@ -487,6 +487,8 @@ class BrowserBase:
             lambda d: d.execute_script('return document.readyState') == 'complete'
         )
 
+        page_source = self.driver.get_page_source().lower()
+
         # Priority 0: Cloudflare
         if "Just a moment..." in self.driver.get_title() and self.driver.is_element_visible(TLS_SELECTORS['cloudflare']['heading_text']):
             return "cloudflare_interstitial"
@@ -519,21 +521,21 @@ class BrowserBase:
         if self.driver.is_element_visible(TLS_SELECTORS['choose_country']['select_dropdown']):
             return "choose_country"
 
-        # Priority 6: Logged-in Welcome/Info Page (must be checked before broad landing page).
-        # A key differentiator: a logged-in page has the user icon but NOT the main login button.
-        if self.driver.is_element_visible(TLS_SELECTORS['info_page']['user_icon_button']) and \
-           not self.driver.is_element_present(TLS_SELECTORS['info_page']['header_login_btn']):
-            if self.driver.is_element_present("h1#page-title"):
-                try:
-                    if "welcome to the visa application centre" in self.driver.get_text("h1#page-title").lower():
-                        return "logged_in_info_page"
-                except Exception:
-                    pass
+        # Priority 6: Logged-in vs Logged-out Info Page Detection
+        # Check if user icon exists, then examine the hidden DOM to be 100% sure
+        if self.driver.is_element_present(TLS_SELECTORS['info_page']['user_icon_button']):
+            if 'id="my-application"' in page_source or 'my application' in page_source:
+                return "logged_in_info_page"
+            elif 'id="login"' in page_source or 'href="/en-us/login"' in page_source:
+                return "landing_welcome_page"
 
-        # Priority 7: Pre-login Welcome Page (the one we get stuck on)
-        if "welcome to the visa application centre" in self.driver.get_text("body").lower() or \
-           "welcome to the tlscontact visa application website" in self.driver.get_text("body").lower():
-            return "landing_welcome_page"
+        # Priority 7: Pre-login Welcome Page Text Fallback
+        if "welcome to the visa application centre" in page_source or \
+           "welcome to the tlscontact visa application website" in page_source:
+            if 'id="login"' in page_source or 'href="/en-us/login"' in page_source:
+                return "landing_welcome_page"
+            else:
+                return "logged_in_info_page"
         
         # Priority 8: Choose City
         if self.driver.is_element_present(TLS_SELECTORS['choose_city']['page_title_header']):
@@ -572,7 +574,6 @@ class BrowserBase:
     def _show_windows_alert(self, title: str, text: str) -> None:
         """Shows a native Windows message box. This is a blocking call."""
         try:
-            # MB_OK | MB_ICONERROR | MB_SYSTEMMODAL
             ctypes.windll.user32.MessageBoxW(0, text, title, 0x10 | 0x1000)
         except Exception as e:
             print(f"[⚠️] Could not show Windows alert: {e}")
@@ -599,7 +600,7 @@ class BrowserBase:
                 self._workflow_logged_in_info_page()
         except Exception as e:
             # Propagate fatal login credential errors up to ChromeManager to terminate immediately
-            if isinstance(e, ValueError) and "Invalid username or password" in str(e):
+            if isinstance(e, ValueError) and ("Invalid username or password" in str(e) or "No application created" in str(e)):
                 raise  
             
             print(f"[❌] {self.account} failed to handle {current_state}: {e}")
@@ -608,26 +609,26 @@ class BrowserBase:
         """Handles the Welcome landing page by clicking the User Icon and then clicking LOGIN."""
         print(f"[🌐] {self.account} on Welcome page. Looking for Login option...")
         try:
-            # Check if there is an explicit LOGIN button/link visible first
-            login_link_selector = TLS_SELECTORS['choose_country']['login_link']
+            # Check for Desktop LOGIN button
+            login_link_selector = "a[href*='/login']"
             if self.driver.is_element_visible(login_link_selector):
                 self.driver.js_click(login_link_selector)
                 print(f"    - Clicked direct Login link.")
                 time.sleep(2)
                 return
 
-            # Otherwise open the user menu dropdown in top right
-            user_btn_selector = TLS_SELECTORS['choose_country']['user_dropdown_btn']
-            self.driver.wait_for_element_present(user_btn_selector, timeout=5)
-            self.driver.js_click(user_btn_selector)
-            print(f"    - Opened user account dropdown menu.")
-            time.sleep(1)
+            # Check for Mobile User Icon
+            user_btn_selector = "svg[aria-label='User icon']"
+            if self.driver.is_element_present(user_btn_selector):
+                self.driver.js_click(user_btn_selector)
+                print(f"    - Opened user account dropdown menu.")
+                time.sleep(1.5)
 
-            # Click the LOGIN option inside the popup menu
-            self.driver.wait_for_element_present(login_link_selector, timeout=5)
-            self.driver.js_click(login_link_selector)
-            print(f"    - Clicked LOGIN option.")
-            time.sleep(3)
+                login_div = "div#login"
+                self.driver.wait_for_element_present(login_div, timeout=5)
+                self.driver.js_click(login_div)
+                print(f"    - Clicked LOGIN option.")
+                time.sleep(3)
         except Exception as e:
             print(f"[⚠️] Could not navigate from Welcome page to Login: {e}")
             time.sleep(3)
@@ -636,7 +637,7 @@ class BrowserBase:
         # Give the page a moment to render potential error messages from a previous attempt.
         time.sleep(1.5)
 
-        # CRITICAL: Check for invalid credentials error BEFORE doing anything else.
+        # 1. CRITICAL: Check for invalid credentials
         try:
             error_el = self.driver.find_element(By.CSS_SELECTOR, TLS_SELECTORS['login_form']['invalid_credentials_error'])
             error_text = error_el.text.strip().lower()
@@ -699,9 +700,11 @@ class BrowserBase:
         )
         
         select = Select(select_element)
-        select.select_by_visible_text(settings.DEFAULT_INSTANCE_SETTINGS['country'])
+        # This assumes the entire application is configured for one target country in settings.
+        country_to_select = settings.DEFAULT_INSTANCE_SETTINGS.get('country', 'Egypt')
+        select.select_by_visible_text(country_to_select)
 
-        print(f"    - Selected country: {settings.DEFAULT_INSTANCE_SETTINGS['country']}")
+        print(f"    - Selected country: {country_to_select}")
         self.actor.natural_delay()
         self.actor.human_click(TLS_SELECTORS['choose_country']['confirm_country_btn'])
         print(f"    - Confirmed country selection.")
@@ -740,49 +743,51 @@ class BrowserBase:
 
     def _workflow_logged_in_info_page(self) -> None:
         print(f"[👤] {self.account} on logged-in info page. Navigating to 'My Application'...")
-        # Click user icon to reveal dropdown
         self.actor.human_click(TLS_SELECTORS['info_page']['user_icon_button'])
         self.actor.natural_delay()
-        # Click 'My Application' in the dropdown
-        self.driver.wait_for_element_visible(TLS_SELECTORS['info_page']['my_application_button'])
-        self.actor.human_click(TLS_SELECTORS['info_page']['my_application_button'])
+        
+        # Click 'My Application' directly
+        my_app_selector = "div#my-application"
+        self.driver.wait_for_element_present(my_app_selector, timeout=5)
+        self.driver.js_click(my_app_selector)
         print(f"    - Clicked 'My Application'.")
+        time.sleep(2)
 
     def _workflow_application_list(self) -> None:
         print(f"[📋] {self.account} on application list page.")
 
-        # --- Handle City Tabs if they exist ---
+        # --- Handle City Tabs via direct URL navigation ---
         city_tabs_selector = TLS_SELECTORS['application_list']['city_tabs']
         if self.driver.is_element_visible(city_tabs_selector):
-            print(f"    - Multiple city centers detected. Ensuring '{self.target_city}' is selected...")
+            print(f"    - Multiple city centers detected. Checking if '{self.target_city}' is selected...")
 
             try:
-                # Use get_attribute("textContent") instead of .text to bypass React/Flexbox visibility hiding issues
+                # 1. First, find if we are currently on the correct tab
                 selected_tab_element = self.driver.find_element(TLS_SELECTORS['application_list']['selected_city_tab_text'])
-                selected_tab_text = selected_tab_element.get_attribute("textContent").strip()
+                selected_tab_text = self.driver.execute_script("return arguments[0].textContent;", selected_tab_element).strip()
 
                 if self.target_city.lower() in selected_tab_text.lower():
                     print(f"    - Correct city tab '{self.target_city}' is already selected.")
                 else:
                     print(f"    - Current tab is '{selected_tab_text}'. Switching to '{self.target_city}'...")
+                    
+                    # 2. Extract the href attribute from the target city tab and navigate to it directly
                     all_tabs = self.driver.find_elements(city_tabs_selector)
-                    tab_found_and_clicked = False
+                    tab_found = False
                     
                     for tab in all_tabs:
-                        try:
-                            # Extract text directly from DOM to avoid empty string returns
-                            tab_text = tab.get_attribute("textContent").strip()
-                            if self.target_city.lower() in tab_text.lower():
-                                self.driver.js_click(tab)
-                                print(f"    - Clicked tab for '{self.target_city}'. Waiting for page to reload...")
-                                tab_found_and_clicked = True
-                                time.sleep(4)  # Wait for the applications list to refresh for the new city
+                        tab_html = tab.get_attribute("innerHTML").lower()
+                        if self.target_city.lower() in tab_html:
+                            target_url = tab.get_attribute("href")
+                            if target_url:
+                                print(f"    - Found link for '{self.target_city}'. Navigating directly to URL...")
+                                self.driver.get(target_url) # Force navigation instead of clicking
+                                tab_found = True
+                                time.sleep(4)  # Wait for page to reload
                                 break
-                        except Exception:
-                            continue
                     
-                    if not tab_found_and_clicked:
-                        print(f"    - [⚠️] Warning: Could not find a tab for city '{self.target_city}'. Proceeding with the current selection.")
+                    if not tab_found:
+                        print(f"    - [⚠️] Warning: Could not find a tab for city '{self.target_city}'.")
             except Exception as e:
                 print(f"    - [⚠️] Could not process city tabs: {e}. Proceeding with default.")
 
@@ -791,9 +796,10 @@ class BrowserBase:
         if "no application created" in page_text:
             error_msg = f"No application exists for '{self.target_city}'. Please click 'Create a new application' manually."
             print(f"[❌] {self.account} {error_msg}")
-            self.status = "Error: No Application Created"
+            
+            # Immediately show alert and stop the thread
             self._show_windows_alert("Missing Application", f"Account: {self.account}\nCity: {self.target_city}\n\n{error_msg}")
-            raise ValueError("No application created.") # Stop this bot instance
+            raise ValueError("No application created.") 
 
         # --- Proceed to click the 'Select' button ---
         print(f"    - Looking for 'Select' button...")
@@ -807,6 +813,7 @@ class BrowserBase:
             error_msg = str(e).split('\n')[0]
             print(f"[❌] {self.account} failed to click 'Select' button: {error_msg}")
             time.sleep(5)
+
     def _workflow_service_level(self) -> None:
         print(f"[⚙️] {self.account} on Service Level page. Clicking 'Continue'...")
         try:
@@ -1101,8 +1108,6 @@ class ChromeManager:
     Delegates all page interaction to BrowserBase.
     """
 
-    # Class-level lock to prevent race conditions during driver initialization,
-    # especially when using seleniumbase's uc=True mode, which patches files on the fly.
     _driver_init_lock = threading.Lock()
 
     def __init__(
@@ -1130,8 +1135,6 @@ class ChromeManager:
         self.proxy_address = proxy_address
         self.countdown = 0
         
-        # --- Unique Identifiers for Isolation & Viewing ---
-        # Create a filesystem-safe name for the profile directory
         self.account_safe_name = "".join([c if c.isalnum() else "_" for c in self.account])
         self.profile_path = os.path.abspath(f"./runtime_profiles/{self.account_safe_name}")
         self.window_title = f"Omni-Booking :: {self.account}"
@@ -1177,7 +1180,6 @@ class ChromeManager:
         self.status = "Initializing"
 
         try:
-            # 1. Initialize browser (synchronized to prevent race conditions)
             with ChromeManager._driver_init_lock:
                 self.status = "Launching Driver"
                 self.driver = Driver(
@@ -1187,13 +1189,10 @@ class ChromeManager:
                 )
             self.driver.execute_script(f"document.title = '{self.window_title}'")
 
-            # 2. Navigate to the start URL
             self.status = "Navigating to Start URL"
             self.driver.get(self.target_url)
 
-            # 3. Hand over control to the BrowserBase (The State Machine)
             self.status = "Routing to Dashboard"
-            # Pass lambda to allow the loop to monitor the thread's running state
             navigator = BrowserBase(
                 driver=self.driver, 
                 account=self.account, 
@@ -1202,22 +1201,15 @@ class ChromeManager:
                 is_running_flag=lambda: self.is_running
             )
 
-            # 4. Master control loop. This makes the bot resilient.
-            # If it gets navigated away from the appointment page, it will
-            # automatically re-run the navigation logic to get back.
             while self.is_running:
-                # This will navigate to the appointment page. If it's already there, it will break quickly.
                 navigator.navigate_to_target_state()
                 if not self.is_running: break
 
-                # This will run its own loop, checking for appointments.
-                # If it ever gets navigated away, it will return.
                 self._appointment_check_loop()
                 if not self.is_running: break
 
-                # If _appointment_check_loop returned, it means we are off-track.
                 print(f"[{self.account}] Returned from check loop. Re-validating state...")
-                time.sleep(3) # Small delay before re-navigating
+                time.sleep(3) 
 
         except ValueError as ve:
             # Handle specific fatal credential or application errors
@@ -1232,7 +1224,6 @@ class ChromeManager:
                 self.status = f"Error: {error_msg}"
                 self.is_running = False
         
-        # When the loop breaks (is_running=False) or an exception occurs, the thread ends.
         print(f"[💡] Thread for {self.account} has exited.")
 
     def _appointment_check_loop(self) -> None:
@@ -1241,30 +1232,23 @@ class ChromeManager:
             """
             print(f"[{self.account}] Now monitoring for appointments...")
             while self.is_running:
-                # 1. Check if we are still on the correct page
                 if "/appointment-booking/" not in self.driver.current_url:
                     self.status = "Re-routing: Off booking page."
                     print(f"🗺️ [{self.account}] {self.status} - returning to navigator.")
-                    return # Exit the check loop to re-trigger navigation
+                    return 
                 
-                # 2. Perform the check
                 found = self.check_appointment()
                 
                 if found:
                     self.status = "Appointments Found!"
                     self.appointment_found = True
                     print(f"✅✅✅ [{self.account}] APPOINTMENTS FOUND! ✅✅✅")
-                    # Keep the browser open and status active until manually stopped
                     while self.is_running:
                         time.sleep(1)
-                    return # Exit loop once found
-                
-                # 3. If not found, wait for the next interval
-                # This logic supports two modes: synchronized (0-59s) and interval (>59s).
+                    return 
                 
                 target_second = self.target_sec
                 if not (0 <= target_second <= 59):
-                    # Interval Refresh Mode
                     interval = self.target_sec if self.target_sec > 0 else settings.APPOINTMENT_CHECK_INTERVAL_SECONDS
                     for i in range(interval, 0, -1):
                         if not self.is_running: return
@@ -1272,19 +1256,18 @@ class ChromeManager:
                         self.status = f"No appointments. Retrying in {i}s..."
                         time.sleep(1)
                 else:
-                    # Synchronized Refresh Mode
                     while self.is_running and datetime.datetime.now().second != target_second:
                         remaining_seconds = (target_second - datetime.datetime.now().second + 60) % 60
                         self.countdown = remaining_seconds
                         self.status = f"No appointments. Syncing for : {target_second:02d}. Retrying in {remaining_seconds}s..."
                         time.sleep(1 - (datetime.datetime.now().microsecond / 1_000_000.0))
                 
-                # 4. Refresh the page to get new data
                 if self.is_running:
                     print(f"[{self.account}] Performing direct refresh to check again...")
                     self.status = "Refreshing..."
                     self.driver.refresh()
-                    time.sleep(5) # Wait for page to settle after refresh
+                    time.sleep(5) 
+
     def check_appointment(self) -> bool:
         """
         Performs a single check on the current page for available appointments.
@@ -1294,14 +1277,10 @@ class ChromeManager:
         try:
             self.status = f"Checking for month: {self.target_month}"
             
-            # 1. Navigate to the correct month
             month_found = self._navigate_to_target_month()
             if not month_found:
-                # Status is already set by the navigation method on failure
                 return False
 
-            # 2. Check for any "no slots" messages.
-            # We get all text from the page's body and convert to lowercase for a case-insensitive search.
             self.status = f"Scanning {self.target_month} for slots..."
             page_text = self.driver.get_text("body").lower()
             
@@ -1315,14 +1294,10 @@ class ChromeManager:
             if no_slots_message_found:
                 return False
 
-            # 3. As a positive confirmation, check if an actual appointment slot element is visible.
-            # This avoids false positives if the "no slots" message is missing for some reason.
             if self.driver.is_element_visible(TLS_SELECTORS['appointment_booking']['available_slot']):
                 print(f"    - 'No slots' message not found AND an available slot is visible. Appointments are available.")
                 return True
             
-            # 4. Fallback: If no negative message is found, but also no positive slot is found,
-            # it's safer to assume there are no appointments. This can happen during page loads or with unexpected layouts.
             print(f"    - 'No slots' message not found, but no available slots were detected either. Assuming no appointments for now.")
             return False
 
@@ -1345,7 +1320,6 @@ class ChromeManager:
                 print(f"❌ [{self.account}] {self.status}")
                 return False
 
-            # Loop a max of 24 times to prevent infinite loops (e.g., 2 years of navigation)
             for _ in range(24):
                 if not self.is_running: return False
 
@@ -1367,6 +1341,7 @@ class ChromeManager:
 
                 if target_date > current_date:
                     next_button_selector = TLS_SELECTORS['appointment_booking']['next_month_button']
+                    # FIXED: Changed is_clickable to is_element_clickable
                     if self.driver.is_element_visible(next_button_selector) and self.driver.is_element_clickable(next_button_selector):
                         print(f"    - Navigating from {current_month_text} to next month...")
                         self.driver.js_click(next_button_selector)
@@ -1377,6 +1352,7 @@ class ChromeManager:
                         return False
                 else: # target_date < current_date
                     prev_button_selector = TLS_SELECTORS['appointment_booking']['prev_month_button']
+                    # FIXED: Changed is_clickable to is_element_clickable
                     if self.driver.is_element_visible(prev_button_selector) and self.driver.is_element_clickable(prev_button_selector):
                         print(f"    - Navigating from {current_month_text} to previous month...")
                         self.driver.js_click(prev_button_selector)
@@ -1395,17 +1371,15 @@ class ChromeManager:
             self.status = f"Error during month navigation: {error_msg}"
             print(f"❌ [{self.account}] {self.status}")
             return False
-
     def stop_engine(self) -> None:
         if not self.is_running: return
         
-        self.is_running = False # Signal thread to stop its loops
+        self.is_running = False 
         
         if self.driver:
             try:
                 self.driver.quit()
             except Exception:
-                # Ignore errors, e.g., if browser was already closed manually
                 pass
             self.driver = None
             
@@ -1445,25 +1419,25 @@ class StealthActions:
     def smart_type(self, selector: str, text_to_type: str, timeout: int = settings.WAIT_TIMEOUT_ELEMENT_READY) -> None:
             """Waits for field, clears it using JS, and types character-by-character."""
             
-            # 1. الانتظار حتى يظهر العنصر
+            # 1. Wait for the element to be present.
             self.driver.wait_for_element(selector, timeout=timeout)
             
-            # 2. الوصول للعنصر كـ WebElement عادي
-            # نستخدم find_element لأنها دالة قياسية موجودة في كل تعريفات Driver
+            # 2. Get the WebElement.
+            # We use find_element as it's a standard method in all Driver definitions.
             element = self.driver.find_element("css selector", selector)
             
-            # 3. الطريقة الاحترافية لمسح الحقل باستخدام JavaScript
-            # هذه الطريقة تتخطى أي مشاكل في المكتبات وتمسح الحقل فوراً
+            # 3. Professional way to clear the field using JavaScript.
+            # This method bypasses library issues and clears the field instantly.
             self.driver.execute_script("arguments[0].value = '';", element)
             
-            # 4. التركيز على الحقل والبدء في الكتابة
+            # 4. Focus on the field and start typing.
             self.driver.click(selector)
             for char in text_to_type:
                 element.send_keys(char)
                 time.sleep(random.uniform(self.base_type_min, self.base_type_max))
     def human_click(self, selector: str, timeout: int = settings.WAIT_TIMEOUT_ELEMENT_READY) -> None:
         """Wait for element visibility, pause briefly (targeting), then click."""
-        # التعديل هنا أيضاً: استخدام الدالة الشاملة
+        # Also modified here: use the comprehensive wait function.
         self.driver.wait_for_element(selector, timeout=timeout)
         
         self.natural_delay()
@@ -1860,9 +1834,10 @@ Omni-Booking-Automation-Suite/TLS_Germany/core/__init__.py
 Contains all QDialog-based pop-up windows for the application.
 """
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox, QPushButton, QLineEdit, QMessageBox
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox, QPushButton, QLineEdit, QMessageBox, QComboBox
 )
 from PyQt6.QtCore import Qt
+import datetime
 
 from browsers.chrome import ChromeManager
 
@@ -1872,11 +1847,14 @@ class AddInstanceDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Add New Instance")
         self.setModal(True)
-        self.setFixedSize(350, 200)
+        self.setFixedSize(400, 350)
 
         self.account = ""
         self.password = ""
-
+        self.selected_month = ""
+        self.selected_year = ""
+        self.selected_city = ""
+        
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(10)
@@ -1892,6 +1870,32 @@ class AddInstanceDialog(QDialog):
         self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         layout.addWidget(self.password_edit)
 
+        layout.addWidget(QLabel("Target City:"))
+        self.city_edit = QLineEdit()
+        self.city_edit.setPlaceholderText("e.g., Alexandria")
+        layout.addWidget(self.city_edit)
+
+        month_year_layout = QHBoxLayout()
+        
+        month_layout = QVBoxLayout()
+        month_layout.addWidget(QLabel("Month:"))
+        self.month_combo = QComboBox()
+        months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+        self.month_combo.addItems(months)
+        self.month_combo.setCurrentText(datetime.datetime.now().strftime("%B"))
+        month_layout.addWidget(self.month_combo)
+        month_year_layout.addLayout(month_layout)
+
+        year_layout = QVBoxLayout()
+        year_layout.addWidget(QLabel("Year:"))
+        self.year_combo = QComboBox()
+        years = [str(y) for y in range(2024, 2031)]
+        self.year_combo.addItems(years)
+        self.year_combo.setCurrentText("2026")
+        year_layout.addWidget(self.year_combo)
+        month_year_layout.addLayout(year_layout)
+
+        layout.addLayout(month_year_layout)
         layout.addStretch()
 
         button_layout = QHBoxLayout()
@@ -1907,9 +1911,13 @@ class AddInstanceDialog(QDialog):
     def _add_instance(self):
         self.account = self.account_edit.text().strip()
         self.password = self.password_edit.text().strip()
+        self.selected_city = self.city_edit.text().strip()
+        self.selected_month = self.month_combo.currentText()
+        self.selected_year = self.year_combo.currentText()
 
-        if not self.account or not self.password:
-            QMessageBox.warning(self, "Input Required", "Account and Password cannot be empty.")
+
+        if not self.account or not self.password or not self.selected_city:
+            QMessageBox.warning(self, "Input Required", "Account, Password, and City cannot be empty.")
             return
         
         self.accept()
@@ -1926,7 +1934,7 @@ class EditInstanceDialog(QDialog):
 
         self.setWindowTitle(f"Hot-Patch: {instance.account}")
         self.setModal(True)
-        self.setFixedSize(320, 540)
+        self.setFixedSize(400, 450)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -1937,20 +1945,37 @@ class EditInstanceDialog(QDialog):
         title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #E2E8F0;")
         layout.addWidget(title_label)
 
-        # Add month and city editors
-        layout.addWidget(QLabel("Target Month (e.g., 'September 2026'):"))
-        self.month_edit = QLineEdit()
-        self.month_edit.setText(instance.target_month)
-        layout.addWidget(self.month_edit)
-
         layout.addWidget(QLabel("Target City:"))
         self.city_edit = QLineEdit()
         self.city_edit.setText(instance.target_city)
         layout.addWidget(self.city_edit)
 
+        # Month and Year dropdowns
+        layout.addWidget(QLabel("Target Month & Year:"))
+        month_year_layout = QHBoxLayout()
+        
+        self.month_combo = QComboBox()
+        months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+        self.month_combo.addItems(months)
+        month_year_layout.addWidget(self.month_combo)
+
+        self.year_combo = QComboBox()
+        years = [str(y) for y in range(2024, 2031)]
+        self.year_combo.addItems(years)
+        month_year_layout.addWidget(self.year_combo)
+        layout.addLayout(month_year_layout)
+
+        # Safely parse and set initial values
+        try:
+            parts = instance.target_month.strip().split()
+            if len(parts) == 2:
+                current_month, current_year = parts
+                if current_month in months: self.month_combo.setCurrentText(current_month)
+                if current_year in years: self.year_combo.setCurrentText(current_year)
+        except Exception as e:
+            print(f"Warning: Could not parse target_month '{instance.target_month}': {e}. Using defaults.")
+
         # Create spin boxes for time editing
-        self.hour_spin = self._create_spinbox(layout, "Hour (0-23):", 0, 23, instance.target_hr)
-        self.min_spin = self._create_spinbox(layout, "Minute (0-59):", 0, 59, instance.target_min)
         self.sec_spin = self._create_spinbox(layout, "Second (0-59):", 0, 59, instance.target_sec)
         self.ms_spin = self._create_spinbox(layout, "Millisecond (0-999):", 0, 999, instance.target_ms)
 
@@ -1983,24 +2008,20 @@ class EditInstanceDialog(QDialog):
         atomic assignments (like integers), and the running thread's timing loop
         is designed to read these values on each iteration.
         """
-        new_month = self.month_edit.text().strip()
+        new_month_str = f"{self.month_combo.currentText()} {self.year_combo.currentText()}"
         new_city = self.city_edit.text().strip()
-        new_hr = self.hour_spin.value()
-        new_min = self.min_spin.value()
         new_sec = self.sec_spin.value()
         new_ms = self.ms_spin.value()
 
         # Direct memory update. This is thread-safe for simple assignments.
-        self.instance.target_month = new_month
+        self.instance.target_month = new_month_str
         self.instance.target_city = new_city
-        self.instance.target_hr = new_hr
-        self.instance.target_min = new_min
         self.instance.target_sec = new_sec
         self.instance.target_ms = new_ms
 
         print(f"[⚙️] Hot-Patch applied to {self.instance.account}. "
-              f"New Month: {new_month}, City: {new_city}, "
-              f"Time: {new_hr:02}:{new_min:02}:{new_sec:02}.{new_ms:03}")
+              f"New Month: {new_month_str}, City: {new_city}, "
+              f"Time: {self.instance.target_hr:02}:{self.instance.target_min:02}:{new_sec:02}.{new_ms:03}")
         # Close the dialog
         self.accept()
 ```
@@ -2482,15 +2503,15 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Instance Exists", f"An instance for '{account}' already exists.")
                 return
 
-            # Create manager with defaults from settings
+            # Create manager with values from the dialog
             defaults = settings.DEFAULT_INSTANCE_SETTINGS
-            target_month_str = f"{defaults['month']} {defaults['year']}".strip()
+            target_month_str = f"{dialog.selected_month} {dialog.selected_year}"
 
             manager = ChromeManager(
                 account=account,
                 password=password,
                 target_month=target_month_str,
-                target_city=defaults['city'],
+                target_city=dialog.selected_city,
                 url=settings.BASE_URL,
                 target_hr=0,
                 target_min=0,
@@ -2798,6 +2819,7 @@ CYBER_DARK_STYLESHEET = """
         border-radius: 4px;
         padding: 8px;
         font-size: 14px;
+        min-height: 25px;
     }
     QLineEdit:focus {
         border-color: #4F46E5; /* Indigo for focus */
@@ -2887,12 +2909,33 @@ CYBER_DARK_STYLESHEET = """
         color: #E2E8F0;
         border: 1px solid #334155;
         border-radius: 4px;
-        padding: 5px;
+        padding: 8px;
         font-size: 16px;
         font-weight: bold;
+        min-height: 25px;
     }
     QSpinBox::up-button, QSpinBox::down-button {
         width: 20px;
+    }
+
+    /* ComboBox for Dropdowns */
+    QComboBox {
+        background-color: #0F1420;
+        color: #E2E8F0;
+        border: 1px solid #334155;
+        border-radius: 4px;
+        padding: 8px;
+        font-size: 14px;
+        min-height: 25px;
+    }
+    QComboBox::drop-down {
+        border: none;
+    }
+    QComboBox QAbstractItemView {
+        background-color: #0F1420;
+        color: #E2E8F0;
+        border: 1px solid #4F46E5;
+        selection-background-color: #334155;
     }
 """
 ```

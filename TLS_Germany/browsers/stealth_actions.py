@@ -23,25 +23,25 @@ class StealthActions:
     def smart_type(self, selector: str, text_to_type: str, timeout: int = settings.WAIT_TIMEOUT_ELEMENT_READY) -> None:
             """Waits for field, clears it using JS, and types character-by-character."""
             
-            # 1. الانتظار حتى يظهر العنصر
+            # 1. Wait for the element to be present.
             self.driver.wait_for_element(selector, timeout=timeout)
             
-            # 2. الوصول للعنصر كـ WebElement عادي
-            # نستخدم find_element لأنها دالة قياسية موجودة في كل تعريفات Driver
+            # 2. Get the WebElement.
+            # We use find_element as it's a standard method in all Driver definitions.
             element = self.driver.find_element("css selector", selector)
             
-            # 3. الطريقة الاحترافية لمسح الحقل باستخدام JavaScript
-            # هذه الطريقة تتخطى أي مشاكل في المكتبات وتمسح الحقل فوراً
+            # 3. Professional way to clear the field using JavaScript.
+            # This method bypasses library issues and clears the field instantly.
             self.driver.execute_script("arguments[0].value = '';", element)
             
-            # 4. التركيز على الحقل والبدء في الكتابة
+            # 4. Focus on the field and start typing.
             self.driver.click(selector)
             for char in text_to_type:
                 element.send_keys(char)
                 time.sleep(random.uniform(self.base_type_min, self.base_type_max))
     def human_click(self, selector: str, timeout: int = settings.WAIT_TIMEOUT_ELEMENT_READY) -> None:
         """Wait for element visibility, pause briefly (targeting), then click."""
-        # التعديل هنا أيضاً: استخدام الدالة الشاملة
+        # Also modified here: use the comprehensive wait function.
         self.driver.wait_for_element(selector, timeout=timeout)
         
         self.natural_delay()

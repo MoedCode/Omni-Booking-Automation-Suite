@@ -353,15 +353,15 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Instance Exists", f"An instance for '{account}' already exists.")
                 return
 
-            # Create manager with defaults from settings
+            # Create manager with values from the dialog
             defaults = settings.DEFAULT_INSTANCE_SETTINGS
-            target_month_str = f"{defaults['month']} {defaults['year']}".strip()
+            target_month_str = f"{dialog.selected_month} {dialog.selected_year}"
 
             manager = ChromeManager(
                 account=account,
                 password=password,
                 target_month=target_month_str,
-                target_city=defaults['city'],
+                target_city=dialog.selected_city,
                 url=settings.BASE_URL,
                 target_hr=0,
                 target_min=0,

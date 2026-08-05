@@ -19,3 +19,8 @@ Thumbs.db
 # Any random output logs
 out.txt
 out
+runtime_profiles/
+build/
+dist/
+*.spec
+*.exe

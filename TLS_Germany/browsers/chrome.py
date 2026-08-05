@@ -12,6 +12,10 @@ import time
 from typing import Optional, Dict
 import datetime
 from seleniumbase import Driver
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from config.selectors import TLS_SELECTORS
 from config import settings
 from browsers.browser_base import BrowserBase
@@ -239,9 +243,11 @@ class ChromeManager:
             for _ in range(24):
                 if not self.is_running: return False
 
-                self.driver.wait_for_element_visible(TLS_SELECTORS['appointment_booking']['month_selector_container'])
+                # Use standard WebDriverWait to ensure the calendar is visible
+                wait = WebDriverWait(self.driver, settings.WAIT_TIMEOUT_ELEMENT_READY)
+                wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, TLS_SELECTORS['appointment_booking']['month_selector_container'])))
                 
-                current_month_element = self.driver.find_element(TLS_SELECTORS['appointment_booking']['current_month_button'])
+                current_month_element = self.driver.find_element(By.CSS_SELECTOR, TLS_SELECTORS['appointment_booking']['current_month_button'])
                 current_month_text = current_month_element.text.strip()
                 
                 try:
@@ -257,35 +263,45 @@ class ChromeManager:
 
                 if target_date > current_date:
                     next_button_selector = TLS_SELECTORS['appointment_booking']['next_month_button']
-                    if self.driver.is_element_visible(next_button_selector) and self.driver.is_element_clickable(next_button_selector):
-                        print(f"    - Navigating from {current_month_text} to next month...")
-                        self.driver.js_click(next_button_selector)
-                        time.sleep(1.5)
-                    else:
-                        self.status = f"Error: Cannot reach '{self.target_month}'. 'Next' button is disabled."
+                    try:
+                        button = self.driver.find_element(By.CSS_SELECTOR, next_button_selector)
+                        if button.is_displayed() and button.is_enabled():
+                            print(f"    - Navigating from {current_month_text} to next month...")
+                            self.driver.js_click(next_button_selector)
+                            time.sleep(1.5)
+                        else:
+                            self.status = f"Error: Cannot reach '{self.target_month}'. 'Next' button is not interactable."
+                            print(f"❌ [{self.account}] {self.status}")
+                            return False
+                    except NoSuchElementException:
+                        self.status = f"Error: Cannot reach '{self.target_month}'. 'Next' button not found."
                         print(f"❌ [{self.account}] {self.status}")
                         return False
                 else: # target_date < current_date
                     prev_button_selector = TLS_SELECTORS['appointment_booking']['prev_month_button']
-                    if self.driver.is_element_visible(prev_button_selector) and self.driver.is_element_clickable(prev_button_selector):
-                        print(f"    - Navigating from {current_month_text} to previous month...")
-                        self.driver.js_click(prev_button_selector)
-                        time.sleep(1.5)
-                    else:
-                        self.status = f"Error: Cannot reach '{self.target_month}'. 'Previous' button is disabled."
+                    try:
+                        button = self.driver.find_element(By.CSS_SELECTOR, prev_button_selector)
+                        if button.is_displayed() and button.is_enabled():
+                            print(f"    - Navigating from {current_month_text} to previous month...")
+                            self.driver.js_click(prev_button_selector)
+                            time.sleep(1.5)
+                        else:
+                            self.status = f"Error: Cannot reach '{self.target_month}'. 'Previous' button is not interactable."
+                            print(f"❌ [{self.account}] {self.status}")
+                            return False
+                    except NoSuchElementException:
+                        self.status = f"Error: Cannot reach '{self.target_month}'. 'Previous' button not found."
                         print(f"❌ [{self.account}] {self.status}")
                         return False
             
             self.status = f"Error: Failed to navigate to '{self.target_month}' after multiple attempts."
             print(f"❌ [{self.account}] {self.status}")
             return False
-
         except Exception as e:
             error_msg = str(e).split('\n')[0]
             self.status = f"Error during month navigation: {error_msg}"
             print(f"❌ [{self.account}] {self.status}")
             return False
-
     def stop_engine(self) -> None:
         if not self.is_running: return
         

@@ -20,6 +20,7 @@ CYBER_DARK_STYLESHEET = """
         border-radius: 4px;
         padding: 8px;
         font-size: 14px;
+        min-height: 25px;
     }
     QLineEdit:focus {
         border-color: #4F46E5; /* Indigo for focus */
@@ -109,11 +110,32 @@ CYBER_DARK_STYLESHEET = """
         color: #E2E8F0;
         border: 1px solid #334155;
         border-radius: 4px;
-        padding: 5px;
+        padding: 8px;
         font-size: 16px;
         font-weight: bold;
+        min-height: 25px;
     }
     QSpinBox::up-button, QSpinBox::down-button {
         width: 20px;
+    }
+
+    /* ComboBox for Dropdowns */
+    QComboBox {
+        background-color: #0F1420;
+        color: #E2E8F0;
+        border: 1px solid #334155;
+        border-radius: 4px;
+        padding: 8px;
+        font-size: 14px;
+        min-height: 25px;
+    }
+    QComboBox::drop-down {
+        border: none;
+    }
+    QComboBox QAbstractItemView {
+        background-color: #0F1420;
+        color: #E2E8F0;
+        border: 1px solid #4F46E5;
+        selection-background-color: #334155;
     }
 """

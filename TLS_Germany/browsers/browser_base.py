@@ -243,9 +243,11 @@ class BrowserBase:
         )
         
         select = Select(select_element)
-        select.select_by_visible_text(settings.DEFAULT_INSTANCE_SETTINGS['country'])
+        # This assumes the entire application is configured for one target country in settings.
+        country_to_select = settings.DEFAULT_INSTANCE_SETTINGS.get('country', 'Egypt')
+        select.select_by_visible_text(country_to_select)
 
-        print(f"    - Selected country: {settings.DEFAULT_INSTANCE_SETTINGS['country']}")
+        print(f"    - Selected country: {country_to_select}")
         self.actor.natural_delay()
         self.actor.human_click(TLS_SELECTORS['choose_country']['confirm_country_btn'])
         print(f"    - Confirmed country selection.")
