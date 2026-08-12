@@ -98,9 +98,9 @@ TLS_SELECTORS = {
     # [8] Cloudflare Interstitial Page
     "cloudflare": {
         "page_title": "Just a moment...", 
-        "heading_text": "h2#fTjHU3", 
+        "heading_text": 'h2:contains("Performing security verification")', 
         "turnstile_iframe": "iframe[src*='challenges.cloudflare.com']",
         "turnstile_checkbox": "input[type='checkbox']", 
-        "verification_successful_text": "h2#yZFa8" 
+        "verification_successful_text": 'h2:contains("Verification successful")' 
     }
 }

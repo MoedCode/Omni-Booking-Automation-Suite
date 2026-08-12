@@ -273,9 +273,9 @@ class MainWindow(QMainWindow):
         layout.setSpacing(5)
 
         # Normalized CSS theme templates: Compact padding prevents layout vertical truncation bugs entirely
-        view_btn = QPushButton("View")
-        view_btn.setToolTip("View this instance's browser window")
-        view_btn.setStyleSheet("""
+        launch_btn = QPushButton("Launch")
+        launch_btn.setToolTip("Launch or focus this instance's browser window")
+        launch_btn.setStyleSheet("""
             QPushButton { 
                 background-color: #0891B2; 
                 color: white; 
@@ -284,12 +284,13 @@ class MainWindow(QMainWindow):
                 font-weight: bold; 
                 border: none; 
                 border-radius: 4px; 
+                width: 65px;
             } 
             QPushButton:hover { 
                 background-color: #06B6D4; 
             }
         """)
-        view_btn.clicked.connect(lambda checked, acc=account: self._view_instance(acc))
+        launch_btn.clicked.connect(lambda checked, acc=account: self._launch_or_view_instance(acc))
 
         term_btn = QPushButton("Close")
         term_btn.setToolTip("Terminate this instance's process")
@@ -327,7 +328,7 @@ class MainWindow(QMainWindow):
         """)
         del_btn.clicked.connect(lambda checked, acc=account: self._delete_instance(acc))
 
-        layout.addWidget(view_btn)
+        layout.addWidget(launch_btn)
         layout.addWidget(term_btn)
         layout.addWidget(del_btn)
         layout.addStretch()
@@ -424,7 +425,7 @@ class MainWindow(QMainWindow):
         if manager and manager.is_running:
             manager.stop_engine()
 
-    def _view_instance(self, account: str):
+    def _launch_or_view_instance(self, account: str):
         """
         Brings an instance's browser window to the foreground.
         If the instance isn't running, it will be launched first.
@@ -434,9 +435,9 @@ class MainWindow(QMainWindow):
         if not manager:
             return
 
-        # If the instance is idle, clicking 'View' is a convenient way to launch it.
+        # If the instance is idle, clicking 'Launch' starts it.
         if not manager.is_running:
-            print(f"[▶️] 'View' clicked on idle instance. Launching {account}...")
+            print(f"[▶️] 'Launch' clicked on idle instance. Starting {account}...")
             manager.start_engine()
             QMessageBox.information(self, "Instance Launching", f"The browser for {account} is now being launched.")
             return
@@ -523,7 +524,7 @@ class MainWindow(QMainWindow):
         instance = self.active_instances.get(account)
         if instance:
             dialog = EditInstanceDialog(self, instance)
-            dialog.exec()
+            dialog.show() # Use .show() for a modeless dialog that doesn't block the main window
 
     def _update_dashboard(self):
         """

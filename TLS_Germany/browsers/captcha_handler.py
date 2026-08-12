@@ -49,8 +49,7 @@ class CaptchaHandler:
                 return
 
             # Secondary success condition: "Verification successful" text appears.
-            # The div#hddW3 container becomes visible on success.
-            if self.driver.is_element_visible("div#hddW3"):
+            if self.driver.is_element_visible(TLS_SELECTORS['cloudflare']['verification_successful_text']):
                 print("    - Cloudflare verification successful text found. Waiting for redirect...")
                 try:
                     # Now, we must wait for the URL to change.
@@ -65,13 +64,15 @@ class CaptchaHandler:
             # Interactive element handling: Periodically check for and click the checkbox.
             if i > 2 and i % 4 == 0:
                 try:
-                    # SeleniumBase's UC mode can click through shadow-dom and iframes with '>>>'
-                    # The structure is: div -> template (shadow-root) -> iframe -> checkbox
-                    turnstile_checkbox_selector = 'div#kNIC5 template >>> iframe[title*="security challenge"] >>> input[type="checkbox"]'
-                    if self.driver.is_element_visible(turnstile_checkbox_selector):
-                        print("    - Found interactive Cloudflare Turnstile. Attempting to click...")
-                        self.driver.click(turnstile_checkbox_selector)
-                        print("    - Clicked Turnstile checkbox.")
+                    iframe_selector = TLS_SELECTORS['cloudflare']['turnstile_iframe']
+                    if self.driver.is_element_visible(iframe_selector):
+                        # The checkbox is inside the iframe, which might be inside a shadow-root.
+                        # SeleniumBase's `>>>` handles this piercing.
+                        checkbox_selector = f"{iframe_selector} >>> {TLS_SELECTORS['cloudflare']['turnstile_checkbox']}"
+                        if self.driver.is_element_visible(checkbox_selector):
+                            print("    - Found interactive Cloudflare Turnstile. Attempting to click...")
+                            self.driver.click(checkbox_selector)
+                            print("    - Clicked Turnstile checkbox.")
                 except Exception:
                     pass # It's fine if it's not there or fails; we'll just keep waiting.
 

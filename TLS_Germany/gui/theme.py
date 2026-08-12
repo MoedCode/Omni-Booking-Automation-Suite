@@ -138,4 +138,81 @@ CYBER_DARK_STYLESHEET = """
         border: 1px solid #4F46E5;
         selection-background-color: #334155;
     }
+
+    /* --- Hot-Patch Dialog Specifics --- */
+    #headerTitle {
+        color: #E2E8F0;
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+
+    #sectionFrame {
+        background-color: #121824;
+        border: 1px solid #334155;
+        border-radius: 8px;
+    }
+    #sectionHeader {
+        color: #94A3B8;
+        font-size: 9px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        border-bottom: 1px solid #334155;
+        padding-bottom: 6px;
+        margin-bottom: 4px;
+    }
+
+    /* Month Grid */
+    QPushButton#monthButton {
+        background-color: #334155;
+        color: #E2E8F0; /* Ensure month text is visible */
+        border: 1px solid #475569;
+        padding: 6px;
+        font-size: 12px;
+        border-radius: 6px;
+    }
+    QPushButton#monthButton:hover {
+        background-color: #475569;
+    }
+    QPushButton#monthButton:checked {
+        background-color: #22d3ee; /* Aqua color */
+        border-color: #67e8f9;
+        color: #0B0F17; /* Dark text on light aqua */
+        font-weight: bold;
+    }
+
+    /* Behavior Toggles (as Switches) */
+    QCheckBox {
+        font-size: 13px;
+        color: #cbd5e1; /* Ensure behavior text is visible */
+        spacing: 10px;
+    }
+    QCheckBox::indicator {
+        width: 40px;
+        height: 22px;
+        background-color: #334155;
+        border-radius: 11px;
+        border: 1px solid #475569;
+    }
+    QCheckBox::indicator:checked {
+        background-color: #10B981;
+    }
+    QCheckBox::indicator:hover {
+        border-color: #6366F1;
+    }
+
+    /* Status Pills */
+    QLabel#statusKey { font-weight: bold; color: #94A3B8; font-size: 12px; }
+    #greenPill { color: #34D399; font-size: 12px; font-weight: bold; font-family: 'JetBrains Mono', 'Consolas', monospace; }
+    #cyanPill { color: #67E8F9; font-size: 12px; font-weight: bold; font-family: 'JetBrains Mono', 'Consolas', monospace; }
+    #yellowPill { color: #FBBF24; font-size: 12px; font-weight: bold; font-family: 'JetBrains Mono', 'Consolas', monospace; }
+    #purplePill { color: #F0ABFC; font-size: 12px; font-weight: bold; font-family: 'JetBrains Mono', 'Consolas', monospace; }
+    
+    /* Action Buttons */
+    #actionsFrame QPushButton { padding: 8px; }
+    #launchButton { background-color: #0891B2; color: white; } /* Cyan */
+    #launchButton:hover { background-color: #06B6D4; }
+    #warningButton { background-color: #D97706; color: white; }
+    #warningButton:hover { background-color: #F59E0B; }
 """
