@@ -142,6 +142,358 @@ it so simper juat bot will click
 ```
 
 
+## FILE: .\prompt2.md
+
+```md
+كل حاجة هنا تمام   في الكود ده بس هو في فكرة   every  thing in chrome.py working fine except
+# how to make bot 
+header could appears with different elements 
+##  case 1
+header 
+```html
+<nav id="navbar" class="fixed top-0 z-20 flex h-12 w-full items-center gap-2 bg-header px-2 text-on-header shadow-md md:h-18 lg:pe-4 lg:ps-8 print:hidden"><a href="/en-us" class="relative block h-11 w-52"><img alt="TLScontact logo" decoding="async" data-nimg="fill" class="object-contain object-left" sizes="200px" srcset="/_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=16&amp;q=75 16w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=32&amp;q=75 32w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=48&amp;q=75 48w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=64&amp;q=75 64w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=96&amp;q=75 96w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=128&amp;q=75 128w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=256&amp;q=75 256w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=384&amp;q=75 384w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=640&amp;q=75 640w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=750&amp;q=75 750w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=828&amp;q=75 828w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=1080&amp;q=75 1080w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=1200&amp;q=75 1200w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=1920&amp;q=75 1920w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=2048&amp;q=75 2048w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=3840&amp;q=75 3840w" src="/_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=3840&amp;q=75" style="position: absolute; height: 100%; width: 100%; inset: 0px; color: transparent;"></a><div class="flex-1"></div><div id="application-menu" class="AppMenu_application-menu__viMNs AppMenu_--closed__MH25S"><div class="absolute end-3 top-3 z-10 xl:hidden"><button class="group TlsIconButton_tls-icon-button__OJTx7 w-10" type="button" aria-label="Close menu icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="group-disabled:fill-gray-300 w-5 fill-on-header aspect-square" aria-label="Close" role="img"><path d="M13.41,12l4.3-4.29a1,1,0,1,0-1.42-1.42L12,10.59,7.71,6.29A1,1,0,0,0,6.29,7.71L10.59,12l-4.3,4.29a1,1,0,0,0,0,1.42,1,1,0,0,0,1.42,0L12,13.41l4.29,4.3a1,1,0,0,0,1.42,0,1,1,0,0,0,0-1.42Z"></path></svg></button></div><a href="/en-us/country/eg/vac/egALY2de"><p class="MenuItem_menu-item__yIr3C">Welcome</p></a><div class="MenuItem_menu-item-group__92y6y"><div class="flex items-center gap-0.5"><p class="MenuItem_menu-item__yIr3C">Application Information</p><svg class="w-3 fill-on-header max-xl:hidden" aria-label="Chevron down icon" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M4.46967 8.46967C4.76256 8.17678 5.23744 8.17678 5.53033 8.46967L12.5 15.4393L19.4697 8.46967C19.7626 8.17678 20.2374 8.17678 20.5303 8.46967C20.8232 8.76256 20.8232 9.23744 20.5303 9.53033L13.0303 17.0303C12.7374 17.3232 12.2626 17.3232 11.9697 17.0303L4.46967 9.53033C4.17678 9.23744 4.17678 8.76256 4.46967 8.46967Z"></path></svg></div><ul class="MenuItem_menu-item-container__uObjA"><li class="flex items-center"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-label="Visa Application Process" role="img" class="w-5 fill-on-header xl:hidden"><path d="M14.83,11.29,10.59,7.05a1,1,0,0,0-1.42,0,1,1,0,0,0,0,1.41L12.71,12,9.17,15.54a1,1,0,0,0,0,1.41,1,1,0,0,0,.71.29,1,1,0,0,0,.71-.29l4.24-4.24A1,1,0,0,0,14.83,11.29Z"></path></svg><div class="flex-1"><a href="/en-us/country/eg/vac/egALY2de/application-process"><p class="MenuItem_menu-item__yIr3C">Visa Application Process</p></a></div></li><li class="flex items-center"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-label="Visa Application Fees" role="img" class="w-5 fill-on-header xl:hidden"><path d="M14.83,11.29,10.59,7.05a1,1,0,0,0-1.42,0,1,1,0,0,0,0,1.41L12.71,12,9.17,15.54a1,1,0,0,0,0,1.41,1,1,0,0,0,.71.29,1,1,0,0,0,.71-.29l4.24-4.24A1,1,0,0,0,14.83,11.29Z"></path></svg><div class="flex-1"><a href="/en-us/country/eg/vac/egALY2de/application-fees"><p class="MenuItem_menu-item__yIr3C">Visa Application Fees</p></a></div></li><li class="flex items-center"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-label="Travel Purpose and Documents" role="img" class="w-5 fill-on-header xl:hidden"><path d="M14.83,11.29,10.59,7.05a1,1,0,0,0-1.42,0,1,1,0,0,0,0,1.41L12.71,12,9.17,15.54a1,1,0,0,0,0,1.41,1,1,0,0,0,.71.29,1,1,0,0,0,.71-.29l4.24-4.24A1,1,0,0,0,14.83,11.29Z"></path></svg><div class="flex-1"><a href="/en-us/country/eg/vac/egALY2de/visa-types"><p class="MenuItem_menu-item__yIr3C">Travel Purpose and Documents</p></a></div></li><li class="flex items-center"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-label="Links and Downloads" role="img" class="w-5 fill-on-header xl:hidden"><path d="M14.83,11.29,10.59,7.05a1,1,0,0,0-1.42,0,1,1,0,0,0,0,1.41L12.71,12,9.17,15.54a1,1,0,0,0,0,1.41,1,1,0,0,0,.71.29,1,1,0,0,0,.71-.29l4.24-4.24A1,1,0,0,0,14.83,11.29Z"></path></svg><div class="flex-1"><a href="/en-us/country/eg/vac/egALY2de/useful-content"><p class="MenuItem_menu-item__yIr3C">Links and Downloads</p></a></div></li><li class="flex items-center"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-label="Legalization website" role="img" class="w-5 fill-on-header xl:hidden"><path d="M14.83,11.29,10.59,7.05a1,1,0,0,0-1.42,0,1,1,0,0,0,0,1.41L12.71,12,9.17,15.54a1,1,0,0,0,0,1.41,1,1,0,0,0,.71.29,1,1,0,0,0,.71-.29l4.24-4.24A1,1,0,0,0,14.83,11.29Z"></path></svg><div class="flex-1"><a href="https://legalization-de.tlscontact.com/"><p class="MenuItem_menu-item__yIr3C">Legalization website</p></a></div></li></ul></div><a href="/en-us/country/eg/vac/egALY2de/services"><p class="MenuItem_menu-item__yIr3C">Added Value Services</p></a><a href="/en-us/country/eg/vac/egALY2de/help-centre"><p class="MenuItem_menu-item__yIr3C">FAQ</p></a><a href="/en-us/country/eg/vac/egALY2de/contact"><p class="MenuItem_menu-item__yIr3C">Contact Us</p></a><a href="/en-us/country/eg/vac/egALY2de/news"><p class="MenuItem_menu-item__yIr3C">News</p></a><a href="/en-us/login" class="rounded-full outline-offset-4 outline-on-header"><span type="button" class="TlsButton_tls-button__syUS5 TlsButton_--outline__Gz93Y TlsButton_primary__sPypD TlsButton_--base__NfSqN !text-sm">LOGIN</span></a><a class="rounded-full outline-offset-4 outline-on-header" href="/en-us/registration?issuerId=egALY2de"><span type="button" class="TlsButton_tls-button__syUS5 TlsButton_--outline__Gz93Y TlsButton_primary__sPypD TlsButton_--base__NfSqN !text-sm">REGISTER</span></a></div><div role="list" aria-label="Language switcher" class="relative z-[11]"><div role="listitem" class="cursor-pointer rounded-lg p-2 duration-300 hover:bg-gray-50 active:scale-90"><div class="flex items-center gap-x-1" data-testid="btn-language-selector"><p class="text-xs text-on-header">EN</p><div class="hidden duration-150 md:block"><svg class="w-4 fill-primary-500" aria-label="Chevron down icon" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M4.46967 8.46967C4.76256 8.17678 5.23744 8.17678 5.53033 8.46967L12.5 15.4393L19.4697 8.46967C19.7626 8.17678 20.2374 8.17678 20.5303 8.46967C20.8232 8.76256 20.8232 9.23744 20.5303 9.53033L13.0303 17.0303C12.7374 17.3232 12.2626 17.3232 11.9697 17.0303L4.46967 9.53033C4.17678 9.23744 4.17678 8.76256 4.46967 8.46967Z"></path></svg></div></div></div></div><div role="list" aria-label="Dropdown selector" class="relative z-[11] xl:hidden"><div role="listitem" class="cursor-pointer rounded-lg p-2 duration-300 hover:bg-gray-50 active:scale-90"><svg class="w-5 fill-primary-500" aria-label="User icon" role="img" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M8.43692 11.25C8.43692 7.62563 11.3751 4.6875 14.9994 4.6875C18.6238 4.6875 21.5619 7.62563 21.5619 11.25C21.5619 14.8743 18.6238 17.8124 14.9995 17.8125C14.9995 17.8125 14.9995 17.8125 14.9994 17.8125C11.3751 17.8125 8.43692 14.8744 8.43692 11.25ZM19.327 18.4947C21.7888 17.021 23.4369 14.3279 23.4369 11.25C23.4369 6.5901 19.6593 2.8125 14.9994 2.8125C10.3395 2.8125 6.56192 6.5901 6.56192 11.25C6.56192 14.328 8.21004 17.021 10.6719 18.4947C9.73468 18.7977 8.82805 19.1996 7.96788 19.6961C5.82983 20.93 4.05416 22.7049 2.81925 24.8424C2.56024 25.2907 2.71371 25.8642 3.16203 26.1232C3.61036 26.3822 4.18377 26.2287 4.44278 25.7804C5.51309 23.9278 7.05207 22.3895 8.90513 21.32C10.7581 20.2505 12.8599 19.6875 14.9994 19.6875C14.9995 19.6875 14.9995 19.6875 14.9996 19.6875C17.1392 19.6875 19.241 20.2506 21.0941 21.3201C22.9471 22.3896 24.4861 23.928 25.5563 25.7806C25.8153 26.2289 26.3887 26.3824 26.8371 26.1234C27.2854 25.8644 27.4389 25.291 27.1799 24.8427C25.945 22.7051 24.1694 20.9302 22.0314 19.6962C21.1711 19.1997 20.2643 18.7977 19.327 18.4947Z"></path></svg></div></div><button class="group TlsIconButton_tls-icon-button__OJTx7 w-8 xl:!hidden" type="button"><svg class="group-disabled:fill-gray-300 w-5 fill-primary-500 aspect-square" aria-label="Menu" role="img" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19.9015 2.85854H6.53153C6.43079 2.85854 6.34838 2.9389 6.34838 3.03711V4.28711C6.34838 4.38532 6.43079 4.46568 6.53153 4.46568H19.9015C20.0022 4.46568 20.0846 4.38532 20.0846 4.28711V3.03711C20.0846 2.9389 20.0022 2.85854 19.9015 2.85854ZM19.9015 9.19782H6.53153C6.43079 9.19782 6.34838 9.27818 6.34838 9.3764V10.6264C6.34838 10.7246 6.43079 10.805 6.53153 10.805H19.9015C20.0022 10.805 20.0846 10.7246 20.0846 10.6264V9.3764C20.0846 9.27818 20.0022 9.19782 19.9015 9.19782ZM19.9015 15.5371H6.53153C6.43079 15.5371 6.34838 15.6175 6.34838 15.7157V16.9657C6.34838 17.0639 6.43079 17.1443 6.53153 17.1443H19.9015C20.0022 17.1443 20.0846 17.0639 20.0846 16.9657V15.7157C20.0846 15.6175 20.0022 15.5371 19.9015 15.5371ZM1.40332 3.66211C1.40332 3.82626 1.43648 3.98881 1.50091 4.14046C1.56534 4.29212 1.65978 4.42992 1.77882 4.54599C1.89787 4.66207 2.03921 4.75414 2.19475 4.81696C2.3503 4.87978 2.51701 4.91211 2.68537 4.91211C2.85373 4.91211 3.02045 4.87978 3.17599 4.81696C3.33154 4.75414 3.47287 4.66207 3.59192 4.54599C3.71097 4.42992 3.8054 4.29212 3.86983 4.14046C3.93426 3.98881 3.96742 3.82626 3.96742 3.66211C3.96742 3.49796 3.93426 3.33541 3.86983 3.18376C3.8054 3.0321 3.71097 2.8943 3.59192 2.77823C3.47287 2.66215 3.33154 2.57008 3.17599 2.50726C3.02045 2.44444 2.85373 2.41211 2.68537 2.41211C2.51701 2.41211 2.3503 2.44444 2.19475 2.50726C2.03921 2.57008 1.89787 2.66215 1.77882 2.77823C1.65978 2.8943 1.56534 3.0321 1.50091 3.18376C1.43648 3.33541 1.40332 3.49796 1.40332 3.66211ZM1.40332 10.0014C1.40332 10.1655 1.43648 10.3281 1.50091 10.4797C1.56534 10.6314 1.65978 10.7692 1.77882 10.8853C1.89787 11.0014 2.03921 11.0934 2.19475 11.1562C2.3503 11.2191 2.51701 11.2514 2.68537 11.2514C2.85373 11.2514 3.02045 11.2191 3.17599 11.1562C3.33154 11.0934 3.47287 11.0014 3.59192 10.8853C3.71097 10.7692 3.8054 10.6314 3.86983 10.4797C3.93426 10.3281 3.96742 10.1655 3.96742 10.0014C3.96742 9.83724 3.93426 9.6747 3.86983 9.52304C3.8054 9.37138 3.71097 9.23358 3.59192 9.11751C3.47287 9.00144 3.33154 8.90936 3.17599 8.84655C3.02045 8.78373 2.85373 8.7514 2.68537 8.7514C2.51701 8.7514 2.3503 8.78373 2.19475 8.84655C2.03921 8.90936 1.89787 9.00144 1.77882 9.11751C1.65978 9.23358 1.56534 9.37138 1.50091 9.52304C1.43648 9.6747 1.40332 9.83724 1.40332 10.0014ZM1.40332 16.3407C1.40332 16.5048 1.43648 16.6674 1.50091 16.819C1.56534 16.9707 1.65978 17.1085 1.77882 17.2246C1.89787 17.3406 2.03921 17.4327 2.19475 17.4955C2.3503 17.5583 2.51701 17.5907 2.68537 17.5907C2.85373 17.5907 3.02045 17.5583 3.17599 17.4955C3.33154 17.4327 3.47287 17.3406 3.59192 17.2246C3.71097 17.1085 3.8054 16.9707 3.86983 16.819C3.93426 16.6674 3.96742 16.5048 3.96742 16.3407C3.96742 16.1765 3.93426 16.014 3.86983 15.8623C3.8054 15.7107 3.71097 15.5729 3.59192 15.4568C3.47287 15.3407 3.33154 15.2487 3.17599 15.1858C3.02045 15.123 2.85373 15.0907 2.68537 15.0907C2.51701 15.0907 2.3503 15.123 2.19475 15.1858C2.03921 15.2487 1.89787 15.3407 1.77882 15.4568C1.65978 15.5729 1.56534 15.7107 1.50091 15.8623C1.43648 16.014 1.40332 16.1765 1.40332 16.3407Z"></path></svg></button></nav>
+```
+element should be clicked
+
+```html 
+<div role="listitem" class="cursor-pointer rounded-lg p-2 duration-300 hover:bg-gray-50 active:scale-90"><svg class="w-5 fill-primary-500" aria-label="User icon" role="img" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M8.43692 11.25C8.43692 7.62563 11.3751 4.6875 14.9994 4.6875C18.6238 4.6875 21.5619 7.62563 21.5619 11.25C21.5619 14.8743 18.6238 17.8124 14.9995 17.8125C14.9995 17.8125 14.9995 17.8125 14.9994 17.8125C11.3751 17.8125 8.43692 14.8744 8.43692 11.25ZM19.327 18.4947C21.7888 17.021 23.4369 14.3279 23.4369 11.25C23.4369 6.5901 19.6593 2.8125 14.9994 2.8125C10.3395 2.8125 6.56192 6.5901 6.56192 11.25C6.56192 14.328 8.21004 17.021 10.6719 18.4947C9.73468 18.7977 8.82805 19.1996 7.96788 19.6961C5.82983 20.93 4.05416 22.7049 2.81925 24.8424C2.56024 25.2907 2.71371 25.8642 3.16203 26.1232C3.61036 26.3822 4.18377 26.2287 4.44278 25.7804C5.51309 23.9278 7.05207 22.3895 8.90513 21.32C10.7581 20.2505 12.8599 19.6875 14.9994 19.6875C14.9995 19.6875 14.9995 19.6875 14.9996 19.6875C17.1392 19.6875 19.241 20.2506 21.0941 21.3201C22.9471 22.3896 24.4861 23.928 25.5563 25.7806C25.8153 26.2289 26.3887 26.3824 26.8371 26.1234C27.2854 25.8644 27.4389 25.291 27.1799 24.8427C25.945 22.7051 24.1694 20.9302 22.0314 19.6962C21.1711 19.1997 20.2643 18.7977 19.327 18.4947Z"></path></svg></div>
+```
+there are a drop down list but not as <ul>
+as divs 
+
+```html 
+<div class="absolute right-0 z-[12] rounded-lg bg-white p-2 shadow-primary dropdown-enter-done"><div class="min-w-40"><div class="py-2"><a href="/en-us/login"><div id="login" class="cursor-pointer whitespace-nowrap rounded-lg px-2 py-2 text-sm text-primary-500 hover:bg-gray-100">LOGIN</div></a><a href="/en-us/registration?issuerId=egALY2de"><div id="register" class="cursor-pointer whitespace-nowrap rounded-lg px-2 py-2 text-sm text-primary-500 hover:bg-gray-100">REGISTER</div></a></div></div></div>
+```
+here bot should click
+
+```html 
+<div id="login" class="cursor-pointer whitespace-nowrap rounded-lg px-2 py-2 text-sm text-primary-500 hover:bg-gray-100">LOGIN</div>
+```
+or 
+```html
+<a href="/en-us/login"><div id="login" class="cursor-pointer whitespace-nowrap rounded-lg px-2 py-2 text-sm text-primary-500 hover:bg-gray-100">LOGIN</div></a>
+```
+or 
+
+```html 
+<div id="login" class="cursor-pointer whitespace-nowrap rounded-lg px-2 py-2 text-sm text-primary-500 hover:bg-gray-100">LOGIN</div>
+```
+
+
+
+## case 2
+header 
+
+```html 
+<nav id="navbar" class="fixed top-0 z-20 flex h-12 w-full items-center gap-2 bg-header px-2 text-on-header shadow-md md:h-18 lg:pe-4 lg:ps-8 print:hidden"><a href="/en-us" class="relative block h-11 w-52"><img alt="TLScontact logo" decoding="async" data-nimg="fill" class="object-contain object-left" sizes="200px" srcset="/_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=16&amp;q=75 16w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=32&amp;q=75 32w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=48&amp;q=75 48w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=64&amp;q=75 64w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=96&amp;q=75 96w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=128&amp;q=75 128w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=256&amp;q=75 256w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=384&amp;q=75 384w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=640&amp;q=75 640w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=750&amp;q=75 750w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=828&amp;q=75 828w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=1080&amp;q=75 1080w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=1200&amp;q=75 1200w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=1920&amp;q=75 1920w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=2048&amp;q=75 2048w, /_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=3840&amp;q=75 3840w" src="/_next/image?url=https%3A%2F%2Fcache-cms.directuscloud.tlscontact.com%2Fassets%2F51249a1c-fbb6-4879-922f-2d5b8cf5faba&amp;w=3840&amp;q=75" style="position: absolute; height: 100%; width: 100%; inset: 0px; color: transparent;"></a><div class="flex-1"></div><div id="application-menu" class="AppMenu_application-menu__viMNs AppMenu_--closed__MH25S"><div class="absolute end-3 top-3 z-10 xl:hidden"><button class="group TlsIconButton_tls-icon-button__OJTx7 w-10" type="button" aria-label="Close menu icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="group-disabled:fill-gray-300 w-5 fill-on-header aspect-square" aria-label="Close" role="img"><path d="M13.41,12l4.3-4.29a1,1,0,1,0-1.42-1.42L12,10.59,7.71,6.29A1,1,0,0,0,6.29,7.71L10.59,12l-4.3,4.29a1,1,0,0,0,0,1.42,1,1,0,0,0,1.42,0L12,13.41l4.29,4.3a1,1,0,0,0,1.42,0,1,1,0,0,0,0-1.42Z"></path></svg></button></div><a href="/en-us/country/eg/vac/egALY2de"><p class="MenuItem_menu-item__yIr3C">Welcome</p></a><div class="MenuItem_menu-item-group__92y6y"><div class="flex items-center gap-0.5"><p class="MenuItem_menu-item__yIr3C">Application Information</p><svg class="w-3 fill-on-header max-xl:hidden" aria-label="Chevron down icon" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M4.46967 8.46967C4.76256 8.17678 5.23744 8.17678 5.53033 8.46967L12.5 15.4393L19.4697 8.46967C19.7626 8.17678 20.2374 8.17678 20.5303 8.46967C20.8232 8.76256 20.8232 9.23744 20.5303 9.53033L13.0303 17.0303C12.7374 17.3232 12.2626 17.3232 11.9697 17.0303L4.46967 9.53033C4.17678 9.23744 4.17678 8.76256 4.46967 8.46967Z"></path></svg></div><ul class="MenuItem_menu-item-container__uObjA"><li class="flex items-center"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-label="Visa Application Process" role="img" class="w-5 fill-on-header xl:hidden"><path d="M14.83,11.29,10.59,7.05a1,1,0,0,0-1.42,0,1,1,0,0,0,0,1.41L12.71,12,9.17,15.54a1,1,0,0,0,0,1.41,1,1,0,0,0,.71.29,1,1,0,0,0,.71-.29l4.24-4.24A1,1,0,0,0,14.83,11.29Z"></path></svg><div class="flex-1"><a href="/en-us/country/eg/vac/egALY2de/application-process"><p class="MenuItem_menu-item__yIr3C">Visa Application Process</p></a></div></li><li class="flex items-center"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-label="Visa Application Fees" role="img" class="w-5 fill-on-header xl:hidden"><path d="M14.83,11.29,10.59,7.05a1,1,0,0,0-1.42,0,1,1,0,0,0,0,1.41L12.71,12,9.17,15.54a1,1,0,0,0,0,1.41,1,1,0,0,0,.71.29,1,1,0,0,0,.71-.29l4.24-4.24A1,1,0,0,0,14.83,11.29Z"></path></svg><div class="flex-1"><a href="/en-us/country/eg/vac/egALY2de/application-fees"><p class="MenuItem_menu-item__yIr3C">Visa Application Fees</p></a></div></li><li class="flex items-center"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-label="Travel Purpose and Documents" role="img" class="w-5 fill-on-header xl:hidden"><path d="M14.83,11.29,10.59,7.05a1,1,0,0,0-1.42,0,1,1,0,0,0,0,1.41L12.71,12,9.17,15.54a1,1,0,0,0,0,1.41,1,1,0,0,0,.71.29,1,1,0,0,0,.71-.29l4.24-4.24A1,1,0,0,0,14.83,11.29Z"></path></svg><div class="flex-1"><a href="/en-us/country/eg/vac/egALY2de/visa-types"><p class="MenuItem_menu-item__yIr3C">Travel Purpose and Documents</p></a></div></li><li class="flex items-center"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-label="Links and Downloads" role="img" class="w-5 fill-on-header xl:hidden"><path d="M14.83,11.29,10.59,7.05a1,1,0,0,0-1.42,0,1,1,0,0,0,0,1.41L12.71,12,9.17,15.54a1,1,0,0,0,0,1.41,1,1,0,0,0,.71.29,1,1,0,0,0,.71-.29l4.24-4.24A1,1,0,0,0,14.83,11.29Z"></path></svg><div class="flex-1"><a href="/en-us/country/eg/vac/egALY2de/useful-content"><p class="MenuItem_menu-item__yIr3C">Links and Downloads</p></a></div></li><li class="flex items-center"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-label="Legalization website" role="img" class="w-5 fill-on-header xl:hidden"><path d="M14.83,11.29,10.59,7.05a1,1,0,0,0-1.42,0,1,1,0,0,0,0,1.41L12.71,12,9.17,15.54a1,1,0,0,0,0,1.41,1,1,0,0,0,.71.29,1,1,0,0,0,.71-.29l4.24-4.24A1,1,0,0,0,14.83,11.29Z"></path></svg><div class="flex-1"><a href="https://legalization-de.tlscontact.com/"><p class="MenuItem_menu-item__yIr3C">Legalization website</p></a></div></li></ul></div><a href="/en-us/country/eg/vac/egALY2de/services"><p class="MenuItem_menu-item__yIr3C">Added Value Services</p></a><a href="/en-us/country/eg/vac/egALY2de/help-centre"><p class="MenuItem_menu-item__yIr3C">FAQ</p></a><a href="/en-us/country/eg/vac/egALY2de/contact"><p class="MenuItem_menu-item__yIr3C">Contact Us</p></a><a href="/en-us/country/eg/vac/egALY2de/news"><p class="MenuItem_menu-item__yIr3C">News</p></a><a href="/en-us/login" class="rounded-full outline-offset-4 outline-on-header"><span type="button" class="TlsButton_tls-button__syUS5 TlsButton_--outline__Gz93Y TlsButton_primary__sPypD TlsButton_--base__NfSqN !text-sm">LOGIN</span></a><a class="rounded-full outline-offset-4 outline-on-header" href="/en-us/registration?issuerId=egALY2de"><span type="button" class="TlsButton_tls-button__syUS5 TlsButton_--outline__Gz93Y TlsButton_primary__sPypD TlsButton_--base__NfSqN !text-sm">REGISTER</span></a></div><div role="list" aria-label="Language switcher" class="relative z-[11]"><div role="listitem" class="cursor-pointer rounded-lg p-2 duration-300 hover:bg-gray-50 active:scale-90"><div class="flex items-center gap-x-1" data-testid="btn-language-selector"><p class="text-xs text-on-header">EN</p><div class="hidden duration-150 md:block"><svg class="w-4 fill-primary-500" aria-label="Chevron down icon" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M4.46967 8.46967C4.76256 8.17678 5.23744 8.17678 5.53033 8.46967L12.5 15.4393L19.4697 8.46967C19.7626 8.17678 20.2374 8.17678 20.5303 8.46967C20.8232 8.76256 20.8232 9.23744 20.5303 9.53033L13.0303 17.0303C12.7374 17.3232 12.2626 17.3232 11.9697 17.0303L4.46967 9.53033C4.17678 9.23744 4.17678 8.76256 4.46967 8.46967Z"></path></svg></div></div></div></div><div role="list" aria-label="Dropdown selector" class="relative z-[11] xl:hidden"><div role="listitem" class="cursor-pointer rounded-lg p-2 duration-300 hover:bg-gray-50 active:scale-90"><svg class="w-5 fill-primary-500" aria-label="User icon" role="img" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M8.43692 11.25C8.43692 7.62563 11.3751 4.6875 14.9994 4.6875C18.6238 4.6875 21.5619 7.62563 21.5619 11.25C21.5619 14.8743 18.6238 17.8124 14.9995 17.8125C14.9995 17.8125 14.9995 17.8125 14.9994 17.8125C11.3751 17.8125 8.43692 14.8744 8.43692 11.25ZM19.327 18.4947C21.7888 17.021 23.4369 14.3279 23.4369 11.25C23.4369 6.5901 19.6593 2.8125 14.9994 2.8125C10.3395 2.8125 6.56192 6.5901 6.56192 11.25C6.56192 14.328 8.21004 17.021 10.6719 18.4947C9.73468 18.7977 8.82805 19.1996 7.96788 19.6961C5.82983 20.93 4.05416 22.7049 2.81925 24.8424C2.56024 25.2907 2.71371 25.8642 3.16203 26.1232C3.61036 26.3822 4.18377 26.2287 4.44278 25.7804C5.51309 23.9278 7.05207 22.3895 8.90513 21.32C10.7581 20.2505 12.8599 19.6875 14.9994 19.6875C14.9995 19.6875 14.9995 19.6875 14.9996 19.6875C17.1392 19.6875 19.241 20.2506 21.0941 21.3201C22.9471 22.3896 24.4861 23.928 25.5563 25.7806C25.8153 26.2289 26.3887 26.3824 26.8371 26.1234C27.2854 25.8644 27.4389 25.291 27.1799 24.8427C25.945 22.7051 24.1694 20.9302 22.0314 19.6962C21.1711 19.1997 20.2643 18.7977 19.327 18.4947Z"></path></svg></div></div><button class="group TlsIconButton_tls-icon-button__OJTx7 w-8 xl:!hidden" type="button"><svg class="group-disabled:fill-gray-300 w-5 fill-primary-500 aspect-square" aria-label="Menu" role="img" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19.9015 2.85854H6.53153C6.43079 2.85854 6.34838 2.9389 6.34838 3.03711V4.28711C6.34838 4.38532 6.43079 4.46568 6.53153 4.46568H19.9015C20.0022 4.46568 20.0846 4.38532 20.0846 4.28711V3.03711C20.0846 2.9389 20.0022 2.85854 19.9015 2.85854ZM19.9015 9.19782H6.53153C6.43079 9.19782 6.34838 9.27818 6.34838 9.3764V10.6264C6.34838 10.7246 6.43079 10.805 6.53153 10.805H19.9015C20.0022 10.805 20.0846 10.7246 20.0846 10.6264V9.3764C20.0846 9.27818 20.0022 9.19782 19.9015 9.19782ZM19.9015 15.5371H6.53153C6.43079 15.5371 6.34838 15.6175 6.34838 15.7157V16.9657C6.34838 17.0639 6.43079 17.1443 6.53153 17.1443H19.9015C20.0022 17.1443 20.0846 17.0639 20.0846 16.9657V15.7157C20.0846 15.6175 20.0022 15.5371 19.9015 15.5371ZM1.40332 3.66211C1.40332 3.82626 1.43648 3.98881 1.50091 4.14046C1.56534 4.29212 1.65978 4.42992 1.77882 4.54599C1.89787 4.66207 2.03921 4.75414 2.19475 4.81696C2.3503 4.87978 2.51701 4.91211 2.68537 4.91211C2.85373 4.91211 3.02045 4.87978 3.17599 4.81696C3.33154 4.75414 3.47287 4.66207 3.59192 4.54599C3.71097 4.42992 3.8054 4.29212 3.86983 4.14046C3.93426 3.98881 3.96742 3.82626 3.96742 3.66211C3.96742 3.49796 3.93426 3.33541 3.86983 3.18376C3.8054 3.0321 3.71097 2.8943 3.59192 2.77823C3.47287 2.66215 3.33154 2.57008 3.17599 2.50726C3.02045 2.44444 2.85373 2.41211 2.68537 2.41211C2.51701 2.41211 2.3503 2.44444 2.19475 2.50726C2.03921 2.57008 1.89787 2.66215 1.77882 2.77823C1.65978 2.8943 1.56534 3.0321 1.50091 3.18376C1.43648 3.33541 1.40332 3.49796 1.40332 3.66211ZM1.40332 10.0014C1.40332 10.1655 1.43648 10.3281 1.50091 10.4797C1.56534 10.6314 1.65978 10.7692 1.77882 10.8853C1.89787 11.0014 2.03921 11.0934 2.19475 11.1562C2.3503 11.2191 2.51701 11.2514 2.68537 11.2514C2.85373 11.2514 3.02045 11.2191 3.17599 11.1562C3.33154 11.0934 3.47287 11.0014 3.59192 10.8853C3.71097 10.7692 3.8054 10.6314 3.86983 10.4797C3.93426 10.3281 3.96742 10.1655 3.96742 10.0014C3.96742 9.83724 3.93426 9.6747 3.86983 9.52304C3.8054 9.37138 3.71097 9.23358 3.59192 9.11751C3.47287 9.00144 3.33154 8.90936 3.17599 8.84655C3.02045 8.78373 2.85373 8.7514 2.68537 8.7514C2.51701 8.7514 2.3503 8.78373 2.19475 8.84655C2.03921 8.90936 1.89787 9.00144 1.77882 9.11751C1.65978 9.23358 1.56534 9.37138 1.50091 9.52304C1.43648 9.6747 1.40332 9.83724 1.40332 10.0014ZM1.40332 16.3407C1.40332 16.5048 1.43648 16.6674 1.50091 16.819C1.56534 16.9707 1.65978 17.1085 1.77882 17.2246C1.89787 17.3406 2.03921 17.4327 2.19475 17.4955C2.3503 17.5583 2.51701 17.5907 2.68537 17.5907C2.85373 17.5907 3.02045 17.5583 3.17599 17.4955C3.33154 17.4327 3.47287 17.3406 3.59192 17.2246C3.71097 17.1085 3.8054 16.9707 3.86983 16.819C3.93426 16.6674 3.96742 16.5048 3.96742 16.3407C3.96742 16.1765 3.93426 16.014 3.86983 15.8623C3.8054 15.7107 3.71097 15.5729 3.59192 15.4568C3.47287 15.3407 3.33154 15.2487 3.17599 15.1858C3.02045 15.123 2.85373 15.0907 2.68537 15.0907C2.51701 15.0907 2.3503 15.123 2.19475 15.1858C2.03921 15.2487 1.89787 15.3407 1.77882 15.4568C1.65978 15.5729 1.56534 15.7107 1.50091 15.8623C1.43648 16.014 1.40332 16.1765 1.40332 16.3407Z"></path></svg></button></nav>
+```
+it so simper juat bot will click
+
+```html 
+<a href="/en-us/login" class="rounded-full outline-offset-4 outline-on-header"><span type="button" class="TlsButton_tls-button__syUS5 TlsButton_--outline__Gz93Y TlsButton_primary__sPypD TlsButton_--base__NfSqN !text-sm">LOGIN</span></a>
+```
+or
+```html 
+<span type="button" class="TlsButton_tls-button__syUS5 TlsButton_--outline__Gz93Y TlsButton_primary__sPypD TlsButton_--base__NfSqN !text-sm">LOGIN</span>
+```
+
+
+last version of code inside this project context md file that i attached with this message 
+
+bot now stuck in case 1 as in i,age one it keeps open menue and close it wihtou pressing login like in image 1 
+  and case 2
+it didnt do any thing at all
+terminal opurbut 
+```powershell
+:) python.exe .\app.py
+[🧵] Thread started for: yallavisa00@gmail.com
+    - [Injector] Injected headless JS for target: December 2026.
+[📍] yallavisa00@gmail.com identified location: CHOOSE_COUNTRY
+[🌍] yallavisa00@gmail.com handling country selection...
+    - Selected country: Egypt
+    - Confirmed country selection.
+[📍] yallavisa00@gmail.com identified location: CHOOSE_CITY
+[🏢] yallavisa00@gmail.com handling city selection...
+    - Found card for city: Alexandria
+    - Clicked 'Continue' for Alexandria.
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {div#my-application} was not present after 5 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {svg[aria-label='User icon']} was not visible after 10 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {svg[aria-label='User icon']} was not visible after 10 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {svg[aria-label='User icon']} was not visible after 10 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {svg[aria-label='User icon']} was not visible after 10 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+[❌] yallavisa00@gmail.com failed to handle logged_in_info_page: Message: 
+ Element {svg[aria-label='User icon']} was not visible after 10 seconds!
+
+[📍] yallavisa00@gmail.com identified location: LOGGED_IN_INFO_PAGE
+[👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
+(wenv) PS C:\Users\Active\Desktop\Coding\Gradutaion\CustProjects\Omni-Booking-Automation-Suite\TLS_Germany> 
+```
+```
+
+
+## FILE: .\script_logic.md
+
+```md
+هذا السكريبت (Tampermonkey UserScript) يعتبر أداة هندسة عكسية واختراق متقدمة لتجاوز القيود الزمنية المفروضة على تقويم موقع **TLScontact** (خصوصاً نطاق ألمانيا)، والتي تمنع المستخدم عادةً من رؤية أو الوصول إلى الشهور المتقدمة (مثل نوفمبر أو ديسمبر).
+
+إليك **جميع المهام والوظائف** التي يقوم بها هذا السكريبت بالتفصيل:
+
+---
+
+### 1. كسر قيود التواريخ الخاصة بالسيرفر (Date Restrictions Bypass)
+
+- **تعديل `maxDate`:** يقوم بالبحث في بيانات السيرفر وتغيير الحد الأقصى المسموح للتواريخ إلى تاريخ بعيد في المستقبل (مثل نهاية 2027)، مما يجبر الموقع برمجياً على فتح أزرار الأشهر القادمة التي كانت مغلقة.
+- **تعديل `currentDate`:** يقوم بتبديل الشهر الحالي الظاهر للموقع بالشهر والسنة اللذين تريدهما أنت لتوجيه النظام نحو هدفك مباشرة.
+
+### 2. اعتراض وتعديل طلبات الشبكة في الخلفية (Network Interception)
+
+- **اعتراض `fetch`:** يراقب جميع طلبات الجلب (`fetch API`) الصادرة من المتصفح، ويقوم بتعديل روابطها (مثل تغيير معامل التاريخ `currentDate=...`)، كما يعترض الردود القادمة من السيرفر بصيغة `JSON` أو `text` ويقوم بتنظيفها وتعديل التواريخ بداخليها قبل أن يعالجها المتصفح.
+- **اعتراض `XMLHttpRequest` (XHR):** يفعل نفس الشيء مع طلبات الـ XHR القديمة لضمان عدم هروب أي طلب يعرض تواريخ قديمة.
+
+### 3. التفاعل مع إطار عمل الموقع (Next.js Framework Hooking)
+
+- **اعتراض `window.__next_f`:** لأن الموقع مبني بـ Next.js (وهي تقنية تعتمد على تتدفق البيانات)، يراقب السكريبت مصفوفة التدفق الخاصة بالإطار ويقوم بتعديل النصوص والبيانات العابرة فيها فورياً قبل رسمها على الشاشة.
+- **راصد الـ Script Tags (`MutationObserver`):** يراقب أي كود برمجي جديد يتم حقنه ديناميكياً داخل الصفحة، ويقوم بتعديله وتصحيحه على الطائر.
+
+### 4. التنقل التلقائي للتقويم (Auto-Navigation)
+
+- **الوصول للهدف:** يحتوي على آلية ذكية تقوم بمحاكاة النقرات (Auto-navigate) على زر "الشهر التالي" بشكل متكرر وسريع حتى يصل التقويم تلقائياً إلى الشهر والسنة المطلوبين دون تدخل منك.
+
+### 5. تنظيف واجهة المستخدم (DOM Manipulation)
+
+- **إخفاء الشهور السابقة:** يقوم بإخفاء أزرار الشهور القديمة والسابقة تماماً من الواجهة (`hidePastMonths`) لكي لا تسبب إزعاجاً أو اختياراً خاطئاً.
+- **إخفاء المواعيد القديمة:** يخفي الفتحات الزمنية أو الأيام التابعة لشهور فائتة (`hidePastSlots`).
+- **شريط التحميل (Loading Badge):** يضع مؤشراً بصرياً يخبرك بأنه جارٍ تحميل الشهر المستهدف.
+
+### 6. لوحة تحكم تفاعلية وعائمة (HUD & Floating Launcher)
+
+السكريبت لا يعمل في الخفاء فقط، بل يضيف واجهة تحكم مرئية بالكامل على شاشة الموقع تمكنك من:
+
+- **اختيار الشهر والسنة:** شبكة أزرار لاختيار أي شهر (من يناير ديسمبر) وتحديد السنة.
+- **أزرار تفعيل وتعطيل (Toggles):** للتحكم في سلوكيات السكريبت (مثل تفعيل/إيقاف التنقل التلقائي، إخفاء الشهور القديمة، أو تفعيل استبدال التاريخ).
+- **عدادات حية (Status Counters):** لوحة تعرض إحصائيات فورية لعدد المرات التي تم فيها تعديل النصوص، طلبات الـ `fetch`، طلبات الـ `XHR`، وعمليات التنقل.
+- **زر عائم (Floating Launcher):** زر صغير يحمل شعار "TLS" يظهر في ركن الشاشة، يمكنك من إخفاء أو إظهار لوحة التحكم بالكامل بضغطة زر واحدة لكي لا تغطي على تفاصيل الحجز.
+
+```
+
+
+## FILE: .\temp.py
+
+```py
+
+x = 50
+script = f"""
+function xfun(){{
+    let x = "{x}"
+    console.log(x)
+}}
+"""
+print(script)
+```
+
+
 ## FILE: .\browsers\browser_base.py
 
 ```py
@@ -307,31 +659,48 @@ class BrowserBase:
             print(f"[❌] {self.account} failed to handle {current_state}: {e}")
 
     def _workflow_landing_welcome_page(self) -> None:
-        """Handles the Welcome landing page by clicking the User Icon and then clicking LOGIN."""
+        """
+        Handles the two different layouts for the login button on the welcome page.
+        Case 1: A dropdown menu triggered by a user icon (mobile/responsive view).
+        Case 2: A direct, visible LOGIN button in the header (desktop view).
+        """
         print(f"[🌐] {self.account} on Welcome page. Looking for Login option...")
+        
         try:
-            # Check for Desktop LOGIN button
-            login_link_selector = "a[href*='/login']"
-            if self.driver.is_element_visible(login_link_selector):
-                self.driver.js_click(login_link_selector)
-                print(f"    - Clicked direct Login link.")
-                time.sleep(2)
+            # Case 2: Look for the direct, visible LOGIN button first.
+            # This is typically a span inside an anchor tag.
+            direct_login_button_selector = "a[href*='/login'] span[type='button']"
+            if self.driver.is_element_visible(direct_login_button_selector):
+                print("    - Found direct visible LOGIN button (Case 2). Clicking...")
+                self.driver.js_click(direct_login_button_selector)
+                time.sleep(3)
                 return
 
-            # Check for Mobile User Icon
-            user_btn_selector = "svg[aria-label='User icon']"
-            if self.driver.is_element_present(user_btn_selector):
-                self.driver.js_click(user_btn_selector)
-                print(f"    - Opened user account dropdown menu.")
-                time.sleep(1.5)
+            # Case 1: If direct button not found, look for the dropdown menu trigger.
+            user_dropdown_trigger_selector = "div[aria-label='Dropdown selector'] svg[aria-label='User icon']"
+            if self.driver.is_element_visible(user_dropdown_trigger_selector):
+                print("    - Found user icon for dropdown (Case 1). Clicking to open menu...")
+                login_div_selector = "div#login"
+                
+                # Only click the icon if the login div isn't already visible to avoid closing it.
+                if not self.driver.is_element_visible(login_div_selector):
+                    self.driver.js_click(user_dropdown_trigger_selector)
+                    print("    - Clicked user icon.")
+                else:
+                    print("    - Dropdown menu appears to be open already.")
 
-                login_div = "div#login"
-                self.driver.wait_for_element_present(login_div, timeout=5)
-                self.driver.js_click(login_div)
-                print(f"    - Clicked LOGIN option.")
+                self.driver.wait_for_element_visible(login_div_selector, timeout=5)
+                print(f"    - Clicking LOGIN option from dropdown...")
+                self.driver.js_click(login_div_selector)
                 time.sleep(3)
+                return
+
+            print("[⚠️] Could not find any known login button or link on the page. Waiting...")
+            time.sleep(5)
+
         except Exception as e:
-            print(f"[⚠️] Could not navigate from Welcome page to Login: {e}")
+            error_msg = str(e).split('\n')[0]
+            print(f"[❌] {self.account} failed to handle landing_welcome_page: {error_msg}")
             time.sleep(3)
 
     def _workflow_login(self) -> None:
@@ -444,15 +813,28 @@ class BrowserBase:
 
     def _workflow_logged_in_info_page(self) -> None:
         print(f"[👤] {self.account} on logged-in info page. Navigating to 'My Application'...")
-        self.actor.human_click(TLS_SELECTORS['info_page']['user_icon_button'])
-        self.actor.natural_delay()
-        
-        # Click 'My Application' directly
-        my_app_selector = "div#my-application"
-        self.driver.wait_for_element_present(my_app_selector, timeout=5)
-        self.driver.js_click(my_app_selector)
-        print(f"    - Clicked 'My Application'.")
-        time.sleep(2)
+        my_app_selector = TLS_SELECTORS['info_page']['my_application_button']
+        user_icon_selector = TLS_SELECTORS['info_page']['user_icon_button']
+
+        try:
+            # This check prevents the open/close loop.
+            # We only click the user icon if the 'My Application' link is not already visible.
+            if not self.driver.is_element_visible(my_app_selector):
+                print("    - 'My Application' link not visible. Clicking user icon...")
+                self.driver.js_click(user_icon_selector)
+            else:
+                print("    - 'My Application' link is already visible.")
+
+            # Now, wait for the element to be visible and click it.
+            self.driver.wait_for_element_visible(my_app_selector, timeout=5)
+            print("    - Clicking 'My Application'...")
+            self.driver.js_click(my_app_selector)
+            time.sleep(3)
+        except Exception as e:
+            error_msg = str(e).split('\n')[0]
+            print(f"[❌] {self.account} failed to navigate from logged-in info page: {error_msg}")
+            print(f"    - Fallback: Assuming session expired or page is incorrect. Attempting login workflow...")
+            self._workflow_landing_welcome_page()
 
     def _workflow_application_list(self) -> None:
         print(f"[📋] {self.account} on application list page.")
@@ -823,9 +1205,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import threading
 import time
-from typing import Optional, Dict
+from typing import Optional
 import datetime
-import ctypes
 from seleniumbase import Driver
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException
@@ -835,13 +1216,12 @@ from config.selectors import TLS_SELECTORS
 from config import settings
 from browsers.browser_base import BrowserBase
 from browsers.injection import inject_date_bypass
-from config.settings import *
+
 
 class ChromeManager:
     """
     Manages an isolated Chrome browser instance using pure threading.
     Handles lifecycle, threading, and precision timing.
-    Delegates all page interaction to BrowserBase.
     """
 
     _driver_init_lock = threading.Lock()
@@ -882,29 +1262,12 @@ class ChromeManager:
         self.status = "Idle"
 
         # --- HOT-PATCH DASHBOARD VARIABLES ---
-        self.max_year = "2027"
-        self.max_month = "12"
+        self.max_year = 2027
+        self.max_month = 12
         self.js_swap = True
         self.js_nav = True
         self.js_hide_m = True
         self.js_hide_s = True
-
-    def _show_dialog(self, title, message, terminate_only=False):
-        """
-        Shows a native OS message box that safely blocks the background thread.
-        """
-        try:
-            if terminate_only:
-                flags = 0 | 0x10  # MB_OK | MB_ICONERROR
-                ctypes.windll.user32.MessageBoxW(0, message, title, flags)
-                return "CANCEL"
-            else:
-                flags = 1 | 0x30  # MB_OKCANCEL | MB_ICONWARNING
-                result = ctypes.windll.user32.MessageBoxW(0, message, title, flags)
-                return "OK" if result == 1 else "CANCEL"
-        except Exception as e:
-            print(f"Dialog error: {e}")
-            return "CANCEL"
 
     def _build_stealth_profile(self) -> list:
         os.makedirs(self.profile_path, exist_ok=True)
@@ -936,6 +1299,49 @@ class ChromeManager:
         )
         self.thread.start()
 
+    def _print_js_console_logs(self):
+        """Fetches browser console logs and prints Hot-Patch messages to the Python Terminal."""
+        if not self.driver: return
+        try:
+            logs = self.driver.get_log('browser')
+            for log in logs:
+                msg = log.get('message', '')
+                # Filter to only show our JS injection logs
+                if "Hot-Patch" in msg:
+                    # Clean up standard Chrome log formatting
+                    clean_msg = msg.split('"')[-2] if '"' in msg else msg
+                    print(f"    [JS ⚙️] {self.account} -> {clean_msg}")
+        except Exception:
+            pass # Fails safely if logging is not enabled in standard chromedriver
+
+    def _inject_hot_patch(self) -> None:
+        """Injects the headless bypass engine into the active appointment booking DOM."""
+        if not self.driver:
+            return
+        
+        print(f"\n[🚀] {self.account} Initiating JavaScript DOM Hook for Appointment Page...")
+        self.status = "Injecting JavaScript Engine..."
+        try:
+            success = inject_date_bypass(
+                driver=self.driver,
+                target_month_str=self.target_month,
+                max_year=int(self.max_year),
+                max_month=int(self.max_month),
+                hide_past_months=self.js_hide_m,
+                hide_past_slots=self.js_hide_s,
+                auto_navigate=self.js_nav,
+                swap_current_date=self.js_swap
+            )
+            
+            if success:
+                print(f"[✅] {self.account} JavaScript Engine successfully hooked. Monitoring background tasks...\n")
+                time.sleep(1) # Give JS a moment to execute its hiding logic
+                self._print_js_console_logs() # Print the hidden months to terminal
+            else:
+                print(f"[❌] {self.account} JavaScript Engine failed to hook (returned False).\n")
+        except Exception as e:
+            print(f"[❌] {self.account} CRITICAL INJECTION ERROR: {e}\n")
+
     def _run_task(self) -> None:
         print(f"[🧵] Thread started for: {self.account}")
         self.status = "Initializing"
@@ -950,17 +1356,8 @@ class ChromeManager:
                 )
             self.driver.execute_script(f"document.title = '{self.window_title}'")
 
-            inject_date_bypass(self.driver, self.target_month)
-
             self.status = "Navigating to Start URL"
             self.driver.get(self.target_url)
-
-            # =========================================================
-            # NEW ROUTING LOGIC: Intelligent Welcome & App List Handler
-            # =========================================================
-            self._route_smartly()
-
-            if not self.is_running: return # Exit if routing decided to terminate
 
             self.status = "Routing to Dashboard"
             navigator = BrowserBase(
@@ -972,11 +1369,18 @@ class ChromeManager:
             )
 
             while self.is_running:
+                # 1. Complete Login, 2FA, Select City & Application
                 navigator.navigate_to_target_state()
-                if not self.is_running: break
+                if not self.is_running:
+                    break
 
+                # 2. INJECT IMMEDIATELY UPON REACHING APPOINTMENT PAGE
+                self._inject_hot_patch()
+
+                # 3. Enter monitoring loop
                 self._appointment_check_loop()
-                if not self.is_running: break
+                if not self.is_running:
+                    break
 
                 print(f"[{self.account}] Returned from check loop. Re-validating state...")
                 time.sleep(3) 
@@ -995,144 +1399,7 @@ class ChromeManager:
         
         print(f"[💡] Thread for {self.account} has exited.")
 
-    def _route_smartly(self):
-        """Intelligently handles Welcome Page (Login) and App List (City Select) before handing over to navigator."""
-        time.sleep(2)
-        
-        # 1. Handle Welcome Page (Login Button)
-        if "welcome" in self.driver.current_url.lower() or len(self.driver.find_elements(By.XPATH, "//*[contains(text(), 'Welcome to the Visa Application Centre')]")) > 0:
-            print(f"[🌐] {self.account} on Welcome page. Looking for Login option...")
-            
-            # --- INTELLIGENT LOGIN BUTTON FINDER ---
-            login_clicked = False
-            
-            # Form 1: Direct Span/Button in the header
-            direct_login = self.driver.find_elements(By.XPATH, "//span[contains(text(), 'LOGIN') or contains(text(), 'Login')]")
-            for span in direct_login:
-                if span.is_displayed():
-                    print(f"    - Found direct Login button. Clicking...")
-                    self.driver.execute_script("arguments[0].click();", span)
-                    login_clicked = True
-                    break
-            
-            # Form 2: Hidden in Dropdown Menu under User Icon
-            if not login_clicked:
-                user_icons = self.driver.find_elements(By.CSS_SELECTOR, "svg[aria-label='User icon']")
-                if user_icons and user_icons[0].is_displayed():
-                    print(f"    - Direct Login not visible. Clicking User Icon to open dropdown...")
-                    self.driver.execute_script("arguments[0].click();", user_icons[0])
-                    time.sleep(1) 
-                    
-                    dropdown_login = self.driver.find_elements(By.CSS_SELECTOR, "div#login")
-                    if dropdown_login and dropdown_login[0].is_displayed():
-                        print(f"    - Found dropdown Login option. Clicking...")
-                        self.driver.execute_script("arguments[0].click();", dropdown_login[0])
-                        login_clicked = True
-
-            # Form 3: Anchor tag fallback
-            if not login_clicked:
-                login_links = self.driver.find_elements(By.CSS_SELECTOR, "a[href*='/login']")
-                if login_links:
-                    print(f"    - Found Login link via href. Clicking...")
-                    self.driver.execute_script("arguments[0].click();", login_links[0])
-            
-            time.sleep(3)
-
-        # 2. Handle Application List Page (City Select)
-        if "travel-groups" in self.driver.current_url.lower() or len(self.driver.find_elements(By.XPATH, "//*[contains(text(), 'Application manager') or contains(text(), 'Application list')]")) > 0:
-            print(f"[📋] {self.account} on application list page.")
-            time.sleep(2) 
-            tabs = self.driver.find_elements(By.CSS_SELECTOR, "div.light-scroll a")
-            
-            if not tabs:
-                print(f"❌ [{self.account}] No city tabs found at all!")
-                self._show_dialog(
-                    "Configuration Error", 
-                    f"Account: {self.account}\n\nNo cities or applications found at all. The bot will now terminate.",
-                    terminate_only=True
-                )
-                self.stop_engine()
-                return
-
-            target_found = False
-            current_city = ""
-            target_tab_element = None
-            
-            for tab in tabs:
-                try:
-                    city_name_elem = tab.find_element(By.CSS_SELECTOR, "p.whitespace-nowrap")
-                    city_name = city_name_elem.text.strip()
-                    
-                    inner_div = tab.find_element(By.CSS_SELECTOR, "div.TlsTab_tls-tab__7rpn8")
-                    if "TlsTab_--selected" in inner_div.get_attribute("class"):
-                        current_city = city_name
-
-                    if self.target_city.lower() in city_name.lower():
-                        target_found = True
-                        target_tab_element = tab
-                except Exception:
-                    continue
-
-            if target_found:
-                if current_city.lower() != self.target_city.lower():
-                    print(f"    - Current tab is '{current_city}'. Switching to '{self.target_city}'...")
-                    self.driver.execute_script("arguments[0].click();", target_tab_element)
-                    time.sleep(2)
-                else:
-                    print(f"    - Correct city tab '{self.target_city}' is already selected.")
-            else:
-                print(f"    - [❌] CRITICAL: Target city '{self.target_city}' not found. Current is '{current_city}'.")
-                user_choice = self._show_dialog(
-                    "City Not Found", 
-                    f"Account: {self.account}\n\nThe bot didn't find '{self.target_city}' in the Application manager.\n\nThe currently selected city is '{current_city}'.\n\nClick 'OK' to ignore and keep looking for an appointment in '{current_city}', or click 'Cancel' to close this window and terminate the bot instantly.",
-                    terminate_only=False
-                )
-                
-                if user_choice == "OK":
-                    print(f"    - User chose to proceed with current city '{current_city}'.")
-                    self.target_city = current_city  
-                else:
-                    print(f"    - User chose to terminate.")
-                    self.stop_engine()
-                    return
-
-    def _inject_hot_patch(self):
-        if not self.driver: return
-        js_code = f"""
-            try {{
-                var maxInput = document.querySelector('input[name="maxDate"]');
-                if (maxInput) {{
-                    maxInput.value = '{self.max_year}-{str(self.max_month).zfill(2)}';
-                }}
-                
-                if ({str(self.js_hide_s).lower()}) {{
-                    var disabledSlots = document.querySelectorAll('button[data-testid="btn-unavailable-slot"]');
-                    disabledSlots.forEach(slot => {{
-                        var container = slot.closest('.group\\\\/item');
-                        if (container) container.style.display = 'none';
-                    }});
-                }}
-                
-                if ({str(self.js_hide_m).lower()}) {{
-                    document.querySelectorAll('button.MonthSelector_month-selector_button__An0eF').forEach(btn => {{
-                        if (btn.hasAttribute('disabled')) {{
-                            btn.style.display = 'none';
-                        }}
-                    }});
-                }}
-            }} catch(e) {{
-                console.log("Hot-Patch injection error:", e);
-            }}
-        """
-        try:
-            self.driver.execute_script(js_code)
-        except Exception:
-            pass
-
     def _appointment_check_loop(self) -> None:
-        """
-        Continuously checks for appointments on the booking page at a set interval.
-        """
         print(f"[{self.account}] Now monitoring for appointments...")
         while self.is_running:
             if "/appointment-booking/" not in self.driver.current_url:
@@ -1140,6 +1407,9 @@ class ChromeManager:
                 print(f"🗺️ [{self.account}] {self.status} - returning to navigator.")
                 return 
             
+            # Print any new console logs generated by JS (like hiding newly loaded slots)
+            self._print_js_console_logs()
+
             found = self.check_appointment()
             
             if found:
@@ -1150,11 +1420,13 @@ class ChromeManager:
                     time.sleep(1)
                 return 
             
+            # Precision timing synchronization
             target_second = self.target_sec
             if not (0 <= target_second <= 59):
                 interval = self.target_sec if self.target_sec > 0 else settings.APPOINTMENT_CHECK_INTERVAL_SECONDS
                 for i in range(interval, 0, -1):
-                    if not self.is_running: return
+                    if not self.is_running:
+                        return
                     self.countdown = i
                     self.status = f"No appointments. Retrying in {i}s..."
                     time.sleep(1)
@@ -1166,27 +1438,32 @@ class ChromeManager:
                     time.sleep(1 - (datetime.datetime.now().microsecond / 1_000_000.0))
             
             if self.is_running:
-                print(f"[{self.account}] Performing direct refresh to check again...")
+                print(f"[{self.account}] Performing sync refresh...")
                 self.status = "Refreshing..."
-                self.driver.refresh()
-                time.sleep(2) 
-                self._inject_hot_patch() # Inject immediately after refresh
+                
+                # Use get(url) to prevent WinError 10061 Socket Closure
+                self.driver.get(self.driver.current_url) 
+                time.sleep(2)
+                
+                # Re-inject the script right after page reload
+                self._inject_hot_patch()
 
     def check_appointment(self) -> bool:
-        """
-        Performs a single check on the current page for available appointments.
-        This involves navigating to the correct month first.
-        Returns True if an appointment is found, False otherwise.
-        """
         try:
             self.status = f"Checking for month: {self.target_month}"
             
-            if self.js_nav:
+            # --- CRITICAL FIX ---
+            # If JS is handling navigation OR swapping the date entirely, 
+            # Python should NOT try to navigate, as it will crash trying to click hidden elements.
+            if not self.js_nav and not self.js_swap:
                 month_found = self._navigate_to_target_month()
                 if not month_found:
                     return False
 
             self.status = f"Scanning {self.target_month} for slots..."
+            
+            # Wait for body to be fully ready before reading text
+            self.driver.wait_for_element_present("body", timeout=5)
             page_text = self.driver.get_text("body").lower()
             
             no_slots_message_found = False
@@ -1200,617 +1477,442 @@ class ChromeManager:
                 return False
 
             if self.driver.is_element_visible(TLS_SELECTORS['appointment_booking']['available_slot']):
-                print(f"    - 'No slots' message not found AND an available slot is visible. Appointments are available.")
-                
-                # Auto-Click the first available slot!
+                print(f"    - Available slot detected!")
                 available_slots = self.driver.find_elements(By.CSS_SELECTOR, TLS_SELECTORS['appointment_booking']['available_slot'])
                 if available_slots:
                     self.driver.execute_script("arguments[0].click();", available_slots[0])
-                    
                 return True
             
-            print(f"    - 'No slots' message not found, but no available slots were detected either. Assuming no appointments for now.")
             return False
 
         except Exception as e:
-            error_msg = str(e).split('\n')[0]
-            self.status = f"Error checking page: {error_msg}"
-            print(f"❌ [{self.account}] {self.status}")
+            # Reformat exception so it doesn't just print "Message: "
+            error_msg = str(e).replace('\n', ' | ')
+            self.status = f"Error checking page"
+            print(f"❌ [{self.account}] Exception during slot scan: {error_msg}")
             return False
 
     def _navigate_to_target_month(self) -> bool:
-        """
-        Navigates the calendar month-by-month until the target month is selected.
-        Returns True on success, False on failure.
-        """
         try:
+            target_date = datetime.datetime.strptime(self.target_month.strip(), "%B %Y")
+        except ValueError:
+            self.status = f"Error: Invalid month format '{self.target_month}'."
+            print(f"❌ [{self.account}] {self.status}")
+            return False
+
+        for _ in range(24):
+            if not self.is_running:
+                return False
+
+            wait = WebDriverWait(self.driver, settings.WAIT_TIMEOUT_ELEMENT_READY)
+            wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, TLS_SELECTORS['appointment_booking']['month_selector_container'])))
+            
+            current_month_element = self.driver.find_element(By.CSS_SELECTOR, TLS_SELECTORS['appointment_booking']['current_month_button'])
+            current_month_text = current_month_element.text.strip()
+            
             try:
-                target_date = datetime.datetime.strptime(self.target_month, "%B %Y")
+                current_date = datetime.datetime.strptime(current_month_text, "%B %Y")
             except ValueError:
-                self.status = f"Error: Invalid month format '{self.target_month}'. Must be 'Month Year'."
+                self.status = f"Error: Could not parse current month '{current_month_text}'."
                 print(f"❌ [{self.account}] {self.status}")
                 return False
 
-            for _ in range(24):
-                if not self.is_running: return False
+            if current_date.year == target_date.year and current_date.month == target_date.month:
+                return True
 
-                wait = WebDriverWait(self.driver, settings.WAIT_TIMEOUT_ELEMENT_READY)
-                wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, TLS_SELECTORS['appointment_booking']['month_selector_container'])))
-                
-                current_month_element = self.driver.find_element(By.CSS_SELECTOR, TLS_SELECTORS['appointment_booking']['current_month_button'])
-                current_month_text = current_month_element.text.strip()
-                
+            if target_date > current_date:
+                next_button_selector = "[data-testid^='btn-next-month-']"
                 try:
-                    current_date = datetime.datetime.strptime(current_month_text, "%B %Y")
-                except ValueError:
-                    self.status = f"Error: Could not parse current month '{current_month_text}'."
-                    print(f"❌ [{self.account}] {self.status}")
+                    button = self.driver.find_element(By.CSS_SELECTOR, next_button_selector)
+                    if button.is_displayed():
+                        self.driver.execute_script("arguments[0].click();", button) 
+                        time.sleep(1.5)
+                    else:
+                        return False
+                except NoSuchElementException:
                     return False
-
-                if current_date.year == target_date.year and current_date.month == target_date.month:
-                    print(f"    - Correct month '{self.target_month}' is displayed.")
-                    return True
-
-                if target_date > current_date:
-                    next_button_selector = "[data-testid^='btn-next-month-']"
-                    try:
-                        button = self.driver.find_element(By.CSS_SELECTOR, next_button_selector)
-                        if button.is_displayed():
-                            print(f"    - Navigating from {current_month_text} to next month...")
-                            # Using JS Click to avoid Invalid Selector errors
-                            self.driver.execute_script("arguments[0].click();", button) 
-                            time.sleep(1.5)
-                        else:
-                            self.status = f"Error: Cannot reach '{self.target_month}'. 'Next' button is not visible."
-                            print(f"❌ [{self.account}] {self.status}")
-                            return False
-                    except NoSuchElementException:
-                        self.status = f"Error: Cannot reach '{self.target_month}'. 'Next' button not found."
-                        print(f"❌ [{self.account}] {self.status}")
+            else: 
+                prev_button_selector = "[data-testid^='btn-prev-month-']"
+                try:
+                    button = self.driver.find_element(By.CSS_SELECTOR, prev_button_selector)
+                    if button.is_displayed():
+                        self.driver.execute_script("arguments[0].click();", button) 
+                        time.sleep(1.5)
+                    else:
                         return False
-                else: 
-                    prev_button_selector = "[data-testid^='btn-prev-month-']"
-                    try:
-                        button = self.driver.find_element(By.CSS_SELECTOR, prev_button_selector)
-                        if button.is_displayed():
-                            print(f"    - Navigating from {current_month_text} to previous month...")
-                            # Using JS Click to avoid Invalid Selector errors
-                            self.driver.execute_script("arguments[0].click();", button) 
-                            time.sleep(1.5)
-                        else:
-                            self.status = f"Error: Cannot reach '{self.target_month}'. 'Previous' button is not interactable."
-                            print(f"❌ [{self.account}] {self.status}")
-                            return False
-                    except NoSuchElementException:
-                        self.status = f"Error: Cannot reach '{self.target_month}'. 'Previous' button not found."
-                        print(f"❌ [{self.account}] {self.status}")
-                        return False
-            
-            self.status = f"Error: Failed to navigate to '{self.target_month}' after multiple attempts."
-            print(f"❌ [{self.account}] {self.status}")
-            return False
-        except Exception as e:
-            error_msg = str(e).split('\n')[0]
-            self.status = f"Error during month navigation: {error_msg}"
-            print(f"❌ [{self.account}] {self.status}")
-            return False
+                except NoSuchElementException:
+                    return False
+        
+        return False
 
     def stop_engine(self) -> None:
-        if not self.is_running: return
-        
+        if not self.is_running:
+            return
         self.is_running = False 
-        
         if self.driver:
             try:
                 self.driver.quit()
             except Exception:
                 pass
             self.driver = None
-            
         if "Error" not in self.status and self.status != "Finished" and not self.appointment_found:
             self.status = "Terminated"
-
-if __name__ == "__main__":
-    pass
 ```
 
 
 ## FILE: .\browsers\injection.py
 
 ```py
+# Omni-Booking-Automation-Suite/TLS_Germany/browsers/injection.py
+
 import datetime
 from seleniumbase import Driver
 
-JS_PAYLOAD = r"""
-// ==UserScript==
-// @name         TLS Headless Configurable Injector
-// @namespace    http://tampermonkey.net/
-// @version      6.0.0
-// @description  Headless script to force target month, controlled by Python.
-// @match        https://*.tlscontact.com/*
-// @run-at       document-start
-// @grant        none
-// @noframes
-// ==/UserScript==
-(() => {
-  'use strict';
+def get_headless_injection_script(
+    target_month_idx: int,
+    target_year: int,
+    max_year: int = 2027,
+    max_month: int = 12,
+    hide_past_months: bool = True,
+    hide_past_slots: bool = True,
+    auto_navigate: bool = True,
+    swap_current_date: bool = True
+) -> str:
+    """Generates the headless JavaScript payload with built-in logging."""
+    
+    js_config = f"""
+    const S = {{
+        monthIdx: {target_month_idx},
+        year: {target_year},
+        maxYear: {max_year},
+        maxMonth: {max_month},
+        hidePastMonths: {'true' if hide_past_months else 'false'},
+        hidePastSlots: {'true' if hide_past_slots else 'false'},
+        autoNavigate: {'true' if auto_navigate else 'false'},
+        swapCurrentDate: {'true' if swap_current_date else 'false'}
+    }};
+    """
 
-  // Global configuration object. Python will define these values on injection
-  // and can modify them live using execute_script for "hot-patching".
-  window.TLS_CONFIG = {
-    monthIdx: __MONTH_IDX__,
-    year: __YEAR__,
-    maxYear: __MAX_YEAR__,
-    maxMonth: __MAX_MONTH__,
-    hidePastMonths: __HIDE_MONTHS__,
-    hidePastSlots: __HIDE_SLOTS__,
-    autoNavigate: __AUTO_NAV__,
-    swapCurrentDate: __SWAP_DATE__
-  };
-  const S = window.TLS_CONFIG; // Shorthand for the global config
+    js_engine = r"""
+    (() => {
+      'use strict';
+      
+      console.log("%c[💉 Hot-Patch Engine Active] Target: " + S.monthIdx + "/" + S.year + " | MaxDate: " + S.maxYear + "-" + S.maxMonth, "color: #34d399; font-weight: bold; font-size: 14px;");
 
-  const MONTHS_FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      const MONTHS_FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
-  const buildMaxDate = () => {
-    const y = String(S.maxYear).padStart(4, '0');
-    const m = String(S.maxMonth).padStart(2, '0');
-    return `${y}-${m}-01T00:00:00.000Z`;
-  };
+      const buildMaxDate = () => {
+        const y = String(S.maxYear).padStart(4, '0');
+        const m = String(S.maxMonth).padStart(2, '0');
+        return `${y}-${m}-01T00:00:00.000Z`;
+      };
 
-  const buildCurrentDateStr = () => {
-    const m = String(S.monthIdx + 1).padStart(2, '0');
-    const y = String(S.year).padStart(4, '0');
-    return `${m}-${y}`;
-  };
+      const buildCurrentDateStr = () => {
+        const m = String(S.monthIdx + 1).padStart(2, '0');
+        const y = String(S.year).padStart(4, '0');
+        return `${m}-${y}`;
+      };
 
-  let lastNavClickTime = 0;
-  let navDoneOrStuck = false;
+      let navDoneOrStuck = false;
+      let lastNavClickTime = 0;
 
-  // Intercepts and modifies date-related data in JSON/JS strings.
-  function patchString(text) {
-    if (typeof text !== 'string' || text.length < 10) return text;
-    const hasMax = text.indexOf('maxDate') !== -1;
-    const hasCur = S.swapCurrentDate && text.indexOf('currentDate') !== -1;
-    if (!hasMax && !hasCur) return text;
+      // ============================================================
+      // Core Network Interceptor
+      // ============================================================
+      function patchString(text) {
+        if (typeof text !== 'string' || text.length < 10) return text;
+        const hasMax = text.indexOf('maxDate') !== -1;
+        const hasCur = S.swapCurrentDate && text.indexOf('currentDate') !== -1;
+        if (!hasMax && !hasCur) return text;
 
-    let out = text;
+        let out = text;
 
-    if (hasMax) {
-      const newDate = buildMaxDate();
-      out = out.replace(/"maxDate"\s*:\s*"(\$D)?[^"]*"/g, (_, p) => `"maxDate":"${p || ''}${newDate}"`);
-      out = out.replace(/\\"maxDate\\"\s*:\s*\\"(\$D)?(?:[^"\\]|\\.)*?\\"/g, (_, p) => `\\"maxDate\\":\\"${p || ''}${newDate}\\"`);
-      out = out.replace(/\\\\"maxDate\\\\"\s*:\s*\\\\"(\$D)?(?:[^"\\]|\\.)*?\\\\"/g, (_, p) => `\\\\"maxDate\\\\":\\\\"${p || ''}${newDate}\\\\"`);
-    }
-
-    if (hasCur) {
-      const cdStr = buildCurrentDateStr();
-      out = out.replace(/"currentDate"\s*:\s*"\d{2}-\d{4}"/g, `"currentDate":"${cdStr}"`);
-      out = out.replace(/\\"currentDate\\"\s*:\s*\\"\d{2}-\d{4}\\"/g, `\\"currentDate\\":\\"${cdStr}\\"`);
-      out = out.replace(/\\\\"currentDate\\\\"\s*:\s*\\\\"\d{2}-\d{4}\\\\"/g, `\\\\"currentDate\\\\":\\\\"${cdStr}\\\\"`);
-    }
-    return out;
-  }
-
-  // LAYER 1: HTMLScriptElement.prototype.text setter
-  try {
-    const proto = HTMLScriptElement.prototype;
-    const desc = Object.getOwnPropertyDescriptor(proto, 'text') ||
-                 Object.getOwnPropertyDescriptor(Element.prototype, 'textContent') ||
-                 Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
-    if (desc && desc.set) {
-      const origSet = desc.set;
-      const origGet = desc.get;
-      Object.defineProperty(proto, 'text', {
-        configurable: true,
-        get() { return origGet ? origGet.call(this) : this.textContent; },
-        set(v) {
-          if (typeof v === 'string' && (v.indexOf('maxDate') !== -1 || v.indexOf('currentDate') !== -1)) {
-            const patched = patchString(v);
-            if (patched !== v) { return origSet.call(this, patched); }
-          }
-          return origSet.call(this, v);
+        if (hasMax) {
+          const newDate = buildMaxDate();
+          out = out.replace(/"maxDate"\s*:\s*"(\$D)?[^"]*"/g, (_, p) => `"maxDate":"${p || ''}${newDate}"`);
+          out = out.replace(/\\"maxDate\\"\s*:\s*\\"(\$D)?(?:[^"\\]|\\.)*?\\"/g, (_, p) => `\\"maxDate\\":\\"${p || ''}${newDate}\\"`);
+          out = out.replace(/\\\\"maxDate\\\\"\s*:\s*\\\\"(\$D)?(?:[^"\\]|\\.)*?\\\\"/g, (_, p) => `\\\\"maxDate\\\\":\\\\"${p || ''}${newDate}\\\\"`);
+          // console.log("[🛠️ Hot-Patch] maxDate overridden to:", newDate); // Uncomment to see raw network overrides
         }
-      });
-    }
-  } catch (e) {}
 
-  // LAYER 2: script tag observer
-  function patchScriptNode(node) {
-    if (!node || node.nodeType !== 1 || node.tagName !== 'SCRIPT' || node.src || (node.dataset && node.dataset.moPatched === '1')) return;
-    const txt = node.textContent;
-    if (!txt || (txt.indexOf('maxDate') === -1 && txt.indexOf('currentDate') === -1)) return;
-    const patched = patchString(txt);
-    if (patched !== txt) {
-      try { node.textContent = patched; } catch (e) {}
-    }
-    if (node.dataset) node.dataset.moPatched = '1';
-  }
-
-  const docObserver = new MutationObserver((mutations) => {
-    for (const m of mutations) {
-      for (const n of m.addedNodes) {
-        if (n.nodeType === 1) {
-          if (n.tagName === 'SCRIPT') patchScriptNode(n);
-          else if (n.querySelectorAll) n.querySelectorAll('script').forEach(patchScriptNode);
+        if (hasCur) {
+          const cdStr = buildCurrentDateStr();
+          out = out.replace(/"currentDate"\s*:\s*"\d{2}-\d{4}"/g, `"currentDate":"${cdStr}"`);
+          out = out.replace(/\\"currentDate\\"\s*:\s*\\"\d{2}-\d{4}\\"/g, `\\"currentDate\\":\\"${cdStr}\\"`);
+          out = out.replace(/\\\\"currentDate\\\\"\s*:\s*\\\\"\d{2}-\d{4}\\\\"/g, `\\\\"currentDate\\\\":\\\\"${cdStr}\\\\"`);
         }
+        return out;
       }
-      if (m.type === 'characterData' && m.target && m.target.parentNode &&
-          m.target.parentNode.tagName === 'SCRIPT') {
-        patchScriptNode(m.target.parentNode);
-      }
-    }
-  });
 
-  if (document.documentElement) {
-    docObserver.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
-  } else {
-    const earlyInt = setInterval(() => {
-      if (document.documentElement) {
-        clearInterval(earlyInt);
-        docObserver.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
-        if (document.querySelectorAll) document.querySelectorAll('script').forEach(patchScriptNode);
-      }
-    }, 1);
-  }
-  if (document.querySelectorAll) document.querySelectorAll('script').forEach(patchScriptNode);
+      // LAYER 1: HTMLScriptElement prototype
+      try {
+        const proto = HTMLScriptElement.prototype;
+        const desc = Object.getOwnPropertyDescriptor(proto, 'text') ||
+                     Object.getOwnPropertyDescriptor(Element.prototype, 'textContent') ||
+                     Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
+        if (desc && desc.set) {
+          const origSet = desc.set;
+          const origGet = desc.get;
+          Object.defineProperty(proto, 'text', {
+            configurable: true,
+            get() { return origGet ? origGet.call(this) : this.textContent; },
+            set(v) {
+              if (typeof v === 'string' && (v.indexOf('maxDate') !== -1 || v.indexOf('currentDate') !== -1)) {
+                return origSet.call(this, patchString(v));
+              }
+              return origSet.call(this, v);
+            }
+          });
+        }
+      } catch (e) {}
 
-  // LAYER 3: __next_f (Next.js data payload)
-  function hookNextFArray(arr) {
-    if (!Array.isArray(arr) || arr.__mo_hooked) return;
-    for (let i = 0; i < arr.length; i++) {
-      if (Array.isArray(arr[i]) && typeof arr[i][1] === 'string') {
-        arr[i][1] = patchString(arr[i][1]);
-      }
-    }
-    const origPush = arr.push.bind(arr);
-    Object.defineProperty(arr, 'push', {
-      configurable: true, writable: true,
-      value: function(...items) {
-        for (const item of items) {
+      // LAYER 2: Hook Next.js Array
+      function hookNextFArray(arr) {
+        if (!Array.isArray(arr) || arr.__mo_hooked) return;
+        for (let i = 0; i < arr.length; i++) {
+          const item = arr[i];
           if (Array.isArray(item) && typeof item[1] === 'string') {
             item[1] = patchString(item[1]);
           }
         }
-        return origPush(...items);
+        const origPush = arr.push.bind(arr);
+        Object.defineProperty(arr, 'push', {
+          configurable: true, writable: true,
+          value: function(...items) {
+            for (const item of items) {
+              if (Array.isArray(item) && typeof item[1] === 'string') {
+                item[1] = patchString(item[1]);
+              }
+            }
+            return origPush(...items);
+          }
+        });
+        Object.defineProperty(arr, '__mo_hooked', { value: true, enumerable: false, configurable: false, writable: false });
       }
-    });
-    Object.defineProperty(arr, '__mo_hooked', { value: true });
-  }
-  let _nextF;
-  Object.defineProperty(window, '__next_f', {
-    configurable: true,
-    get() { return _nextF; },
-    set(arr) { _nextF = arr; if (Array.isArray(arr)) hookNextFArray(arr); }
-  });
 
-  // LAYER 4: fetch
-  const origFetch = window.fetch;
-  window.fetch = async function(...args) {
-    try {
-      if (S.swapCurrentDate && args[0]) {
-        const url = typeof args[0] === 'string' ? args[0] : (args[0].url || '');
-        if (url && /currentDate=\d{2}-\d{4}/.test(url)) {
-          const newUrl = url.replace(/currentDate=\d{2}-\d{4}/, `currentDate=${buildCurrentDateStr()}`);
-          if (typeof args[0] === 'string') args[0] = newUrl;
-        }
-      }
-    } catch {}
-    const res = await origFetch.apply(this, args);
-    try {
-      const ct = (res.headers.get('content-type') || '').toLowerCase();
-      if (!ct.includes('json') && !ct.includes('text/plain') && !ct.includes('text/x-component')) return res;
-      const clone = res.clone();
-      const text = await clone.text();
-      const patched = patchString(text);
-      if (patched !== text) {
-        return new Response(patched, { status: res.status, statusText: res.statusText, headers: res.headers });
-      }
-    } catch (e) {}
-    return res;
-  };
-
-  // LAYER 5: XHR
-  const OrigXHR = window.XMLHttpRequest;
-  function PatchedXHR() {
-    const xhr = new OrigXHR();
-    const origOpen = xhr.open;
-    xhr.open = function(method, url, ...rest) {
-      if (S.swapCurrentDate && typeof url === 'string' && /currentDate=\d{2}-\d{4}/.test(url)) {
-        url = url.replace(/currentDate=\d{2}-\d{4}/, `currentDate=${buildCurrentDateStr()}`);
-      }
-      return origOpen.call(this, method, url, ...rest);
-    };
-    xhr.addEventListener('readystatechange', function() {
-      if (xhr.readyState === 4) {
+      let _nextF, nextFHookInstalled = false;
+      function installNextFHook() {
+        if (nextFHookInstalled) return;
         try {
-          const ct = (xhr.getResponseHeader('content-type') || '').toLowerCase();
-          if (ct && !ct.includes('json') && !ct.includes('text/plain') && !ct.includes('text/x-component')) return;
-          const original = xhr.responseText;
-          const patched = patchString(original);
-          if (patched !== original) {
-            Object.defineProperty(xhr, 'responseText', { get: () => patched, configurable: true });
-            try { Object.defineProperty(xhr, 'response', { get: () => patched, configurable: true }); } catch {}
+          if (Array.isArray(window.__next_f)) { _nextF = window.__next_f; hookNextFArray(_nextF); }
+          Object.defineProperty(window, '__next_f', {
+            configurable: true,
+            get() { return _nextF; },
+            set(arr) { _nextF = arr; if (Array.isArray(arr)) hookNextFArray(arr); }
+          });
+          nextFHookInstalled = true;
+        } catch (e) {}
+      }
+      installNextFHook();
+
+      // LAYER 3: Fetch Interceptor
+      const origFetch = window.fetch;
+      window.fetch = async function(...args) {
+        try {
+          if (S.swapCurrentDate && args[0]) {
+            const url = typeof args[0] === 'string' ? args[0] : (args[0].url || '');
+            if (url && /currentDate=\d{2}-\d{4}/.test(url)) {
+              args[0] = url.replace(/currentDate=\d{2}-\d{4}/, `currentDate=${buildCurrentDateStr()}`);
+            }
           }
         } catch {}
+        const res = await origFetch.apply(this, args);
+        try {
+          const ct = (res.headers.get('content-type') || '').toLowerCase();
+          if (!ct.includes('json') && !ct.includes('text/plain') && !ct.includes('text/x-component')) return res;
+          const clone = res.clone();
+          const text = await clone.text();
+          const patched = patchString(text);
+          if (patched !== text) {
+            return new Response(patched, { status: res.status, statusText: res.statusText, headers: res.headers });
+          }
+        } catch (e) {}
+        return res;
+      };
+
+      // LAYER 4: XHR Interceptor
+      const OrigXHR = window.XMLHttpRequest;
+      function PatchedXHR() {
+        const xhr = new OrigXHR();
+        const origOpen = xhr.open;
+        xhr.open = function(method, url, ...rest) {
+          if (S.swapCurrentDate && typeof url === 'string' && /currentDate=\d{2}-\d{4}/.test(url)) {
+            url = url.replace(/currentDate=\d{2}-\d{4}/, `currentDate=${buildCurrentDateStr()}`);
+          }
+          return origOpen.call(this, method, url, ...rest);
+        };
+        xhr.addEventListener('readystatechange', function() {
+          if (xhr.readyState === 4) {
+            try {
+              const ct = (xhr.getResponseHeader('content-type') || '').toLowerCase();
+              if (ct && !ct.includes('json') && !ct.includes('text/plain') && !ct.includes('text/x-component')) return;
+              const original = xhr.responseText;
+              const patched = patchString(original);
+              if (patched !== original) {
+                Object.defineProperty(xhr, 'responseText', { get: () => patched, configurable: true });
+                try { Object.defineProperty(xhr, 'response', { get: () => patched, configurable: true }); } catch {}
+              }
+            } catch {}
+          }
+        });
+        return xhr;
       }
-    });
-    return xhr;
-  }
-  PatchedXHR.prototype = OrigXHR.prototype;
-  window.XMLHttpRequest = PatchedXHR;
+      PatchedXHR.prototype = OrigXHR.prototype;
+      window.XMLHttpRequest = PatchedXHR;
 
-  // Helpers
-  function parseMonthLabel(txt) {
-    const m = (txt || '').trim().match(/(\w+)\s+(\d{4})/);
-    if (!m) return null;
-    const idx = MONTHS_FULL.findIndex(mm => mm.toLowerCase() === m[1].toLowerCase());
-    if (idx < 0) return null;
-    return { month: idx, year: parseInt(m[2], 10), ym: parseInt(m[2], 10) * 12 + idx };
-  }
+      // ============================================================
+      // DOM Sanitization
+      // ============================================================
+      function parseMonthLabel(txt) {
+        const m = (txt || '').trim().match(/(\w+)\s+(\d{4})/);
+        if (!m) return null;
+        const idx = MONTHS_FULL.findIndex(mm => mm.toLowerCase() === m[1].toLowerCase());
+        if (idx < 0) return null;
+        return { month: idx, year: parseInt(m[2], 10), ym: parseInt(m[2], 10) * 12 + idx };
+      }
 
-  function targetYM() { return S.year * 12 + S.monthIdx; }
+      function targetYM() { return S.year * 12 + S.monthIdx; }
 
-  function getCurrentMonthYM() {
-    const cur = document.querySelector('[data-testid="btn-current-month-available"], [data-testid="btn-current-month-unavailable"]');
-    if (!cur || cur.style.display === 'none') {
-      const visible = Array.from(document.querySelectorAll(
-        '[data-testid^="btn-current-month-"]:not([style*="display: none"]),' +
-        '[data-testid^="btn-next-month-"]:not([style*="display: none"])'
-      )).find(el => el.offsetParent !== null);
-      if (!visible) return null;
-      const p = parseMonthLabel(visible.textContent);
-      return p ? p.ym : null;
-    }
-    const p = parseMonthLabel(cur.textContent);
-    return p ? p.ym : null;
-  }
+      function getCurrentMonthYM() {
+        const cur = document.querySelector('[data-testid="btn-current-month-available"], [data-testid="btn-current-month-unavailable"]');
+        if (!cur || cur.style.display === 'none') {
+          const visible = Array.from(document.querySelectorAll(
+            '[data-testid^="btn-current-month-"]:not([style*="display: none"]),' +
+            '[data-testid^="btn-next-month-"]:not([style*="display: none"])'
+          )).find(el => el.offsetParent !== null);
+          if (!visible) return null;
+          const p = parseMonthLabel(visible.textContent);
+          return p ? p.ym : null;
+        }
+        const p = parseMonthLabel(cur.textContent);
+        return p ? p.ym : null;
+      }
 
-  // HIDE past months
-  function hidePastMonths() {
-    if (!S.hidePastMonths) {
-      document.querySelectorAll('[data-mo-hidden="1"]').forEach(el => {
-        el.dataset.moHidden = '0';
-        el.style.display = '';
+      function hidePastMonths() {
+        if (!S.hidePastMonths) return;
+        const tYM = targetYM();
+        document.querySelectorAll(
+          '[data-testid="btn-prev-month-unavailable"],[data-testid="btn-prev-month-available"],' +
+          '[data-testid="btn-current-month-available"],[data-testid="btn-current-month-unavailable"],' +
+          '[data-testid="btn-next-month-unavailable"],[data-testid="btn-next-month-available"]'
+        ).forEach(el => {
+          const p = parseMonthLabel(el.textContent);
+          if (p && p.ym < tYM && el.style.display !== 'none') {
+             el.style.display = 'none';
+             console.log("%c[👁️ Hot-Patch] Hiding past month: " + el.textContent.trim(), "color: #fb923c; font-size: 11px;");
+          }
+        });
+      }
+
+      function hidePastSlots() {
+        if (!S.hidePastSlots) return;
+        const tYM = targetYM();
+        const curYM = getCurrentMonthYM();
+        if (curYM == null || curYM >= tYM) return;
+
+        document.querySelectorAll('.AppointmentDay_appointment-day__1Qnz1, [class*="AppointmentDay_appointment-day"]').forEach(card => {
+            if (card.style.display !== 'none') {
+                card.style.display = 'none';
+                console.log("%c[👁️ Hot-Patch] Hiding irrelevant calendar slot grid.", "color: #fb923c; font-size: 11px;");
+            }
+        });
+      }
+
+      function autoNavigateToTarget() {
+        if (!S.autoNavigate || navDoneOrStuck) return;
+        const tYM = targetYM();
+        const curYM = getCurrentMonthYM();
+        if (curYM == null) return;
+        if (curYM >= tYM) { navDoneOrStuck = true; return; }
+
+        const now = Date.now();
+        if (now - lastNavClickTime < 700) return;
+
+        let nextBtn = document.querySelector('[data-testid="btn-next-month-available"], [data-testid="btn-next-month-unavailable"]');
+        if (!nextBtn) return;
+
+        const nextLabel = parseMonthLabel(nextBtn.textContent);
+        if (!nextLabel || nextLabel.ym > tYM || nextLabel.ym === curYM) { navDoneOrStuck = true; return; }
+
+        lastNavClickTime = now;
+        nextBtn.style.display = '';
+        nextBtn.classList.remove('MonthSelector_--disabled__sfMZm');
+        nextBtn.classList.add('MonthSelector_--active__K1ooB');
+        nextBtn.style.pointerEvents = 'auto';
+
+        try { 
+            console.log("%c[🚀 Hot-Patch] Auto-navigating to next month: " + nextLabel.month + "/" + nextLabel.year, "color: #60a5fa; font-weight: bold;");
+            nextBtn.click(); 
+        } catch {}
+      }
+
+      const domMo = new MutationObserver(() => {
+        hidePastMonths();
+        hidePastSlots();
       });
-      return;
-    }
 
-    const tYM = targetYM();
-    const monthButtons = document.querySelectorAll(
-      '[data-testid="btn-prev-month-unavailable"],[data-testid="btn-prev-month-available"],' +
-      '[data-testid="btn-current-month-available"],[data-testid="btn-current-month-unavailable"],' +
-      '[data-testid="btn-next-month-unavailable"],[data-testid="btn-next-month-available"]'
-    );
-
-    monthButtons.forEach(el => {
-      const p = parseMonthLabel(el.textContent);
-      if (!p) return;
-
-      if (p.ym < tYM) {
-        el.dataset.moHidden = '1';
-        el.style.display = 'none';
-      } else if (el.dataset.moHidden === '1') {
-        el.dataset.moHidden = '0';
-        el.style.display = '';
+      function start() {
+        if (document.body) {
+            domMo.observe(document.body, { childList: true, subtree: true });
+        }
+        hidePastMonths();
+        hidePastSlots();
+        setInterval(autoNavigateToTarget, 500);
       }
-    });
-  }
 
-  // HIDE past slots
-  function hidePastSlots() {
-    if (!S.hidePastSlots) {
-      document.querySelectorAll('[data-mo-slot-hidden="1"]').forEach(card => {
-        card.dataset.moSlotHidden = '0';
-        card.style.display = '';
-      });
-      return;
-    }
-
-    const tYM = targetYM();
-    const curYM = getCurrentMonthYM();
-    if (curYM == null) return;
-
-    const dayCards = document.querySelectorAll('.AppointmentDay_appointment-day__1Qnz1, [class*="AppointmentDay_appointment-day"]');
-    const shouldHide = curYM < tYM;
-
-    dayCards.forEach(card => {
-      if (shouldHide) {
-        card.dataset.moSlotHidden = '1';
-        card.style.display = 'none';
-      } else if (card.dataset.moSlotHidden === '1') {
-        card.dataset.moSlotHidden = '0';
-        card.style.display = '';
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', start);
+      } else {
+        start();
       }
-    });
-  }
+    })();
+    """
+    return js_config + js_engine
 
-  // AUTO-NAVIGATE
-  function autoNavigateToTarget() {
-    if (!S.autoNavigate || navDoneOrStuck) return;
-
-    const tYM = targetYM();
-    const curYM = getCurrentMonthYM();
-    if (curYM == null) return;
-    if (curYM >= tYM) { navDoneOrStuck = true; return; }
-
-    const now = Date.now();
-    if (now - lastNavClickTime < 700) return;
-
-    let nextBtn = document.querySelector('[data-testid="btn-next-month-available"], [data-testid="btn-next-month-unavailable"]');
-    if (!nextBtn) return;
-
-    const nextLabel = parseMonthLabel(nextBtn.textContent);
-    if (!nextLabel || nextLabel.ym > tYM || nextLabel.ym === curYM) {
-      navDoneOrStuck = true;
-      return;
-    }
-
-    lastNavClickTime = now;
-
-    const wasHidden = nextBtn.dataset.moHidden;
-    const prevDisplay = nextBtn.style.display;
-    nextBtn.style.display = '';
-    nextBtn.classList.remove('MonthSelector_--disabled__sfMZm');
-    nextBtn.classList.add('MonthSelector_--active__K1ooB');
-    nextBtn.style.pointerEvents = 'auto';
-
-    try {
-      nextBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-    } catch (e) {
-      try { nextBtn.click(); } catch {}
-    }
-
-    setTimeout(() => {
-      if (wasHidden === '1') nextBtn.style.display = 'none';
-      else nextBtn.style.display = prevDisplay;
-      hidePastMonths();
-      hidePastSlots();
-    }, 50);
-  }
-
-  function resetNavState() { navDoneOrStuck = false; lastNavClickTime = 0; }
-
-  // Observers + intervals
-  let domMo = null;
-  function startDomObserver() {
-    if (domMo) try { domMo.disconnect(); } catch {}
-    domMo = new MutationObserver(() => {
-      hidePastMonths();
-      hidePastSlots();
-    });
-    if (document.body) {
-      domMo.observe(document.body, { childList: true, subtree: true });
-    }
-  }
-
-  function reapply() {
-    try { hidePastMonths(); } catch {}
-    try { hidePastSlots(); } catch {}
-    try { startDomObserver(); } catch {}
-    resetNavState();
-  }
-
-  let lastUrl = location.href;
-  setInterval(() => {
-    if (location.href !== lastUrl) {
-      lastUrl = location.href;
-      setTimeout(reapply, 300);
-      setTimeout(reapply, 1000);
-    }
-  }, 500);
-
-  setInterval(autoNavigateToTarget, 500);
-
-  // Main execution
-  function start() {
-    hidePastMonths();
-    hidePastSlots();
-    startDomObserver();
-    setTimeout(autoNavigateToTarget, 800); // Initial navigation attempts
-    setTimeout(autoNavigateToTarget, 1600);
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start);
-  } else {
-    start();
-  }
-})();
-"""
 
 def inject_date_bypass(
     driver: Driver,
     target_month_str: str,
     max_year: int = 2027,
     max_month: int = 12,
-    hide_months: bool = True,  # NOSONAR
-    hide_slots: bool = True,  # NOSONAR
-    auto_nav: bool = True,  # NOSONAR
-    swap_date: bool = True  # NOSONAR
-) -> None:
-    """
-    Prepares and injects the headless, configurable date bypass script into the browser.
+    hide_past_months: bool = True,
+    hide_past_slots: bool = True,
+    auto_navigate: bool = True,
+    swap_current_date: bool = True
+) -> bool:
+    """Helper function to parse target month string and execute the headless script."""
+    if not driver:
+        return False
 
-    This function uses a template for the JavaScript payload and dynamically
-    replaces placeholders with runtime configuration values. This ensures
-    the injected script is always configured correctly for the bot's current target.
-
-    Args:
-        driver: The SeleniumBase driver instance.
-        target_month_str: The target month in "Month Year" format (e.g., "October 2026").
-        max_year: The year for the 'maxDate' override.
-        max_month: The month for the 'maxDate' override.
-        hide_months: If true, hides month buttons before the target month.
-        hide_slots: If true, hides appointment slots in months before the target.
-        auto_nav: If true, programmatically clicks 'next month' to reach the target.
-        swap_date: If true, swaps 'currentDate' in network requests.
-    """
     try:
-        # 1. Parse the target month string into year and a 0-based month index
-        target_date_obj = datetime.datetime.strptime(target_month_str, "%B %Y")
-        target_year = target_date_obj.year
-        target_month_index = target_date_obj.month - 1  # 0-based for JavaScript
+        dt = datetime.datetime.strptime(target_month_str.strip(), "%B %Y")
+    except ValueError:
+        try:
+            dt = datetime.datetime.strptime(target_month_str.strip(), "%b %Y")
+        except ValueError:
+            print(f"[❌] Injection Error: Cannot parse month string '{target_month_str}'")
+            return False
 
-        # 2. Dynamically replace all placeholders in the JS template
-        script_content = JS_PAYLOAD.replace(
-            '__MONTH_IDX__', str(target_month_index)
-        ).replace(
-            '__YEAR__', str(target_year)
-        ).replace(
-            '__MAX_YEAR__', str(max_year)
-        ).replace(
-            '__MAX_MONTH__', str(max_month)
-        ).replace(
-            '__HIDE_MONTHS__', str(hide_months).lower()
-        ).replace(
-            '__HIDE_SLOTS__', str(hide_slots).lower()
-        ).replace(
-            '__AUTO_NAV__', str(auto_nav).lower()
-        ).replace(
-            '__SWAP_DATE__', str(swap_date).lower()
-        )
+    target_month_idx = dt.month - 1
+    target_year = dt.year
 
-        # 3. Inject the modified script to run on all new documents
-        driver.execute_cdp_cmd(
-            'Page.addScriptToEvaluateOnNewDocument',
-            {'source': script_content}
-        )
-        print(f"    - [Injector] Injected headless JS for target: {target_month_str}.")
+    payload = get_headless_injection_script(
+        target_month_idx=target_month_idx,
+        target_year=target_year,
+        max_year=int(max_year),
+        max_month=int(max_month),
+        hide_past_months=hide_past_months,
+        hide_past_slots=hide_past_slots,
+        auto_navigate=auto_navigate,
+        swap_current_date=swap_current_date
+    )
 
-    except Exception as e:
-        print(f"❌ [Injection Error] Failed to inject date bypass script: {e}")
-        raise
-
-def hot_patch_live_js_config(driver: Driver, target_month_str: str) -> None:
-    """
-    Updates the live, in-browser JavaScript configuration object instantly.
-
-    This is designed to be called by the GUI's "Hot-Patch" dialog to change
-    the bot's target month without needing to reload the page or reinject the script.
-
-    Args:
-        driver: The SeleniumBase driver instance of the running bot.
-        target_month_str: The new target month in "Month Year" format.
-    """
     try:
-        # 1. Parse the new target month string
-        target_date_obj = datetime.datetime.strptime(target_month_str, "%B %Y")
-        new_year = target_date_obj.year
-        new_month_index = target_date_obj.month - 1
-
-        # 2. Build and execute a script to update the global config object in the browser
-        js_command = (
-            f"if (window.TLS_CONFIG) {{"
-            f"  window.TLS_CONFIG.monthIdx = {new_month_index};"
-            f"  window.TLS_CONFIG.year = {new_year};"
-            f"  console.log('Hot-patched JS config. New target: {target_month_str}');"
-            f"}}"
-        )
-        driver.execute_script(js_command)
-        print(f"    - [Hot-Patch] Sent live update to JS config. New target: {target_month_str}")
-
+        driver.execute_script(payload)
+        return True
     except Exception as e:
-        print(f"❌ [Hot-Patch Error] Failed to update live JS config: {e}")
+        print(f"[⚠️] Failed to inject headless script: {e}")
+        return False
 ```
 
 
@@ -2534,12 +2636,14 @@ class EditInstanceDialog(QDialog):
         
         l_y = QLabel("Y:")
         l_y.setStyleSheet(LABEL_STYLE)
-        self.max_y = QLineEdit(self.instance.max_year)
+        # Typecasting to string to prevent TypeError
+        self.max_y = QLineEdit(str(self.instance.max_year))
         self.max_y.setStyleSheet(INPUT_STYLE)
         
         l_m = QLabel("M:")
         l_m.setStyleSheet(LABEL_STYLE)
-        self.max_m = QLineEdit(self.instance.max_month)
+        # Typecasting to string to prevent TypeError
+        self.max_m = QLineEdit(str(self.instance.max_month))
         self.max_m.setStyleSheet(INPUT_STYLE)
         
         btn_set = QPushButton("Set")
@@ -2568,7 +2672,7 @@ class EditInstanceDialog(QDialog):
             s_layout.addWidget(lbl, idx % 2, (idx // 2) * 2)
 
         self.val_tgt = QLabel(self.instance.target_month)
-        self.val_max = QLabel(f"{self.instance.max_year}-{self.instance.max_month.zfill(2)}")
+        self.val_max = QLabel(f"{self.instance.max_year}-{str(self.instance.max_month).zfill(2)}")
         self.val_shw = QLabel("Offline")
         self.val_cur = QLabel("Offline")
 
@@ -2661,7 +2765,7 @@ class EditInstanceDialog(QDialog):
         if y.isdigit() and m.isdigit():
             self.instance.max_year = y      
             self.instance.max_month = m     
-            self.val_max.setText(f"{y}-{m.zfill(2)}")
+            self.val_max.setText(f"{y}-{str(m).zfill(2)}")
 
     def _update_live_status(self, *args):
         self.val_tgt.setText(self.instance.target_month)

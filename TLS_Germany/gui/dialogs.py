@@ -279,12 +279,14 @@ class EditInstanceDialog(QDialog):
         
         l_y = QLabel("Y:")
         l_y.setStyleSheet(LABEL_STYLE)
-        self.max_y = QLineEdit(self.instance.max_year)
+        # Typecasting to string to prevent TypeError
+        self.max_y = QLineEdit(str(self.instance.max_year))
         self.max_y.setStyleSheet(INPUT_STYLE)
         
         l_m = QLabel("M:")
         l_m.setStyleSheet(LABEL_STYLE)
-        self.max_m = QLineEdit(self.instance.max_month)
+        # Typecasting to string to prevent TypeError
+        self.max_m = QLineEdit(str(self.instance.max_month))
         self.max_m.setStyleSheet(INPUT_STYLE)
         
         btn_set = QPushButton("Set")
@@ -313,7 +315,7 @@ class EditInstanceDialog(QDialog):
             s_layout.addWidget(lbl, idx % 2, (idx // 2) * 2)
 
         self.val_tgt = QLabel(self.instance.target_month)
-        self.val_max = QLabel(f"{self.instance.max_year}-{self.instance.max_month.zfill(2)}")
+        self.val_max = QLabel(f"{self.instance.max_year}-{str(self.instance.max_month).zfill(2)}")
         self.val_shw = QLabel("Offline")
         self.val_cur = QLabel("Offline")
 
@@ -406,7 +408,7 @@ class EditInstanceDialog(QDialog):
         if y.isdigit() and m.isdigit():
             self.instance.max_year = y      
             self.instance.max_month = m     
-            self.val_max.setText(f"{y}-{m.zfill(2)}")
+            self.val_max.setText(f"{y}-{str(m).zfill(2)}")
 
     def _update_live_status(self, *args):
         self.val_tgt.setText(self.instance.target_month)

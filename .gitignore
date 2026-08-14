@@ -24,5 +24,6 @@ German-visa services in Alexandria _ TLScontact_files/
 build/
 dist/
 user_data/
+trash/
 *.spec
 *.exe
