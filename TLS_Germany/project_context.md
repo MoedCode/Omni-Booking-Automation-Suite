@@ -27,6 +27,16 @@ if __name__ == "__main__":
 ```
 
 
+## FILE: .\CMD.md
+
+```md
+# convert to exectuable file
+```cmd
+ pyinstaller --name "Omni-Booking-Suite" --onefile app.py
+ ```
+```
+
+
 ## FILE: .\project_context.md
 
 ```md
@@ -430,6 +440,454 @@ terminal opurbut
 [👤] yallavisa00@gmail.com on logged-in info page. Navigating to 'My Application'...
 (wenv) PS C:\Users\Active\Desktop\Coding\Gradutaion\CustProjects\Omni-Booking-Automation-Suite\TLS_Germany> 
 ```
+#!/usr/bin/env python3
+"""
+Omni-Booking-Automation-Suite/TLS_Germany/browsers/chrome.py
+Synchronous Thread-Based Implementation
+"""
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import threading
+import time
+from typing import Optional
+import datetime
+from seleniumbase import Driver
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from config.selectors import TLS_SELECTORS
+from config import settings
+from browsers.browser_base import BrowserBase
+from browsers.injection import inject_date_bypass
+
+
+class ChromeManager:
+    """
+    Manages an isolated Chrome browser instance using pure threading.
+    Handles lifecycle, threading, and precision timing.
+    Delegates all page interaction to BrowserBase.
+    """
+
+    _driver_init_lock = threading.Lock()
+
+    def __init__(
+        self,
+        account: str,
+        password: str,
+        url: str,
+        target_month: str,
+        target_city: str,
+        target_hr: int = 0,
+        target_min: int = 0,
+        target_sec: int = 0,
+        target_ms: int = 0,
+        proxy_address: Optional[str] = None
+    ) -> None:
+        self.account = account
+        self.password = password
+        self.target_url = url
+        self.target_month = target_month
+        self.target_city = target_city
+        self.target_hr = int(target_hr)
+        self.target_min = int(target_min)
+        self.target_sec = int(target_sec)
+        self.target_ms = int(target_ms)
+        self.proxy_address = proxy_address
+        self.countdown = 0
+        
+        self.account_safe_name = "".join([c if c.isalnum() else "_" for c in self.account])
+        self.profile_path = os.path.abspath(f"./runtime_profiles/{self.account_safe_name}")
+        
+        self.thread: Optional[threading.Thread] = None
+        self.is_running = False
+        self.driver: Optional[Driver] = None
+        self.appointment_found = False
+        self.status = "Idle"
+
+        # --- HOT-PATCH DASHBOARD VARIABLES ---
+        self.max_year = 2027
+        self.max_month = 12
+        self.js_swap = True
+        self.js_nav = True
+        self.js_hide_m = True
+        self.js_hide_s = True
+
+    def _build_stealth_profile(self) -> list:
+        os.makedirs(self.profile_path, exist_ok=True)
+        flags = [
+            f"--user-data-dir={self.profile_path}",
+            "--window-size=1280,800",
+            "--disable-blink-features=AutomationControlled",
+            "--disable-infobars",
+            "--no-sandbox",
+            "--disk-cache-size=1",
+            "--media-cache-size=1",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-extensions"
+        ]
+        if self.proxy_address:
+            flags.append(f"--proxy-server={self.proxy_address}")
+        return flags
+
+    def start_engine(self) -> None:
+        if self.is_running:
+            return
+
+        self.is_running = True
+        self.thread = threading.Thread(
+            target=self._run_task,
+            name=f"Thread_{self.account}",
+            daemon=True
+        )
+        self.thread.start()
+
+    def _print_js_console_logs(self):
+        """Fetches browser console logs and prints Hot-Patch messages to the Python Terminal."""
+        if not getattr(self, 'driver', None): return
+        try:
+            logs = self.driver.get_log('browser')
+            for log in logs:
+                msg = log.get('message', '')
+                if "Hot-Patch" in msg:
+                    clean_msg = msg.split('"')[-2] if '"' in msg else msg
+                    print(f"    [JS ⚙️] {self.account} -> {clean_msg}")
+        except Exception:
+            pass
+
+    def _inject_dynamic_branding(self) -> None:
+        """Injects a CDP script to handle dynamic tab titles and the custom aqua OAS logo."""
+        if not getattr(self, 'driver', None):
+            return
+            
+        account_prefix = self.account.split('@')[0][:6]
+        
+        js_branding = f"""
+        (() => {{
+            const acc = '{account_prefix}';
+            
+            function applyCustomBranding() {{
+                let step = 'Loading...';
+                const url = window.location.href.toLowerCase();
+                
+                // 1. Determine the exact process step based on URL routing
+                if (url.includes('auth') || url.includes('login')) {{
+                    step = 'Login';
+                }} else if (url.includes('appointment-booking')) {{
+                    step = 'Booking';
+                }} else if (url.includes('vac') && !url.includes('application')) {{
+                    step = 'Choose City';
+                }} else if (url.includes('country')) {{
+                    step = 'Choose Country';
+                }} else if (url.includes('application')) {{
+                    step = 'Application';
+                }} else if (url.includes('service')) {{
+                    step = 'Services';
+                }} else {{
+                    step = 'Routing';
+                }}
+                
+                // 2. Update Chrome Browser Tab Title
+                const newTitle = `OAS - ${{acc}} - ${{step}}`;
+                if (document.title !== newTitle) {{
+                    document.title = newTitle;
+                }}
+
+                // 3. Inject Visual Aqua 'OAS' Logo next to TLScontact Logo
+                const navLogoLink = document.querySelector('nav a img[alt*="TLScontact logo"]');
+                if (navLogoLink) {{
+                    const parentA = navLogoLink.closest('a');
+                    if (parentA && !document.getElementById('oas-custom-logo')) {{
+                        const oasText = document.createElement('span');
+                        oasText.id = 'oas-custom-logo';
+                        oasText.textContent = 'OAS';
+                        oasText.style.color = '#00FFFF'; // Aqua color
+                        oasText.style.fontWeight = '900';
+                        oasText.style.fontSize = '26px';
+                        oasText.style.marginRight = '12px';
+                        oasText.style.fontFamily = 'Arial, sans-serif';
+                        
+                        parentA.parentNode.insertBefore(oasText, parentA);
+                        parentA.parentNode.style.display = 'flex';
+                        parentA.parentNode.style.alignItems = 'center';
+                    }}
+                }}
+            }}
+            
+            applyCustomBranding();
+            setInterval(applyCustomBranding, 500);
+        }})();
+        """
+        
+        try:
+            self.driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": js_branding})
+        except Exception as e:
+            print(f"[⚠️] Failed to inject dynamic branding script: {e}")
+
+    def _inject_hot_patch(self) -> None:
+        """Injects the headless bypass engine dynamically into the active DOM."""
+        if not getattr(self, 'driver', None):
+            return
+        
+        print(f"\n[🚀] {self.account} Initiating JavaScript DOM Hook for Appointment Page...")
+        self.status = "Injecting JavaScript Engine..."
+        try:
+            success = inject_date_bypass(
+                driver=self.driver,
+                target_month_str=self.target_month,
+                max_year=int(self.max_year),
+                max_month=int(self.max_month),
+                hide_past_months=self.js_hide_m,
+                hide_past_slots=self.js_hide_s,
+                auto_navigate=self.js_nav,
+                swap_current_date=self.js_swap
+            )
+            
+            if success:
+                print(f"[✅] {self.account} JavaScript Engine successfully hooked. Monitoring background tasks...\n")
+                time.sleep(1) 
+                self._print_js_console_logs() 
+            else:
+                print(f"[❌] {self.account} JavaScript Engine failed to hook (returned False).\n")
+        except Exception as e:
+            print(f"[❌] {self.account} CRITICAL INJECTION ERROR: {e}\n")
+
+    def _run_task(self) -> None:
+        print(f"[🧵] Thread started for: {self.account}")
+        self.status = "Initializing"
+
+        try:
+            with ChromeManager._driver_init_lock:
+                self.status = "Launching Driver"
+                self.driver = Driver(
+                    uc=True,
+                    incognito=False,
+                    chromium_arg=",".join(self._build_stealth_profile())
+                )
+            
+            # Initiate dynamic title updates and visual OAS logo insertion globally
+            self._inject_dynamic_branding()
+
+            self.status = "Navigating to Start URL"
+            self.driver.get(self.target_url)
+
+            self.status = "Routing to Dashboard"
+            navigator = BrowserBase(
+                driver=self.driver, 
+                account=self.account, 
+                password=self.password,
+                target_city=self.target_city,
+                is_running_flag=lambda: self.is_running
+            )
+
+            while self.is_running:
+                navigator.navigate_to_target_state()
+                if not self.is_running:
+                    break
+
+                self._inject_hot_patch()
+                self._appointment_check_loop()
+                
+                if not self.is_running:
+                    break
+
+                print(f"[{self.account}] Returned from check loop. Re-validating state...")
+                time.sleep(3) 
+
+        except ValueError as ve:
+            self.is_running = False
+            self.status = f"Error: {str(ve)}"
+            print(f"❌ [Fatal Error in {self.account}]: {ve}")
+
+        except Exception as e:
+            if self.is_running:
+                error_msg = str(e).split('\n')[0]
+                print(f"❌ [Error in {self.account}]: {error_msg}")
+                self.status = f"Error: {error_msg}"
+                self.is_running = False
+        
+        finally:
+            # Guarantee Chrome shuts down correctly when thread exits for any reason
+            self.stop_engine()
+            print(f"[💡] Thread for {self.account} has exited and Chrome instance is successfully closed.")
+
+    def _appointment_check_loop(self) -> None:
+        print(f"[{self.account}] Now monitoring for appointments...")
+        while self.is_running:
+            if "/appointment-booking/" not in self.driver.current_url:
+                self.status = "Re-routing: Off booking page."
+                print(f"🗺️ [{self.account}] {self.status} - returning to navigator.")
+                return 
+            
+            self._print_js_console_logs()
+
+            found = self.check_appointment()
+            
+            if found:
+                self.status = "Appointments Found!"
+                self.appointment_found = True
+                print(f"✅✅✅ [{self.account}] APPOINTMENTS FOUND! ✅✅✅")
+                while self.is_running:
+                    time.sleep(1)
+                return 
+            
+            target_second = self.target_sec
+            if not (0 <= target_second <= 59):
+                interval = self.target_sec if self.target_sec > 0 else settings.APPOINTMENT_CHECK_INTERVAL_SECONDS
+                for i in range(interval, 0, -1):
+                    if not self.is_running:
+                        return
+                    self.countdown = i
+                    self.status = f"No appointments. Retrying in {i}s..."
+                    time.sleep(1)
+            else:
+                while self.is_running and datetime.datetime.now().second != target_second:
+                    remaining_seconds = (target_second - datetime.datetime.now().second + 60) % 60
+                    self.countdown = remaining_seconds
+                    self.status = f"No appointments. Syncing for : {target_second:02d}. Retrying in {remaining_seconds}s..."
+                    time.sleep(1 - (datetime.datetime.now().microsecond / 1_000_000.0))
+            
+            if self.is_running:
+                print(f"[{self.account}] Performing sync refresh...")
+                self.status = "Refreshing..."
+                
+                self.driver.get(self.driver.current_url) 
+                time.sleep(2)
+                
+                self._inject_hot_patch()
+
+    def check_appointment(self) -> bool:
+        try:
+            self.status = f"Checking for month: {self.target_month}"
+            
+            if self.js_nav and not self.js_swap:
+                target_reached = self._wait_for_js_navigation()
+                if not target_reached:
+                    return False
+            elif not self.js_nav and not self.js_swap:
+                month_found = self._navigate_to_target_month()
+                if not month_found:
+                    return False
+
+            self.status = f"Scanning {self.target_month} for slots..."
+            
+            self.driver.wait_for_element_present("body", timeout=5)
+            page_text = self.driver.get_text("body").lower()
+            
+            no_slots_message_found = False
+            for message in settings.appointment_results:
+                if message.lower() in page_text:
+                    print(f"    - No appointment slots available for {self.target_month}. Found text: '{message}'")
+                    no_slots_message_found = True
+                    break
+            
+            if no_slots_message_found:
+                return False
+
+            if self.driver.is_element_visible(TLS_SELECTORS['appointment_booking']['available_slot']):
+                print(f"    - Available slot detected!")
+                available_slots = self.driver.find_elements(By.CSS_SELECTOR, TLS_SELECTORS['appointment_booking']['available_slot'])
+                if available_slots:
+                    self.driver.execute_script("arguments[0].click();", available_slots[0])
+                return True
+            
+            return False
+
+        except Exception as e:
+            error_msg = str(e).replace('\n', ' | ')
+            self.status = "Error checking page"
+            print(f"❌ [{self.account}] Exception during slot scan: {error_msg}")
+            return False
+
+    def _wait_for_js_navigation(self) -> bool:
+        """Waits for the JS auto-navigator to reach the target month before proceeding."""
+        try:
+            target_date = datetime.datetime.strptime(self.target_month.strip(), "%B %Y")
+        except ValueError:
+            return False
+
+        for _ in range(15): 
+            if not self.is_running: return False
+            try:
+                current_month_element = self.driver.find_element(By.CSS_SELECTOR, TLS_SELECTORS['appointment_booking']['current_month_button'])
+                current_date = datetime.datetime.strptime(current_month_element.text.strip(), "%B %Y")
+                if current_date.year == target_date.year and current_date.month == target_date.month:
+                    return True 
+            except Exception:
+                pass
+            time.sleep(1)
+        
+        return False
+
+    def _navigate_to_target_month(self) -> bool:
+        try:
+            target_date = datetime.datetime.strptime(self.target_month.strip(), "%B %Y")
+        except ValueError:
+            self.status = f"Error: Invalid month format '{self.target_month}'."
+            print(f"❌ [{self.account}] {self.status}")
+            return False
+
+        for _ in range(24):
+            if not self.is_running:
+                return False
+
+            wait = WebDriverWait(self.driver, settings.WAIT_TIMEOUT_ELEMENT_READY)
+            wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, TLS_SELECTORS['appointment_booking']['month_selector_container'])))
+            
+            current_month_element = self.driver.find_element(By.CSS_SELECTOR, TLS_SELECTORS['appointment_booking']['current_month_button'])
+            current_month_text = current_month_element.text.strip()
+            
+            try:
+                current_date = datetime.datetime.strptime(current_month_text, "%B %Y")
+            except ValueError:
+                self.status = f"Error: Could not parse current month '{current_month_text}'."
+                print(f"❌ [{self.account}] {self.status}")
+                return False
+
+            if current_date.year == target_date.year and current_date.month == target_date.month:
+                return True
+
+            if target_date > current_date:
+                next_button_selector = "[data-testid^='btn-next-month-']"
+                try:
+                    button = self.driver.find_element(By.CSS_SELECTOR, next_button_selector)
+                    if button.is_displayed():
+                        self.driver.execute_script("arguments[0].click();", button) 
+                        time.sleep(1.5)
+                    else:
+                        return False
+                except NoSuchElementException:
+                    return False
+            else: 
+                prev_button_selector = "[data-testid^='btn-prev-month-']"
+                try:
+                    button = self.driver.find_element(By.CSS_SELECTOR, prev_button_selector)
+                    if button.is_displayed():
+                        self.driver.execute_script("arguments[0].click();", button) 
+                        time.sleep(1.5)
+                    else:
+                        return False
+                except NoSuchElementException:
+                    return False
+        
+        return False
+
+    def stop_engine(self) -> None:
+        self.is_running = False 
+        
+        # Completely bypasses returning early so driver always attempts to quit.
+        if getattr(self, 'driver', None):
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
+            self.driver = None
+            
+        if "Error" not in self.status and self.status != "Finished" and not self.appointment_found:
+            self.status = "Terminated"
 ```
 
 
@@ -1197,7 +1655,7 @@ class CaptchaHandler:
 #!/usr/bin/env python3
 """
 Omni-Booking-Automation-Suite/TLS_Germany/browsers/chrome.py
-Synchronous Thread-Based Implementation
+Synchronous Thread-Based Implementation with Persistent UI Injection
 """
 import sys
 import os
@@ -1221,7 +1679,7 @@ from browsers.injection import inject_date_bypass
 class ChromeManager:
     """
     Manages an isolated Chrome browser instance using pure threading.
-    Handles lifecycle, threading, and precision timing.
+    Handles lifecycle, threading, precision timing, and custom UI overlay.
     """
 
     _driver_init_lock = threading.Lock()
@@ -1253,9 +1711,9 @@ class ChromeManager:
         
         self.account_safe_name = "".join([c if c.isalnum() else "_" for c in self.account])
         self.profile_path = os.path.abspath(f"./runtime_profiles/{self.account_safe_name}")
-        self.window_title = f"Omni-Booking :: {self.account}"
         
         self.thread: Optional[threading.Thread] = None
+        self.ui_thread: Optional[threading.Thread] = None
         self.is_running = False
         self.driver: Optional[Driver] = None
         self.appointment_found = False
@@ -1299,6 +1757,113 @@ class ChromeManager:
         )
         self.thread.start()
 
+    def _ui_updater_loop(self):
+        """
+        Background daemon that continuously checks the URL and settings.
+        Updates the tab title, injects the OAS header, and syncs the theme.
+        """
+        # Area 2: Truncated account name (before @)
+        account_prefix = self.account.split('@')[0].upper()
+        # Area 4: Full account name
+        full_account = self.account.upper()
+        
+        while self.is_running:
+            if self.driver:
+                try:
+                    current_url = self.driver.current_url.lower()
+                    
+                    # 1. Determine process name (max 2 words)
+                    proc_name = "Routing..."
+                    if "login" in current_url or "auth" in current_url:
+                        proc_name = "Login"
+                    elif "country" in current_url:
+                        proc_name = "Select Country"
+                    elif "vac" in current_url or "city" in current_url:
+                        proc_name = "Select City"
+                    elif "application-process" in current_url:
+                        proc_name = "App Process"
+                    elif "service" in current_url:
+                        proc_name = "Select Service"
+                    elif "appointment-booking" in current_url:
+                        proc_name = "Booking Appt"
+
+                    # Fetch the global theme selected in the PyQt main window
+                    current_theme = getattr(settings, 'APP_THEME', 'dark')
+
+                    js_code = f"""
+                    (function() {{
+                        // TAB TITLE LOCK (AREA 2)
+                        var newTitle = "[OAS] | {account_prefix} | {proc_name}";
+                        if (document.title !== newTitle) document.title = newTitle;
+                        
+                        if (!window.oasTitleLock) {{
+                            window.oasTitleLock = new MutationObserver(() => {{
+                                if (document.title !== newTitle) document.title = newTitle;
+                            }});
+                            var tNode = document.querySelector('title') || document.head;
+                            window.oasTitleLock.observe(tNode, {{childList: true, subtree: true, characterData: true}});
+                        }}
+
+                        // HEADER INJECTION (AREA 3 & 4)
+                        var header = document.getElementById('oas-custom-header');
+                        if (!header) {{
+                            header = document.createElement('div');
+                            header.id = 'oas-custom-header';
+                            
+                            header.innerHTML = `
+                                <div style="display: flex; align-items: center; gap: 15px;">
+                                    <span style="font-family: 'Brush Script MT', 'Comic Sans MS', cursive; color: #00ffff; font-size: 30px; font-weight: bold; letter-spacing: 1px;">OAS</span>
+                                    <span id="oas-account-name" style="font-size: 16px; font-weight: 600; padding-left: 15px;">{full_account}</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 20px;">
+                                    <span id="oas-process-name" style="color: #34d399; font-size: 16px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">{proc_name}</span>
+                                </div>
+                            `;
+                            
+                            if (document.body) document.body.insertBefore(header, document.body.firstChild);
+                            else document.documentElement.appendChild(header);
+
+                            // Force TLS UI down by 65px so it doesn't hide behind our custom header
+                            var style = document.getElementById('oas-margin-style');
+                            if(!style) {{
+                                style = document.createElement('style');
+                                style.id = 'oas-margin-style';
+                                style.innerHTML = `
+                                    body {{ padding-top: 65px !important; }} 
+                                    nav#navbar {{ top: 65px !important; }}
+                                    .osano-cm-window {{ top: 65px !important; }}
+                                `;
+                                document.head.appendChild(style);
+                            }}
+                        }} else {{
+                            // Update process name dynamically on page transitions
+                            var procSpan = document.getElementById('oas-process-name');
+                            if (procSpan && procSpan.innerText !== "{proc_name}") {{
+                                procSpan.innerText = "{proc_name}";
+                            }}
+                        }}
+                        
+                        // SYNC THEME FROM MAIN WINDOW (AREA 1 SYNC)
+                        if (header) {{
+                            var theme = "{current_theme}";
+                            var acctSpan = document.getElementById('oas-account-name');
+                            if(theme === 'dark') {{
+                                header.style.cssText = "position: fixed; top: 0; left: 0; width: 100%; height: 65px; background-color: #0b1120; color: #f8fafc; display: flex; align-items: center; justify-content: space-between; padding: 0 25px; z-index: 2147483647; font-family: system-ui, sans-serif; box-shadow: 0 4px 15px rgba(0,0,0,0.7); box-sizing: border-box; border-bottom: 1px solid #1e293b;";
+                                if (acctSpan) acctSpan.style.borderLeft = "2px solid #334155";
+                            }} else {{
+                                header.style.cssText = "position: fixed; top: 0; left: 0; width: 100%; height: 65px; background-color: #ffffff; color: #0f172a; display: flex; align-items: center; justify-content: space-between; padding: 0 25px; z-index: 2147483647; font-family: system-ui, sans-serif; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-bottom: 2px solid #e2e8f0; box-sizing: border-box;";
+                                if (acctSpan) acctSpan.style.borderLeft = "2px solid #cbd5e1";
+                            }}
+                        }}
+                    }})();
+                    """
+                    self.driver.execute_script(js_code)
+                except Exception:
+                    pass # Safely ignore JS execution errors during hard reloads
+            
+            # Run loop every 1 second
+            time.sleep(1)
+
     def _print_js_console_logs(self):
         """Fetches browser console logs and prints Hot-Patch messages to the Python Terminal."""
         if not self.driver: return
@@ -1306,16 +1871,14 @@ class ChromeManager:
             logs = self.driver.get_log('browser')
             for log in logs:
                 msg = log.get('message', '')
-                # Filter to only show our JS injection logs
                 if "Hot-Patch" in msg:
-                    # Clean up standard Chrome log formatting
                     clean_msg = msg.split('"')[-2] if '"' in msg else msg
                     print(f"    [JS ⚙️] {self.account} -> {clean_msg}")
         except Exception:
-            pass # Fails safely if logging is not enabled in standard chromedriver
+            pass
 
     def _inject_hot_patch(self) -> None:
-        """Injects the headless bypass engine into the active appointment booking DOM."""
+        """Injects the headless bypass engine dynamically into the active DOM."""
         if not self.driver:
             return
         
@@ -1335,8 +1898,8 @@ class ChromeManager:
             
             if success:
                 print(f"[✅] {self.account} JavaScript Engine successfully hooked. Monitoring background tasks...\n")
-                time.sleep(1) # Give JS a moment to execute its hiding logic
-                self._print_js_console_logs() # Print the hidden months to terminal
+                time.sleep(1)
+                self._print_js_console_logs() 
             else:
                 print(f"[❌] {self.account} JavaScript Engine failed to hook (returned False).\n")
         except Exception as e:
@@ -1354,7 +1917,10 @@ class ChromeManager:
                     incognito=False,
                     chromium_arg=",".join(self._build_stealth_profile())
                 )
-            self.driver.execute_script(f"document.title = '{self.window_title}'")
+            
+            # Start the UI Daemon Thread to monitor tabs and inject Header
+            self.ui_thread = threading.Thread(target=self._ui_updater_loop, daemon=True)
+            self.ui_thread.start()
 
             self.status = "Navigating to Start URL"
             self.driver.get(self.target_url)
@@ -1369,16 +1935,13 @@ class ChromeManager:
             )
 
             while self.is_running:
-                # 1. Complete Login, 2FA, Select City & Application
                 navigator.navigate_to_target_state()
                 if not self.is_running:
                     break
 
-                # 2. INJECT IMMEDIATELY UPON REACHING APPOINTMENT PAGE
                 self._inject_hot_patch()
-
-                # 3. Enter monitoring loop
                 self._appointment_check_loop()
+                
                 if not self.is_running:
                     break
 
@@ -1396,8 +1959,11 @@ class ChromeManager:
                 print(f"❌ [Error in {self.account}]: {error_msg}")
                 self.status = f"Error: {error_msg}"
                 self.is_running = False
-        
-        print(f"[💡] Thread for {self.account} has exited.")
+                
+        finally:
+            # --- REQUIREMENT A: ALWAYS CLOSE CHROME ON EXIT ---
+            self.stop_engine()
+            print(f"[💡] Thread for {self.account} has exited and Chrome instance is successfully closed.")
 
     def _appointment_check_loop(self) -> None:
         print(f"[{self.account}] Now monitoring for appointments...")
@@ -1407,7 +1973,6 @@ class ChromeManager:
                 print(f"🗺️ [{self.account}] {self.status} - returning to navigator.")
                 return 
             
-            # Print any new console logs generated by JS (like hiding newly loaded slots)
             self._print_js_console_logs()
 
             found = self.check_appointment()
@@ -1420,7 +1985,6 @@ class ChromeManager:
                     time.sleep(1)
                 return 
             
-            # Precision timing synchronization
             target_second = self.target_sec
             if not (0 <= target_second <= 59):
                 interval = self.target_sec if self.target_sec > 0 else settings.APPOINTMENT_CHECK_INTERVAL_SECONDS
@@ -1441,28 +2005,26 @@ class ChromeManager:
                 print(f"[{self.account}] Performing sync refresh...")
                 self.status = "Refreshing..."
                 
-                # Use get(url) to prevent WinError 10061 Socket Closure
                 self.driver.get(self.driver.current_url) 
                 time.sleep(2)
                 
-                # Re-inject the script right after page reload
                 self._inject_hot_patch()
 
     def check_appointment(self) -> bool:
         try:
             self.status = f"Checking for month: {self.target_month}"
             
-            # --- CRITICAL FIX ---
-            # If JS is handling navigation OR swapping the date entirely, 
-            # Python should NOT try to navigate, as it will crash trying to click hidden elements.
-            if not self.js_nav and not self.js_swap:
+            if self.js_nav and not self.js_swap:
+                target_reached = self._wait_for_js_navigation()
+                if not target_reached:
+                    return False
+            elif not self.js_nav and not self.js_swap:
                 month_found = self._navigate_to_target_month()
                 if not month_found:
                     return False
 
             self.status = f"Scanning {self.target_month} for slots..."
             
-            # Wait for body to be fully ready before reading text
             self.driver.wait_for_element_present("body", timeout=5)
             page_text = self.driver.get_text("body").lower()
             
@@ -1486,11 +2048,30 @@ class ChromeManager:
             return False
 
         except Exception as e:
-            # Reformat exception so it doesn't just print "Message: "
             error_msg = str(e).replace('\n', ' | ')
-            self.status = f"Error checking page"
+            self.status = "Error checking page"
             print(f"❌ [{self.account}] Exception during slot scan: {error_msg}")
             return False
+
+    def _wait_for_js_navigation(self) -> bool:
+        """Waits for the JS auto-navigator to reach the target month before proceeding."""
+        try:
+            target_date = datetime.datetime.strptime(self.target_month.strip(), "%B %Y")
+        except ValueError:
+            return False
+
+        for _ in range(15):
+            if not self.is_running: return False
+            try:
+                current_month_element = self.driver.find_element(By.CSS_SELECTOR, TLS_SELECTORS['appointment_booking']['current_month_button'])
+                current_date = datetime.datetime.strptime(current_month_element.text.strip(), "%B %Y")
+                if current_date.year == target_date.year and current_date.month == target_date.month:
+                    return True 
+            except Exception:
+                pass
+            time.sleep(1)
+        
+        return False
 
     def _navigate_to_target_month(self) -> bool:
         try:
@@ -1546,7 +2127,7 @@ class ChromeManager:
         return False
 
     def stop_engine(self) -> None:
-        if not self.is_running:
+        if not self.is_running and not self.driver:
             return
         self.is_running = False 
         if self.driver:
@@ -1632,7 +2213,6 @@ def get_headless_injection_script(
           out = out.replace(/"maxDate"\s*:\s*"(\$D)?[^"]*"/g, (_, p) => `"maxDate":"${p || ''}${newDate}"`);
           out = out.replace(/\\"maxDate\\"\s*:\s*\\"(\$D)?(?:[^"\\]|\\.)*?\\"/g, (_, p) => `\\"maxDate\\":\\"${p || ''}${newDate}\\"`);
           out = out.replace(/\\\\"maxDate\\\\"\s*:\s*\\\\"(\$D)?(?:[^"\\]|\\.)*?\\\\"/g, (_, p) => `\\\\"maxDate\\\\":\\\\"${p || ''}${newDate}\\\\"`);
-          // console.log("[🛠️ Hot-Patch] maxDate overridden to:", newDate); // Uncomment to see raw network overrides
         }
 
         if (hasCur) {
@@ -1791,11 +2371,22 @@ def get_headless_injection_script(
       function hidePastMonths() {
         if (!S.hidePastMonths) return;
         const tYM = targetYM();
+        
         document.querySelectorAll(
           '[data-testid="btn-prev-month-unavailable"],[data-testid="btn-prev-month-available"],' +
           '[data-testid="btn-current-month-available"],[data-testid="btn-current-month-unavailable"],' +
           '[data-testid="btn-next-month-unavailable"],[data-testid="btn-next-month-available"]'
         ).forEach(el => {
+          
+          // VISUAL FIX: If server-side swap is active, explicitly rename the current active button 
+          // to match the target month so it doesn't get hidden and proves the swap worked.
+          if (S.swapCurrentDate && el.getAttribute('data-testid').includes('current-month')) {
+              const targetStr = MONTHS_FULL[S.monthIdx] + ' ' + S.year;
+              if (el.textContent.trim() !== targetStr) {
+                  el.textContent = targetStr;
+              }
+          }
+
           const p = parseMonthLabel(el.textContent);
           if (p && p.ym < tYM && el.style.display !== 'none') {
              el.style.display = 'none';
@@ -2111,6 +2702,7 @@ URLS = [
 BASE_URL = URLS[0]
 START_URL = URLS[0]
 
+APP_THEME = 'dark'
 # --- MANDATORY ATTRIBUTES ---
 # Columns that MUST be present in the data file for it to be considered valid.
 MANDATORY_ATTRIBUTES = ['Account', 'Password']
@@ -2365,6 +2957,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 import datetime
 from browsers.chrome import ChromeManager
+from .theme import DARK_THEME, LIGHT_THEME
 
 class AddInstanceDialog(QDialog):
     """A dialog to manually add a new bot instance."""
@@ -2452,15 +3045,15 @@ class EditInstanceDialog(QDialog):
     A high-tech, modeless dashboard replicating the JS HUD.
     Features auto-save capabilities mapped directly to ChromeManager.
     """
-    def __init__(self, parent, instance: ChromeManager):
+    def __init__(self, parent, instance: ChromeManager, theme: str):
         super().__init__(parent)
         self.instance = instance
         self.parent_window = parent
+        self.theme = theme
 
         self.setWindowFlags(Qt.WindowType.Window)
         self.setWindowTitle(f"Hot-Patch Dashboard: {instance.account}")
         self.setFixedSize(450, 800)
-        self.setStyleSheet("background-color: #060c1a;") 
 
         self.SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
         self.FULL_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
@@ -2478,6 +3071,7 @@ class EditInstanceDialog(QDialog):
 
         self._parse_initial_date()
         self._init_ui()
+        self.update_theme(self.theme) # Apply initial theme
         
         self.live_timer = QTimer(self)
         self.live_timer.timeout.connect(self._update_live_status)
@@ -2498,22 +3092,13 @@ class EditInstanceDialog(QDialog):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(15, 15, 15, 15)
         main_layout.setSpacing(10)
-
-        GROUP_STYLE = """
-            QGroupBox { color: #94A3B8; font-size: 10px; font-weight: bold; letter-spacing: 1.5px; border: 1px solid rgba(99,102,241,0.2); border-radius: 8px; margin-top: 12px; } 
-            QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }
-        """
-        INPUT_STYLE = "background-color: rgba(6,12,26,0.9); color: #F1F5F9; border: 1px solid rgba(99,102,241,0.2); border-radius: 6px; padding: 6px; font-size: 12px;"
-        LABEL_STYLE = "color: #475569; font-weight: bold; font-size: 10px;"
-
+        
         # --- 0. ACCOUNT & CREDENTIALS SECTION ---
-        acc_group = QGroupBox("TARGET CONTEXT")
-        acc_group.setStyleSheet(GROUP_STYLE)
-        acc_layout = QGridLayout(acc_group)
+        self.acc_group = QGroupBox("TARGET CONTEXT")
+        acc_layout = QGridLayout(self.acc_group)
         
         acc_layout.addWidget(QLabel("Email:"), 0, 0)
         self.email_edit = QLineEdit(self.instance.account)
-        self.email_edit.setStyleSheet(INPUT_STYLE)
         self.email_edit.textEdited.connect(self._auto_save_context)
         acc_layout.addWidget(self.email_edit, 0, 1)
 
@@ -2524,13 +3109,13 @@ class EditInstanceDialog(QDialog):
         pass_layout.setContentsMargins(0, 0, 0, 0)
         
         self.pass_edit = QLineEdit(self.instance.password)
-        self.pass_edit.setStyleSheet("background-color: rgba(6,12,26,0.9); color: #F1F5F9; border: 1px solid rgba(99,102,241,0.2); border-top-left-radius: 6px; border-bottom-left-radius: 6px; padding: 6px; font-size: 12px; border-right: none;")
+        self.pass_edit.setObjectName("pass-field")
         self.pass_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.pass_edit.textEdited.connect(self._auto_save_context)
         
         self.pass_toggle_btn = QPushButton("👁")
+        self.pass_toggle_btn.setObjectName("pass-toggle-btn")
         self.pass_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.pass_toggle_btn.setStyleSheet("background-color: rgba(6,12,26,0.9); color: #94A3B8; border: 1px solid rgba(99,102,241,0.2); border-top-right-radius: 6px; border-bottom-right-radius: 6px; padding: 6px; border-left: none; font-size: 12px;")
         self.pass_toggle_btn.clicked.connect(self._toggle_password)
         
         pass_layout.addWidget(self.pass_edit)
@@ -2539,21 +3124,20 @@ class EditInstanceDialog(QDialog):
 
         acc_layout.addWidget(QLabel("City:"), 1, 0)
         self.city_edit = QLineEdit(self.instance.target_city)
-        self.city_edit.setStyleSheet(INPUT_STYLE)
         self.city_edit.textEdited.connect(self._auto_save_context)
         acc_layout.addWidget(self.city_edit, 1, 1, 1, 3)
-        main_layout.addWidget(acc_group)
+        main_layout.addWidget(self.acc_group)
 
         # --- 1. TARGET MONTH SECTION ---
-        month_group = QGroupBox("TARGET MONTH (FIRST VISIBLE)")
-        month_group.setStyleSheet(GROUP_STYLE)
-        m_layout = QVBoxLayout(month_group)
+        self.month_group = QGroupBox("TARGET MONTH (FIRST VISIBLE)")
+        m_layout = QVBoxLayout(self.month_group)
         
         grid = QGridLayout()
         grid.setSpacing(4)
         self.month_buttons = []
         for i, m_str in enumerate(self.SHORT_MONTHS):
             btn = QPushButton(m_str)
+            btn.setObjectName("monthButton")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda checked, idx=i: self._select_month(idx))
             self.month_buttons.append(btn)
@@ -2562,53 +3146,39 @@ class EditInstanceDialog(QDialog):
         m_layout.addLayout(grid)
 
         y_layout = QHBoxLayout()
-        y_label = QLabel("Y:")
-        y_label.setStyleSheet(LABEL_STYLE)
+        self.y_label = QLabel("Y:")
         self.year_edit = QLineEdit(self.current_year)
-        self.year_edit.setStyleSheet(INPUT_STYLE)
         self.year_edit.textEdited.connect(self._auto_save_date) 
         
-        y_layout.addWidget(y_label)
+        y_layout.addWidget(self.y_label)
         y_layout.addWidget(self.year_edit)
         m_layout.addLayout(y_layout)
         
-        self._update_month_btns()
-        main_layout.addWidget(month_group)
+        main_layout.addWidget(self.month_group)
 
         # --- 1.5 TIMING / REFRESH SECONDS ---
-        timing_group = QGroupBox("REFRESH TIMING")
-        timing_group.setStyleSheet(GROUP_STYLE)
-        t_layout = QHBoxLayout(timing_group)
+        self.timing_group = QGroupBox("REFRESH TIMING")
+        t_layout = QHBoxLayout(self.timing_group)
         
-        sec_lbl = QLabel("Sec:")
-        sec_lbl.setStyleSheet(LABEL_STYLE)
+        self.sec_lbl = QLabel("Sec:")
         self.sec_edit = QLineEdit(str(self.instance.target_sec))
-        self.sec_edit.setStyleSheet(INPUT_STYLE)
         self.sec_edit.textEdited.connect(self._auto_save_timing)
 
-        ms_lbl = QLabel("Ms:")
-        ms_lbl.setStyleSheet(LABEL_STYLE)
+        self.ms_lbl = QLabel("Ms:")
         self.ms_edit = QLineEdit(str(self.instance.target_ms))
-        self.ms_edit.setStyleSheet(INPUT_STYLE)
         self.ms_edit.textEdited.connect(self._auto_save_timing)
 
-        t_layout.addWidget(sec_lbl)
+        t_layout.addWidget(self.sec_lbl)
         t_layout.addWidget(self.sec_edit)
-        t_layout.addWidget(ms_lbl)
+        t_layout.addWidget(self.ms_lbl)
         t_layout.addWidget(self.ms_edit)
-        main_layout.addWidget(timing_group)
+        main_layout.addWidget(self.timing_group)
 
         # --- 2. BEHAVIOR SECTION ---
-        behavior_group = QGroupBox("BEHAVIOR")
-        behavior_group.setStyleSheet(GROUP_STYLE)
-        b_layout = QVBoxLayout(behavior_group)
+        self.behavior_group = QGroupBox("BEHAVIOR")
+        b_layout = QVBoxLayout(self.behavior_group)
         b_layout.setSpacing(6)
         
-        SWITCH_STYLE = """
-            QCheckBox { color: #CBD5E1; font-size: 11px; spacing: 10px; } 
-            QCheckBox::indicator { width: 36px; height: 20px; border-radius: 10px; background: rgba(255,255,255,0.08); } 
-            QCheckBox::indicator:checked { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10b981, stop:1 #34d399); }
-        """
         self.chk_swap = QCheckBox("Swap currentDate (server-side)")
         self.chk_nav = QCheckBox("Auto-navigate (fallback)")
         self.chk_hide_m = QCheckBox("Hide months before target")
@@ -2621,75 +3191,66 @@ class EditInstanceDialog(QDialog):
         self.chk_hide_s.setChecked(self.instance.js_hide_s)
 
         for chk in [self.chk_swap, self.chk_nav, self.chk_hide_m, self.chk_hide_s]:
-            chk.setStyleSheet(SWITCH_STYLE)
             chk.setCursor(Qt.CursorShape.PointingHandCursor)
             chk.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
             chk.clicked.connect(self._auto_save_switches)
             b_layout.addWidget(chk)
         
-        main_layout.addWidget(behavior_group)
+        main_layout.addWidget(self.behavior_group)
 
         # --- 3. MAXDATE OVERRIDE SECTION ---
-        maxd_group = QGroupBox("MAXDATE OVERRIDE")
-        maxd_group.setStyleSheet(GROUP_STYLE)
-        max_layout = QHBoxLayout(maxd_group)
+        self.maxd_group = QGroupBox("MAXDATE OVERRIDE")
+        max_layout = QHBoxLayout(self.maxd_group)
         
-        l_y = QLabel("Y:")
-        l_y.setStyleSheet(LABEL_STYLE)
+        self.l_y = QLabel("Y:")
         # Typecasting to string to prevent TypeError
         self.max_y = QLineEdit(str(self.instance.max_year))
-        self.max_y.setStyleSheet(INPUT_STYLE)
         
-        l_m = QLabel("M:")
-        l_m.setStyleSheet(LABEL_STYLE)
+        self.l_m = QLabel("M:")
         # Typecasting to string to prevent TypeError
         self.max_m = QLineEdit(str(self.instance.max_month))
-        self.max_m.setStyleSheet(INPUT_STYLE)
         
         btn_set = QPushButton("Set")
+        btn_set.setObjectName("set-maxdate-btn")
         btn_set.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_set.setStyleSheet("background-color: #F59E0B; color: white; border: none; font-weight: bold; border-radius: 6px; padding: 6px 14px;")
         
         self.max_y.textEdited.connect(self._auto_save_maxdate)
         self.max_m.textEdited.connect(self._auto_save_maxdate)
         btn_set.clicked.connect(self._auto_save_maxdate)
 
-        max_layout.addWidget(l_y)
+        max_layout.addWidget(self.l_y)
         max_layout.addWidget(self.max_y)
-        max_layout.addWidget(l_m)
+        max_layout.addWidget(self.l_m)
         max_layout.addWidget(self.max_m)
         max_layout.addWidget(btn_set)
-        main_layout.addWidget(maxd_group)
+        main_layout.addWidget(self.maxd_group)
 
         # --- 4. STATUS & COUNTERS SECTION ---
-        status_group = QGroupBox("STATUS & COUNTERS")
-        status_group.setStyleSheet(GROUP_STYLE)
-        s_layout = QGridLayout(status_group)
+        self.status_group = QGroupBox("STATUS & COUNTERS")
+        s_layout = QGridLayout(self.status_group)
         
         for idx, text in enumerate(["Target:", "maxDate:", "Showing:", "curDate:"]):
             lbl = QLabel(text)
-            lbl.setStyleSheet("color: #64748B; font-size: 11px;")
+            lbl.setObjectName("statusKey")
             s_layout.addWidget(lbl, idx % 2, (idx // 2) * 2)
 
         self.val_tgt = QLabel(self.instance.target_month)
+        self.val_tgt.setObjectName("val_tgt")
         self.val_max = QLabel(f"{self.instance.max_year}-{str(self.instance.max_month).zfill(2)}")
+        self.val_max.setObjectName("val_max")
         self.val_shw = QLabel("Offline")
+        self.val_shw.setObjectName("val_shw")
         self.val_cur = QLabel("Offline")
+        self.val_cur.setObjectName("val_cur")
 
         for lbl in [self.val_tgt, self.val_shw, self.val_max, self.val_cur]:
             lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             
-        PILL_STYLE = "font-family: 'JetBrains Mono', monospace; font-weight: bold; font-size: 11px; padding: 3px 8px; border-radius: 4px;"
-        self.val_tgt.setStyleSheet(f"color: #34D399; background: rgba(16,185,129,0.15); {PILL_STYLE}")
-        self.val_max.setStyleSheet(f"color: #FBBF24; background: rgba(251,191,36,0.15); {PILL_STYLE}")
-        self.val_shw.setStyleSheet(f"color: #67E8F9; background: transparent; {PILL_STYLE}")
-        self.val_cur.setStyleSheet(f"color: #F0ABFC; background: transparent; {PILL_STYLE}")
-
         s_layout.addWidget(self.val_tgt, 0, 1)
         s_layout.addWidget(self.val_max, 1, 1)
         s_layout.addWidget(self.val_shw, 0, 3)
         s_layout.addWidget(self.val_cur, 1, 3)
-        main_layout.addWidget(status_group)
+        main_layout.addWidget(self.status_group)
 
         # --- 5. BOTTOM ACTIONS ---
         btn_layout = QHBoxLayout()
@@ -2714,6 +3275,57 @@ class EditInstanceDialog(QDialog):
         btn_layout.addWidget(btn_reload)
         main_layout.addLayout(btn_layout)
 
+    def update_theme(self, theme: str):
+        self.theme = theme
+        p = DARK_THEME if self.theme == 'dark' else LIGHT_THEME
+
+        self.setStyleSheet(f"background-color: {p['dialog_bg']};")
+
+        GROUP_STYLE = f"""
+            QGroupBox {{ color: {p['text_primary']}; font-size: 10px; font-weight: bold; letter-spacing: 1.5px; border: 1px solid {p['group_border']}; border-radius: 8px; margin-top: 12px; }} 
+            QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 5px; }}
+        """
+        INPUT_STYLE = f"background-color: {p['dialog_bg']}; color: {p['text_secondary']}; border: 1px solid {p['group_border']}; border-radius: 6px; padding: 6px; font-size: 12px;"
+        LABEL_STYLE = f"color: {p['label_style_text']}; font-weight: bold; font-size: 10px;"
+        SWITCH_STYLE = f"""
+            QCheckBox {{ color: {p['text_secondary']}; font-size: 11px; spacing: 10px; }} 
+            QCheckBox::indicator {{ width: 36px; height: 20px; border-radius: 10px; background: {p['switch_bg']}; }} 
+            QCheckBox::indicator:checked {{ background: {p['switch_checked_bg']}; }}
+        """
+        PILL_STYLE = "font-family: 'JetBrains Mono', monospace; font-weight: bold; font-size: 11px; padding: 3px 8px; border-radius: 4px;"
+
+        # Apply styles
+        for group in [self.acc_group, self.month_group, self.timing_group, self.behavior_group, self.maxd_group, self.status_group]:
+            group.setStyleSheet(GROUP_STYLE)
+
+        for widget in [self.email_edit, self.city_edit, self.year_edit, self.sec_edit, self.ms_edit, self.max_y, self.max_m]:
+            widget.setStyleSheet(INPUT_STYLE)
+
+        for label in [self.y_label, self.sec_lbl, self.ms_lbl, self.l_y, self.l_m]:
+            label.setStyleSheet(LABEL_STYLE)
+            
+        self.pass_edit.setStyleSheet(f"{INPUT_STYLE} border-right: none;")
+        self.pass_toggle_btn.setStyleSheet(f"background-color: {p['dialog_bg']}; color: {p['pass_toggle_text']}; border: 1px solid {p['group_border']}; border-top-right-radius: 6px; border-bottom-right-radius: 6px; padding: 6px; border-left: none; font-size: 12px;")
+
+        for chk in [self.chk_swap, self.chk_nav, self.chk_hide_m, self.chk_hide_s]:
+            chk.setStyleSheet(SWITCH_STYLE)
+
+        self.val_tgt.setStyleSheet(f"color: {p['pill_tgt_text']}; background: {p['pill_tgt_bg']}; {PILL_STYLE}")
+        self.val_max.setStyleSheet(f"color: {p['pill_max_text']}; background: {p['pill_max_bg']}; {PILL_STYLE}")
+        self.val_shw.setStyleSheet(f"color: {p['pill_shw_text']}; background: transparent; {PILL_STYLE}")
+        self.val_cur.setStyleSheet(f"color: {p['pill_cur_text']}; background: transparent; {PILL_STYLE}")
+
+        self.findChild(QPushButton, "set-maxdate-btn").setStyleSheet(f"""
+            background-color: {p['set_btn_bg']}; 
+            color: {p['set_btn_text']}; 
+            border: none; 
+            font-weight: bold; 
+            border-radius: 6px; 
+            padding: 6px 14px;
+        """)
+
+        self._update_month_btns()
+
     def _toggle_password(self, *args):
         if self.pass_edit.echoMode() == QLineEdit.EchoMode.Password:
             self.pass_edit.setEchoMode(QLineEdit.EchoMode.Normal)
@@ -2728,11 +3340,12 @@ class EditInstanceDialog(QDialog):
         self._auto_save_date()
 
     def _update_month_btns(self):
+        p = DARK_THEME if self.theme == 'dark' else LIGHT_THEME
         for i, btn in enumerate(self.month_buttons):
             if i == self.current_month_idx:
-                btn.setStyleSheet("background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #10b981, stop:1 #059669); color: white; border: 1px solid #34d399; font-weight: bold; font-size: 11px; padding: 6px 4px; border-radius: 6px;")
+                btn.setStyleSheet(f"background: {p['month_btn_checked_bg']}; color: {p['month_btn_checked_text']}; border: 1px solid {p['month_btn_checked_border']}; font-weight: bold; font-size: 11px; padding: 6px 4px; border-radius: 6px;")
             else:
-                btn.setStyleSheet("background: rgba(6,12,26,0.8); color: #64748B; border: 1px solid rgba(99,102,241,0.2); font-weight: bold; font-size: 11px; padding: 6px 4px; border-radius: 6px;")
+                btn.setStyleSheet(f"background: {p['month_btn_bg']}; color: {p['month_btn_text']}; border: 1px solid {p['group_border']}; font-weight: bold; font-size: 11px; padding: 6px 4px; border-radius: 6px;")
 
     def _auto_save_context(self, *args):
         self.instance.account = self.email_edit.text().strip()
@@ -2930,7 +3543,7 @@ import pandas as pd
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
-    QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox, QFileDialog,
+    QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox, QFileDialog, QApplication,
     QAbstractItemView
 )
 from PyQt6.QtCore import Qt, QTimer
@@ -2939,7 +3552,7 @@ from PyQt6.QtGui import QColor, QBrush
 from core.data_handler import DataIngestor
 from browsers.chrome import ChromeManager
 from config import settings
-from .theme import CYBER_DARK_STYLESHEET
+from .theme import get_main_stylesheet
 from .dialogs import EditInstanceDialog, AddInstanceDialog
 
 # Attempt to import pywin32 for the "View" functionality on Windows
@@ -2961,24 +3574,29 @@ class MainWindow(QMainWindow):
         # --- Core Application Setup ---
         self.setWindowTitle("Omni-Booking Automation Suite :: TLS Germany")
         self.setGeometry(100, 100, 1400, 700)
-        self.setStyleSheet(CYBER_DARK_STYLESHEET)
 
         # --- State Management ---
-        self.data_ingestor = DataIngestor() # Handles loading data from files/sheets.
-        # Core state dictionary: Maps an account's email (as a unique ID) to its controlling ChromeManager instance.
+        self.data_ingestor = DataIngestor()
         self.active_instances: Dict[str, ChromeManager] = {}
-        # Performance optimization: Maps an account's email to its current row index in the table for fast UI updates.
         self.account_to_row: Dict[str, int] = {}
-        self.flash_state = False # For blinking effect
+        self.flash_state = False 
+        
+        # --- GLOBAL THEME SYNC ---
+        self.current_theme = 'dark'
+        settings.APP_THEME = self.current_theme 
+        
+        self.open_dialogs: List[EditInstanceDialog] = []
 
         # --- UI Initialization ---
         self._init_ui()
 
         # --- Background Processes ---
-        # This timer is the heart of the live dashboard, periodically calling a method to refresh the UI.
         self.monitor_timer = QTimer(self)
         self.monitor_timer.timeout.connect(self._update_dashboard)
-        self.monitor_timer.start(500) # Poll every 500ms
+        self.monitor_timer.start(500)
+
+        # Apply initial theme
+        self.setStyleSheet(get_main_stylesheet(self.current_theme))
 
     def _init_ui(self):
         """Constructs and lays out all GUI elements."""
@@ -2988,8 +3606,16 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
 
-        # --- TOP FRAME: Data Ingestion Controls ---
+        # --- TOP FRAME: Data Ingestion & Area 1 Theme Controls ---
         top_layout = QHBoxLayout()
+        
+        # Priority Theme Button placed at the very top (Area 1)
+        self.theme_btn = QPushButton("☀️ Light Mode" if self.current_theme == 'dark' else "🌙 Dark Mode")
+        self.theme_btn.setToolTip("Switch between Dark and Light mode across all windows and browsers")
+        self.theme_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.theme_btn.setStyleSheet("font-weight: bold; padding: 6px 12px; border-radius: 4px; min-width: 120px;")
+        self.theme_btn.clicked.connect(self._toggle_theme)
+
         self.data_source_entry = QLineEdit()
         self.data_source_entry.setPlaceholderText("Enter local file path or Google Sheet URL")
         browse_btn = QPushButton("Browse Files...")
@@ -2997,6 +3623,8 @@ class MainWindow(QMainWindow):
         fetch_btn = QPushButton("Fetch Cloud Sheet")
         fetch_btn.clicked.connect(self._fetch_google_sheet)
 
+        top_layout.addWidget(self.theme_btn)
+        top_layout.addSpacing(15)
         top_layout.addWidget(self.data_source_entry)
         top_layout.addWidget(browse_btn)
         top_layout.addWidget(fetch_btn)
@@ -3011,31 +3639,28 @@ class MainWindow(QMainWindow):
             "Network Tunnel Routing (Proxy)", "Actions"
         ])
         
-        # Enforce comfortable vertical row section height so custom button layouts fit perfectly
         self.table.verticalHeader().setDefaultSectionSize(36)
         
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)   # 🔔 Status Icon
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)   # Checkbox
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)            # Target Account Context
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)   # Target City
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)   # Target Month
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)            # Operational State (Status)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)   # Next Check
-        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)   # Trigger Matrix (H:M:S.ms)
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)   # Network Tunnel Routing (Proxy)
-        header.setSectionResizeMode(9, QHeaderView.ResizeMode.ResizeToContents)   # Actions
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(9, QHeaderView.ResizeMode.ResizeToContents)
 
-        # Allow selecting rows or individual cells for copy-pasting text.
-        # Editing is disabled by default on QTableWidgetItems unless the 'ItemIsEditable' flag is set.
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        # Double-clicking a row still opens the edit dialog
         self.table.cellDoubleClicked.connect(self._open_edit_dialog)
         main_layout.addWidget(self.table)
 
         # --- BOTTOM FRAME: Main Control Panel ---
         bottom_layout = QHBoxLayout()
+
         deploy_btn = QPushButton("⚡ Deploy All Engines")
         deploy_btn.setObjectName("deployButton")
         deploy_btn.clicked.connect(self._deploy_all)
@@ -3056,7 +3681,7 @@ class MainWindow(QMainWindow):
         terminate_selected_btn.clicked.connect(self._terminate_selected)
 
         delete_selected_btn = QPushButton("Delete Selected")
-        delete_selected_btn.setStyleSheet("background-color: #7f1d1d; color: #f1f5f9;") # Dark Red
+        delete_selected_btn.setStyleSheet("background-color: #7f1d1d; color: #f1f5f9;")
         delete_selected_btn.clicked.connect(self._delete_selected)
 
         terminate_all_btn = QPushButton("🛑 Terminate Suite")
@@ -3077,14 +3702,12 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(bottom_layout)
 
     def _browse_local_file(self):
-        """Opens a file dialog to select a local data file and loads it."""
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Data File", "", "Data Files (*.xlsx *.xls *.csv)")
         if file_path:
             self.data_source_entry.setText(file_path)
             self._load_data(file_path)
 
     def _fetch_google_sheet(self):
-        """Takes the URL from the entry box and attempts to load it as a Google Sheet."""
         url = self.data_source_entry.text().strip()
         if "docs.google.com" not in url:
             QMessageBox.critical(self, "Invalid URL", "Please enter a valid Google Sheets URL.")
@@ -3092,11 +3715,6 @@ class MainWindow(QMainWindow):
         self._load_data(url)
 
     def _load_data(self, source: str):
-        """
-        Central data loading function. It terminates any running instances,
-        calls the DataIngestor, and then populates the UI table with the new data.
-        """
-        # Safety check: ensure user confirms before wiping existing session.
         if self.active_instances:
             reply = QMessageBox.question(self, "Confirm", "Loading new data will terminate all running instances. Continue?",
                                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
@@ -3115,10 +3733,6 @@ class MainWindow(QMainWindow):
         self._populate_table(result["data"])
 
     def _populate_table(self, data: List[Dict[str, Any]]):
-        """
-        Clears the current table and state, then builds new ChromeManager instances
-        and UI rows for each entry in the provided data.
-        """
         self.table.setRowCount(0)
         self.active_instances.clear()
         self.account_to_row.clear()
@@ -3126,7 +3740,6 @@ class MainWindow(QMainWindow):
         for i, row_data in enumerate(data):
             account = row_data.get('Account', f'N/A_{i}')
 
-            # Dynamically find and combine month and year from flexible column names
             month_key = next((k for k in row_data if 'month' in str(k).lower()), None)
             year_key = next((k for k in row_data if 'year' in str(k).lower()), None)
 
@@ -3135,7 +3748,6 @@ class MainWindow(QMainWindow):
             year = str(int(float(year_val))) if year_val and pd.notna(year_val) and str(year_val).replace('.', '', 1).isdigit() else str(settings.DEFAULT_INSTANCE_SETTINGS['year'])
             target_month_str = f"{month} {year}".strip()
 
-            # Read city from data, fallback to settings default
             target_city_str = str(row_data.get('City', '')).strip() or settings.DEFAULT_INSTANCE_SETTINGS['city']
 
             manager = ChromeManager(
@@ -3155,63 +3767,43 @@ class MainWindow(QMainWindow):
 
             self.table.insertRow(i)
 
-            # Column 0: Status Icon
             status_icon_item = QTableWidgetItem("")
             status_icon_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             status_icon_item.setFlags(status_icon_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(i, 0, status_icon_item)
 
-            # Column 1: Checkbox
             check_item = QTableWidgetItem()
             check_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
             check_item.setCheckState(Qt.CheckState.Unchecked)
             self.table.setItem(i, 1, check_item)
 
-            # Column 2: Account
             self.table.setItem(i, 2, QTableWidgetItem(account))
-            # Column 3: Target City
             self.table.setItem(i, 3, QTableWidgetItem(manager.target_city))
-            # Column 4: Target Month
             self.table.setItem(i, 4, QTableWidgetItem(manager.target_month))
-            # Column 5: Status
             self.table.setItem(i, 5, QTableWidgetItem(manager.status))
-            # Column 6: Next Check (Countdown)
             self.table.setItem(i, 6, QTableWidgetItem(""))
-            # Column 7: Time
+            
             time_str = f"{manager.target_hr:02}:{manager.target_min:02}:{manager.target_sec:02}.{manager.target_ms:03}"
             self.table.setItem(i, 7, QTableWidgetItem(time_str))
-            # Column 8: Proxy
             self.table.setItem(i, 8, QTableWidgetItem(str(manager.proxy_address or 'None')))
-            # Column 9: Actions
+            
             self._add_action_buttons(i, account)
 
     def _add_action_buttons(self, row: int, account: str):
-        """
-        Creates a widget containing the 'View', 'Terminate', and 'Delete' buttons
-        for a single row and sets it in the 'Actions' column.
-        """
         actions_widget = QWidget()
         layout = QHBoxLayout(actions_widget)
         layout.setContentsMargins(5, 0, 5, 0)
         layout.setSpacing(5)
 
-        # Normalized CSS theme templates: Compact padding prevents layout vertical truncation bugs entirely
         launch_btn = QPushButton("Launch")
         launch_btn.setToolTip("Launch or focus this instance's browser window")
         launch_btn.setStyleSheet("""
             QPushButton { 
-                background-color: #0891B2; 
-                color: white; 
-                font-size: 11px; 
-                padding: 4px 12px; 
-                font-weight: bold; 
-                border: none; 
-                border-radius: 4px; 
-                width: 65px;
+                background-color: #0891B2; color: white; font-size: 11px; 
+                padding: 4px 12px; font-weight: bold; border: none; 
+                border-radius: 4px; width: 65px;
             } 
-            QPushButton:hover { 
-                background-color: #06B6D4; 
-            }
+            QPushButton:hover { background-color: #06B6D4; }
         """)
         launch_btn.clicked.connect(lambda checked, acc=account: self._launch_or_view_instance(acc))
 
@@ -3219,17 +3811,11 @@ class MainWindow(QMainWindow):
         term_btn.setToolTip("Terminate this instance's process")
         term_btn.setStyleSheet("""
             QPushButton { 
-                background-color: #D97706; 
-                color: white; 
-                font-size: 11px; 
-                padding: 4px 12px; 
-                font-weight: bold; 
-                border: none; 
+                background-color: #D97706; color: white; font-size: 11px; 
+                padding: 4px 12px; font-weight: bold; border: none; 
                 border-radius: 4px; 
             } 
-            QPushButton:hover { 
-                background-color: #F59E0B; 
-            }
+            QPushButton:hover { background-color: #F59E0B; }
         """)
         term_btn.clicked.connect(lambda checked, acc=account: self._terminate_instance(acc))
 
@@ -3237,17 +3823,11 @@ class MainWindow(QMainWindow):
         del_btn.setToolTip("Terminate and delete this instance from the list")
         del_btn.setStyleSheet("""
             QPushButton { 
-                background-color: #B91C1C; 
-                color: white; 
-                font-size: 11px; 
-                padding: 4px 12px; 
-                font-weight: bold; 
-                border: none; 
+                background-color: #B91C1C; color: white; font-size: 11px; 
+                padding: 4px 12px; font-weight: bold; border: none; 
                 border-radius: 4px; 
             } 
-            QPushButton:hover { 
-                background-color: #EF4444; 
-            }
+            QPushButton:hover { background-color: #EF4444; }
         """)
         del_btn.clicked.connect(lambda checked, acc=account: self._delete_instance(acc))
 
@@ -3258,7 +3838,6 @@ class MainWindow(QMainWindow):
         self.table.setCellWidget(row, 9, actions_widget)
 
     def _deploy_all(self):
-        """Starts the automation engine for all loaded instances that are not already running."""
         if not self.active_instances:
             QMessageBox.information(self, "No Data", "Please load account data before deploying.")
             return
@@ -3267,7 +3846,6 @@ class MainWindow(QMainWindow):
                 manager.start_engine()
 
     def _add_instance_manually(self):
-        """Opens a dialog to add a new instance with default settings."""
         dialog = AddInstanceDialog(self)
         if dialog.exec():
             account = dialog.account
@@ -3277,7 +3855,6 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Instance Exists", f"An instance for '{account}' already exists.")
                 return
 
-            # Create manager with values from the dialog
             defaults = settings.DEFAULT_INSTANCE_SETTINGS
             target_month_str = f"{dialog.selected_month} {dialog.selected_year}"
 
@@ -3300,7 +3877,6 @@ class MainWindow(QMainWindow):
 
             self.table.insertRow(i)
 
-            # --- Populate the new row ---
             status_icon_item = QTableWidgetItem("")
             status_icon_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             status_icon_item.setFlags(status_icon_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -3322,10 +3898,7 @@ class MainWindow(QMainWindow):
             self.table.setItem(i, 8, QTableWidgetItem("None"))
             self._add_action_buttons(i, account)
 
-            print(f"[+] Manually added instance for: {account}")
-
     def _terminate_all(self, silent: bool = False):
-        """Stops the automation engine for all running instances."""
         if not self.active_instances and not silent:
             QMessageBox.information(self, "No Instances", "There are no active instances to terminate.")
             return
@@ -3334,7 +3907,6 @@ class MainWindow(QMainWindow):
                 manager.stop_engine()
 
     def _terminate_selected(self):
-        """Terminates all instances that have their checkbox ticked."""
         accounts = self._get_checked_accounts()
         if not accounts:
             QMessageBox.warning(self, "No Selection", "Please check one or more instances to terminate.")
@@ -3343,60 +3915,55 @@ class MainWindow(QMainWindow):
             self._terminate_instance(account)
 
     def _terminate_instance(self, account: str):
-        """Stops the engine for a specific instance by its account ID."""
         manager = self.active_instances.get(account)
         if manager and manager.is_running:
             manager.stop_engine()
 
     def _launch_or_view_instance(self, account: str):
-        """
-        Brings an instance's browser window to the foreground.
-        If the instance isn't running, it will be launched first.
-        NOTE: This functionality relies on the 'pywin32' library and only works on Windows.
-        """
         manager = self.active_instances.get(account)
         if not manager:
             return
 
-        # If the instance is idle, clicking 'Launch' starts it.
         if not manager.is_running:
             print(f"[▶️] 'Launch' clicked on idle instance. Starting {account}...")
             manager.start_engine()
             QMessageBox.information(self, "Instance Launching", f"The browser for {account} is now being launched.")
             return
 
-        # On non-Windows systems or if pywin32 is not installed, inform the user.
         if not PYWIN32_AVAILABLE:
             QMessageBox.warning(self, "Feature Unavailable", "The 'pywin32' library is required to focus windows. Please install it (`pip install pywin32`) and restart.\n\nThis feature is only available on Windows.")
             return
 
-        window_title = manager.window_title
-        hwnd = win32gui.FindWindow(None, window_title)
+        # Title formatting uses the new Area 2 logic
+        account_prefix = account.split('@')[0].upper()
+        window_title_prefix = f"[OAS] | {account_prefix}"
+        
+        def callback(hwnd, windows):
+            if win32gui.IsWindowVisible(hwnd) and window_title_prefix in win32gui.GetWindowText(hwnd):
+                windows.append(hwnd)
+            return True
+            
+        windows = []
+        win32gui.EnumWindows(callback, windows)
 
-        # If we found the window handle, use it to restore and focus the window.
-        if hwnd:
+        if windows:
+            hwnd = windows[0]
             print(f"[👁️] Found window for {account} (HWND: {hwnd}). Bringing to front.")
-            # Restore if minimized
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-            # Bring to foreground
             win32gui.SetForegroundWindow(hwnd)
         else:
             QMessageBox.warning(self, "Window Not Found", f"Could not find the browser window for {account}.\nIt might still be launching or may have been closed manually.")
 
     def _delete_instance(self, account: str):
-        """Terminates and removes an instance entirely from the UI and state."""
         self._terminate_instance(account)
-
         row_to_remove = self.account_to_row.get(account)
         if row_to_remove is not None:
             self.table.removeRow(row_to_remove)
             if account in self.active_instances:
                 del self.active_instances[account]
-            # The row map will be incorrect after this, so we rebuild it.
             self._rebuild_row_map()
 
     def _delete_selected(self):
-        """Terminates and removes all checked instances."""
         accounts = self._get_checked_accounts()
         if not accounts:
             QMessageBox.warning(self, "No Selection", "Please check one or more instances to delete.")
@@ -3407,54 +3974,69 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.StandardButton.No:
             return
 
-        # Get a static list of rows to remove, sorted descending to avoid index errors
         rows_to_remove = sorted([self.account_to_row[acc] for acc in accounts if acc in self.account_to_row], reverse=True)
 
         for row in rows_to_remove:
-            # Find account for this row before it's deleted (account is in column 1)
             account = self.table.item(row, 2).text()
-            self._terminate_instance(account) # Stop thread
+            self._terminate_instance(account) 
             if account in self.active_instances:
                 del self.active_instances[account]
 
-        # Remove rows from the table UI after processing
         for row in rows_to_remove:
             self.table.removeRow(row)
 
-        # Finally, rebuild the clean mapping from account to the new row indices
         self._rebuild_row_map()
 
     def _get_checked_accounts(self) -> List[str]:
-        """Returns a list of account names for all checked rows."""
         checked_accounts = []
         for row in range(self.table.rowCount()):
-            # Checkbox is in column 1
             if self.table.item(row, 1).checkState() == Qt.CheckState.Checked:
-                # Account is in column 2
                 account_item = self.table.item(row, 2)
                 if account_item:
                     checked_accounts.append(account_item.text())
         return checked_accounts
 
     def _open_edit_dialog(self):
-        """Opens the 'Hot-Patch' dialog for the currently highlighted row in the table."""
         selected_rows = self.table.selectionModel().selectedRows()
         if not selected_rows:
             QMessageBox.warning(self, "No Selection", "Please highlight a single instance to edit.")
             return
-        # Account is in column 2
         account = self.table.item(selected_rows[0].row(), 2).text()
         instance = self.active_instances.get(account)
         if instance:
-            dialog = EditInstanceDialog(self, instance)
-            dialog.show() # Use .show() for a modeless dialog that doesn't block the main window
+            for dlg in self.open_dialogs:
+                if dlg.instance == instance:
+                    dlg.activateWindow()
+                    dlg.raise_()
+                    return
+
+            dialog = EditInstanceDialog(self, instance, self.current_theme)
+            self.open_dialogs.append(dialog)
+            dialog.finished.connect(lambda: self.open_dialogs.remove(dialog))
+            dialog.show()
+
+    def _toggle_theme(self):
+        """Toggles the theme globally and reapplies it to all components."""
+        self.current_theme = 'light' if self.current_theme == 'dark' else 'dark'
+        
+        # 1. Update Global Settings for Chrome processes
+        settings.APP_THEME = self.current_theme 
+        
+        # 2. Update Main Window Theme
+        QApplication.instance().setStyleSheet(get_main_stylesheet(self.current_theme))
+        
+        # 3. Update Theme Button Text
+        if self.current_theme == 'dark':
+            self.theme_btn.setText("☀️ Light Mode")
+        else:
+            self.theme_btn.setText("🌙 Dark Mode")
+            
+        # 4. Push updates to any open Hot-Patch Dialogs
+        for dialog in self.open_dialogs:
+            dialog.update_theme(self.current_theme)
 
     def _update_dashboard(self):
-        """
-        The heart of the dashboard's live updates. This method is called by a QTimer.
-        It iterates through all active instances, reads their current state (status, time), and updates the UI table.
-        """
-        self.flash_state = not self.flash_state # Toggle for blinking
+        self.flash_state = not self.flash_state 
 
         for account, manager in self.active_instances.items():
             row = self.account_to_row.get(account)
@@ -3465,11 +4047,9 @@ class MainWindow(QMainWindow):
             month_item = self.table.item(row, 4)
             status_item = self.table.item(row, 5)
 
-            # Update status text first
             if status_item.text() != manager.status:
                 status_item.setText(manager.status)
             
-            # Update live-editable fields
             if city_item.text() != manager.target_city:
                 city_item.setText(manager.target_city)
 
@@ -3478,70 +4058,57 @@ class MainWindow(QMainWindow):
 
             status_lower = manager.status.lower()
 
-            # --- Icon and Status Background Color Logic ---
             if manager.appointment_found:
                 status_icon_item.setText("🟢")
                 flash_color = QColor("#10B981") if self.flash_state else QColor("#34D399")
                 status_icon_item.setBackground(QBrush(flash_color))
-                status_item.setBackground(QBrush(QColor("#00E5FF")))  # Aqua
+                status_item.setBackground(QBrush(QColor("#00E5FF")))
             elif "no appointment" in status_lower or "not available" in status_lower:
                 status_icon_item.setText("∅")
                 status_icon_item.setBackground(QBrush(QColor("#475569")))
-                status_item.setBackground(QBrush(QColor("#EF4444")))  # Red
+                status_item.setBackground(QBrush(QColor("#EF4444")))
             elif "error" in status_lower:
                 status_icon_item.setText("🔴")
                 status_icon_item.setBackground(QBrush(QColor("#FF4D4D")))
                 status_item.setBackground(QBrush(QColor("#FF4D4D")))
             else:
-                # Reset icon for general states
                 status_icon_item.setText("")
                 status_icon_item.setBackground(QBrush(QColor("transparent")))
                 
-                # Set background for general operational states
                 if "refreshing" in status_lower:
-                    status_item.setBackground(QBrush(QColor("#3B82F6"))) # Blue
+                    status_item.setBackground(QBrush(QColor("#3B82F6")))
                 elif "armed" in status_lower or "executing" in status_lower or "checking" in status_lower or "scanning" in status_lower:
-                    status_item.setBackground(QBrush(QColor("#00FF66"))) # Active Green
+                    status_item.setBackground(QBrush(QColor("#00FF66")))
                 elif "init" in status_lower or "launching" in status_lower or "navigating" in status_lower or "routing" in status_lower:
-                    status_item.setBackground(QBrush(QColor("#FFD633"))) # Loading Yellow
+                    status_item.setBackground(QBrush(QColor("#FFD633")))
                 else:
-                    status_item.setBackground(QBrush(QColor("#0F1420"))) # Default
+                    status_item.setBackground(QBrush(QColor("#0F1420")))
 
-            # Update countdown
             countdown_item = self.table.item(row, 6)
             if manager.countdown > 0:
                 countdown_item.setText(f"{manager.countdown}s")
             elif countdown_item.text() != "":
                 countdown_item.setText("")
 
-            # Update the 'Trigger Matrix' column. This ensures changes from the Hot-Patch dialog are reflected.
             time_item = self.table.item(row, 7)
             new_time_str = f"{manager.target_hr:02}:{manager.target_min:02}:{manager.target_sec:02}.{manager.target_ms:03}"
             if time_item.text() != new_time_str:
                 time_item.setText(new_time_str)
 
     def _select_all(self):
-        """Sets all row checkboxes to checked."""
         for row in range(self.table.rowCount()):
             self.table.item(row, 1).setCheckState(Qt.CheckState.Checked)
 
     def _deselect_all(self):
-        """Sets all row checkboxes to unchecked."""
         for row in range(self.table.rowCount()):
             self.table.item(row, 1).setCheckState(Qt.CheckState.Unchecked)
 
     def _rebuild_row_map(self):
-        """
-        Clears and rebuilds the account-to-row index map.
-        This is a crucial maintenance step to call after any row(s) are deleted from the table,
-        ensuring the fast lookup map doesn't point to incorrect or non-existent rows.
-        """
         self.account_to_row.clear()
         for row in range(self.table.rowCount()):
             self.account_to_row[self.table.item(row, 2).text()] = row
 
     def closeEvent(self, event):
-        """Handles the application close event, ensuring all threads are terminated."""
         reply = QMessageBox.question(self, 'Quit', "This will terminate all running browser instances. Are you sure?",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                      QMessageBox.StandardButton.No)
@@ -3553,7 +4120,6 @@ class MainWindow(QMainWindow):
 
 
 def _patch_data_ingestor():
-    """Dynamically adds a generic load_from_source method to DataIngestor."""
     def load_from_source(self, source: str) -> Dict[str, Any]:
         if "docs.google.com" in source:
             return self.load_from_google_sheet(source)
@@ -3571,224 +4137,223 @@ _patch_data_ingestor()
 ## FILE: .\gui\theme.py
 
 ```py
-# --- Global Stylesheet (QSS) for the Cyber Tactical Dark Theme ---
-# This defines the entire visual profile of the application.
-CYBER_DARK_STYLESHEET = """
+# --- Theme Palettes ---
+
+DARK_THEME = {
+    "main_bg": "#0B0F17",
+    "dialog_bg": "#060c1a",
+    "text_primary": "#94A3B8",
+    "text_secondary": "#E2E8F0",
+    "input_bg": "#0F1420",
+    "input_border": "#334155",
+    "input_focus_border": "#4F46E5",
+    "button_bg": "#334155",
+    "button_hover_bg": "#475569",
+    "button_pressed_bg": "#1E293B",
+    "table_bg": "#121824",
+    "table_grid": "#1E293B",
+    "header_bg": "#1E293B",
+    "selection_bg": "#334155",
+    "selection_text": "#F1F5F9",
+    "group_border": "rgba(99,102,241,0.2)",
+    "switch_bg": "rgba(255,255,255,0.08)",
+    "switch_checked_bg": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10b981, stop:1 #34d399)",
+    "pill_tgt_bg": "rgba(16,185,129,0.15)",
+    "pill_tgt_text": "#34D399",
+    "pill_max_bg": "rgba(251,191,36,0.15)",
+    "pill_max_text": "#FBBF24",
+    "pill_shw_text": "#67E8F9",
+    "pill_cur_text": "#F0ABFC",
+    "month_btn_bg": "rgba(6,12,26,0.8)",
+    "month_btn_text": "#64748B",
+    "month_btn_checked_bg": "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #10b981, stop:1 #059669)",
+    "month_btn_checked_text": "white",
+    "month_btn_checked_border": "#34d399",
+    "set_btn_bg": "#F59E0B",
+    "set_btn_text": "white",
+    "pass_toggle_text": "#94A3B8",
+    "label_style_text": "#475569",
+}
+
+LIGHT_THEME = {
+    "main_bg": "#F8FAFC",
+    "dialog_bg": "#FFFFFF",
+    "text_primary": "#475569",
+    "text_secondary": "#0F172A",
+    "input_bg": "#FFFFFF",
+    "input_border": "#CBD5E1",
+    "input_focus_border": "#4338CA",
+    "button_bg": "#E2E8F0",
+    "button_hover_bg": "#F1F5F9",
+    "button_pressed_bg": "#CBD5E1",
+    "table_bg": "#FFFFFF",
+    "table_grid": "#F1F5F9",
+    "header_bg": "#F1F5F9",
+    "selection_bg": "#DBEAFE",
+    "selection_text": "#1E3A8A",
+    "group_border": "#E2E8F0",
+    "switch_bg": "#E2E8F0",
+    "switch_checked_bg": "#2563EB",
+    "pill_tgt_bg": "#D1FAE5",
+    "pill_tgt_text": "#065F46",
+    "pill_max_bg": "#FEF3C7",
+    "pill_max_text": "#92400E",
+    "pill_shw_text": "#0E7490",
+    "pill_cur_text": "#86198F",
+    "month_btn_bg": "#F1F5F9",
+    "month_btn_text": "#64748B",
+    "month_btn_checked_bg": "#2563EB",
+    "month_btn_checked_text": "white",
+    "month_btn_checked_border": "#60A5FA",
+    "set_btn_bg": "#F97316",
+    "set_btn_text": "white",
+    "pass_toggle_text": "#64748B",
+    "label_style_text": "#64748B",
+}
+
+def get_main_stylesheet(theme: str) -> str:
+    """Generates the main QSS for the application based on the selected theme."""
+    p = DARK_THEME if theme == 'dark' else LIGHT_THEME
+    
+    return f"""
     /* Main Window & Dialogs */
-    QMainWindow, QDialog {
-        background-color: #0B0F17; /* Deep Canvas Charcoal/Navy */
-    }
+    QMainWindow, QDialog {{
+        background-color: {p['main_bg']};
+    }}
 
     /* Labels */
-    QLabel {
-        color: #94A3B8; /* Slate Gray */
+    QLabel {{
+        color: {p['text_primary']};
         font-size: 14px;
-    }
+    }}
 
     /* Input Fields */
-    QLineEdit {
-        background-color: #0F1420;
-        color: #E2E8F0;
-        border: 1px solid #334155;
+    QLineEdit {{
+        background-color: {p['input_bg']};
+        color: {p['text_secondary']};
+        border: 1px solid {p['input_border']};
         border-radius: 4px;
         padding: 8px;
         font-size: 14px;
         min-height: 25px;
-    }
-    QLineEdit:focus {
-        border-color: #4F46E5; /* Indigo for focus */
-    }
+    }}
+    QLineEdit:focus {{
+        border-color: {p['input_focus_border']};
+    }}
 
     /* Buttons */
-    QPushButton {
-        background-color: #334155; /* Slate */
-        color: #E2E8F0;
+    QPushButton {{
+        background-color: {p['button_bg']};
+        color: {p['text_secondary']};
         border: none;
         border-radius: 4px;
         padding: 8px 16px;
         font-size: 14px;
         font-weight: bold;
-    }
-    QPushButton:hover {
-        background-color: #475569;
-    }
-    QPushButton:pressed {
-        background-color: #1E293B;
-    }
+    }}
+    QPushButton:hover {{
+        background-color: {p['button_hover_bg']};
+    }}
+    QPushButton:pressed {{
+        background-color: {p['button_pressed_bg']};
+    }}
 
     /* Primary Action Button (Deploy) */
-    QPushButton#deployButton {
+    QPushButton#deployButton {{
         background-color: #2563EB; /* Blue */
         color: white;
-    }
-    QPushButton#deployButton:hover {
+    }}
+    QPushButton#deployButton:hover {{
         background-color: #3B82F6;
-    }
+    }}
 
     /* Destructive Action Button (Terminate Suite) */
-    QPushButton#terminateSuiteButton {
+    QPushButton#terminateSuiteButton {{
         background-color: #991B1B; /* Dark Crimson */
         color: white;
-    }
-    QPushButton#terminateSuiteButton:hover {
+    }}
+    QPushButton#terminateSuiteButton:hover {{
         background-color: #B91C1C;
-    }
+    }}
 
     /* Table Widget */
-    QTableWidget {
-        background-color: #121824; /* Panel Container */
-        color: #94A3B8;
-        border: 1px solid #334155;
-        gridline-color: #1E293B;
+    QTableWidget {{
+        background-color: {p['table_bg']};
+        color: {p['text_primary']};
+        border: 1px solid {p['input_border']};
+        gridline-color: {p['table_grid']};
         font-size: 13px;
-    }
+    }}
 
     /* Table Header */
-    QHeaderView::section {
-        background-color: #1E293B;
-        color: #94A3B8;
+    QHeaderView::section {{
+        background-color: {p['header_bg']};
+        color: {p['text_primary']};
         padding: 8px;
-        border: 1px solid #334155;
+        border: 1px solid {p['input_border']};
         font-weight: bold;
-    }
+    }}
 
     /* Table Cells */
-    QTableWidget::item {
+    QTableWidget::item {{
         padding: 8px;
-        border-bottom: 1px solid #1E293B;
-    }
-    QTableWidget::item:selected {
-        background-color: #334155;
-        color: #F1F5F9;
-    }
+        border-bottom: 1px solid {p['table_grid']};
+    }}
+    QTableWidget::item:selected {{
+        background-color: {p['selection_bg']};
+        color: {p['selection_text']};
+    }}
 
     /* Scrollbars */
-    QScrollBar:vertical, QScrollBar:horizontal {
+    QScrollBar:vertical, QScrollBar:horizontal {{
         border: none;
-        background: #121824;
+        background: {p['table_bg']};
         width: 10px;
         height: 10px;
         margin: 0px 0px 0px 0px;
-    }
-    QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
-        background: #334155;
+    }}
+    QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{
+        background: {p['button_bg']};
         min-height: 20px;
         min-width: 20px;
         border-radius: 5px;
-    }
+    }}
 
     /* SpinBox for Hot-Patching */
-    QSpinBox {
-        background-color: #0F1420;
-        color: #E2E8F0;
-        border: 1px solid #334155;
+    QSpinBox {{
+        background-color: {p['input_bg']};
+        color: {p['text_secondary']};
+        border: 1px solid {p['input_border']};
         border-radius: 4px;
         padding: 8px;
         font-size: 16px;
         font-weight: bold;
         min-height: 25px;
-    }
-    QSpinBox::up-button, QSpinBox::down-button {
+    }}
+    QSpinBox::up-button, QSpinBox::down-button {{
         width: 20px;
-    }
+    }}
 
     /* ComboBox for Dropdowns */
-    QComboBox {
-        background-color: #0F1420;
-        color: #E2E8F0;
-        border: 1px solid #334155;
+    QComboBox {{
+        background-color: {p['input_bg']};
+        color: {p['text_secondary']};
+        border: 1px solid {p['input_border']};
         border-radius: 4px;
         padding: 8px;
         font-size: 14px;
         min-height: 25px;
-    }
-    QComboBox::drop-down {
+    }}
+    QComboBox::drop-down {{
         border: none;
-    }
-    QComboBox QAbstractItemView {
-        background-color: #0F1420;
-        color: #E2E8F0;
-        border: 1px solid #4F46E5;
-        selection-background-color: #334155;
-    }
-
-    /* --- Hot-Patch Dialog Specifics --- */
-    #headerTitle {
-        color: #E2E8F0;
-        font-size: 16px;
-        font-weight: bold;
-        margin-bottom: 5px;
-    }
-
-    #sectionFrame {
-        background-color: #121824;
-        border: 1px solid #334155;
-        border-radius: 8px;
-    }
-    #sectionHeader {
-        color: #94A3B8;
-        font-size: 9px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
-        border-bottom: 1px solid #334155;
-        padding-bottom: 6px;
-        margin-bottom: 4px;
-    }
-
-    /* Month Grid */
-    QPushButton#monthButton {
-        background-color: #334155;
-        color: #E2E8F0; /* Ensure month text is visible */
-        border: 1px solid #475569;
-        padding: 6px;
-        font-size: 12px;
-        border-radius: 6px;
-    }
-    QPushButton#monthButton:hover {
-        background-color: #475569;
-    }
-    QPushButton#monthButton:checked {
-        background-color: #22d3ee; /* Aqua color */
-        border-color: #67e8f9;
-        color: #0B0F17; /* Dark text on light aqua */
-        font-weight: bold;
-    }
-
-    /* Behavior Toggles (as Switches) */
-    QCheckBox {
-        font-size: 13px;
-        color: #cbd5e1; /* Ensure behavior text is visible */
-        spacing: 10px;
-    }
-    QCheckBox::indicator {
-        width: 40px;
-        height: 22px;
-        background-color: #334155;
-        border-radius: 11px;
-        border: 1px solid #475569;
-    }
-    QCheckBox::indicator:checked {
-        background-color: #10B981;
-    }
-    QCheckBox::indicator:hover {
-        border-color: #6366F1;
-    }
-
-    /* Status Pills */
-    QLabel#statusKey { font-weight: bold; color: #94A3B8; font-size: 12px; }
-    #greenPill { color: #34D399; font-size: 12px; font-weight: bold; font-family: 'JetBrains Mono', 'Consolas', monospace; }
-    #cyanPill { color: #67E8F9; font-size: 12px; font-weight: bold; font-family: 'JetBrains Mono', 'Consolas', monospace; }
-    #yellowPill { color: #FBBF24; font-size: 12px; font-weight: bold; font-family: 'JetBrains Mono', 'Consolas', monospace; }
-    #purplePill { color: #F0ABFC; font-size: 12px; font-weight: bold; font-family: 'JetBrains Mono', 'Consolas', monospace; }
-    
-    /* Action Buttons */
-    #actionsFrame QPushButton { padding: 8px; }
-    #launchButton { background-color: #0891B2; color: white; } /* Cyan */
-    #launchButton:hover { background-color: #06B6D4; }
-    #warningButton { background-color: #D97706; color: white; }
-    #warningButton:hover { background-color: #F59E0B; }
-"""
+    }}
+    QComboBox QAbstractItemView {{
+        background-color: {p['input_bg']};
+        color: {p['text_secondary']};
+        border: 1px solid {p['input_focus_border']};
+        selection-background-color: {p['button_bg']};
+    }}
+    """
 ```
 
 

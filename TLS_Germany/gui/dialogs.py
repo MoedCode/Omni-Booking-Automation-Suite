@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 import datetime
 from browsers.chrome import ChromeManager
+from .theme import DARK_THEME, LIGHT_THEME
 
 class AddInstanceDialog(QDialog):
     """A dialog to manually add a new bot instance."""
@@ -95,15 +96,15 @@ class EditInstanceDialog(QDialog):
     A high-tech, modeless dashboard replicating the JS HUD.
     Features auto-save capabilities mapped directly to ChromeManager.
     """
-    def __init__(self, parent, instance: ChromeManager):
+    def __init__(self, parent, instance: ChromeManager, theme: str):
         super().__init__(parent)
         self.instance = instance
         self.parent_window = parent
+        self.theme = theme
 
         self.setWindowFlags(Qt.WindowType.Window)
         self.setWindowTitle(f"Hot-Patch Dashboard: {instance.account}")
         self.setFixedSize(450, 800)
-        self.setStyleSheet("background-color: #060c1a;") 
 
         self.SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
         self.FULL_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
@@ -121,6 +122,7 @@ class EditInstanceDialog(QDialog):
 
         self._parse_initial_date()
         self._init_ui()
+        self.update_theme(self.theme) # Apply initial theme
         
         self.live_timer = QTimer(self)
         self.live_timer.timeout.connect(self._update_live_status)
@@ -141,22 +143,13 @@ class EditInstanceDialog(QDialog):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(15, 15, 15, 15)
         main_layout.setSpacing(10)
-
-        GROUP_STYLE = """
-            QGroupBox { color: #94A3B8; font-size: 10px; font-weight: bold; letter-spacing: 1.5px; border: 1px solid rgba(99,102,241,0.2); border-radius: 8px; margin-top: 12px; } 
-            QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }
-        """
-        INPUT_STYLE = "background-color: rgba(6,12,26,0.9); color: #F1F5F9; border: 1px solid rgba(99,102,241,0.2); border-radius: 6px; padding: 6px; font-size: 12px;"
-        LABEL_STYLE = "color: #475569; font-weight: bold; font-size: 10px;"
-
+        
         # --- 0. ACCOUNT & CREDENTIALS SECTION ---
-        acc_group = QGroupBox("TARGET CONTEXT")
-        acc_group.setStyleSheet(GROUP_STYLE)
-        acc_layout = QGridLayout(acc_group)
+        self.acc_group = QGroupBox("TARGET CONTEXT")
+        acc_layout = QGridLayout(self.acc_group)
         
         acc_layout.addWidget(QLabel("Email:"), 0, 0)
         self.email_edit = QLineEdit(self.instance.account)
-        self.email_edit.setStyleSheet(INPUT_STYLE)
         self.email_edit.textEdited.connect(self._auto_save_context)
         acc_layout.addWidget(self.email_edit, 0, 1)
 
@@ -167,13 +160,13 @@ class EditInstanceDialog(QDialog):
         pass_layout.setContentsMargins(0, 0, 0, 0)
         
         self.pass_edit = QLineEdit(self.instance.password)
-        self.pass_edit.setStyleSheet("background-color: rgba(6,12,26,0.9); color: #F1F5F9; border: 1px solid rgba(99,102,241,0.2); border-top-left-radius: 6px; border-bottom-left-radius: 6px; padding: 6px; font-size: 12px; border-right: none;")
+        self.pass_edit.setObjectName("pass-field")
         self.pass_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.pass_edit.textEdited.connect(self._auto_save_context)
         
         self.pass_toggle_btn = QPushButton("👁")
+        self.pass_toggle_btn.setObjectName("pass-toggle-btn")
         self.pass_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.pass_toggle_btn.setStyleSheet("background-color: rgba(6,12,26,0.9); color: #94A3B8; border: 1px solid rgba(99,102,241,0.2); border-top-right-radius: 6px; border-bottom-right-radius: 6px; padding: 6px; border-left: none; font-size: 12px;")
         self.pass_toggle_btn.clicked.connect(self._toggle_password)
         
         pass_layout.addWidget(self.pass_edit)
@@ -182,21 +175,20 @@ class EditInstanceDialog(QDialog):
 
         acc_layout.addWidget(QLabel("City:"), 1, 0)
         self.city_edit = QLineEdit(self.instance.target_city)
-        self.city_edit.setStyleSheet(INPUT_STYLE)
         self.city_edit.textEdited.connect(self._auto_save_context)
         acc_layout.addWidget(self.city_edit, 1, 1, 1, 3)
-        main_layout.addWidget(acc_group)
+        main_layout.addWidget(self.acc_group)
 
         # --- 1. TARGET MONTH SECTION ---
-        month_group = QGroupBox("TARGET MONTH (FIRST VISIBLE)")
-        month_group.setStyleSheet(GROUP_STYLE)
-        m_layout = QVBoxLayout(month_group)
+        self.month_group = QGroupBox("TARGET MONTH (FIRST VISIBLE)")
+        m_layout = QVBoxLayout(self.month_group)
         
         grid = QGridLayout()
         grid.setSpacing(4)
         self.month_buttons = []
         for i, m_str in enumerate(self.SHORT_MONTHS):
             btn = QPushButton(m_str)
+            btn.setObjectName("monthButton")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda checked, idx=i: self._select_month(idx))
             self.month_buttons.append(btn)
@@ -205,53 +197,39 @@ class EditInstanceDialog(QDialog):
         m_layout.addLayout(grid)
 
         y_layout = QHBoxLayout()
-        y_label = QLabel("Y:")
-        y_label.setStyleSheet(LABEL_STYLE)
+        self.y_label = QLabel("Y:")
         self.year_edit = QLineEdit(self.current_year)
-        self.year_edit.setStyleSheet(INPUT_STYLE)
         self.year_edit.textEdited.connect(self._auto_save_date) 
         
-        y_layout.addWidget(y_label)
+        y_layout.addWidget(self.y_label)
         y_layout.addWidget(self.year_edit)
         m_layout.addLayout(y_layout)
         
-        self._update_month_btns()
-        main_layout.addWidget(month_group)
+        main_layout.addWidget(self.month_group)
 
         # --- 1.5 TIMING / REFRESH SECONDS ---
-        timing_group = QGroupBox("REFRESH TIMING")
-        timing_group.setStyleSheet(GROUP_STYLE)
-        t_layout = QHBoxLayout(timing_group)
+        self.timing_group = QGroupBox("REFRESH TIMING")
+        t_layout = QHBoxLayout(self.timing_group)
         
-        sec_lbl = QLabel("Sec:")
-        sec_lbl.setStyleSheet(LABEL_STYLE)
+        self.sec_lbl = QLabel("Sec:")
         self.sec_edit = QLineEdit(str(self.instance.target_sec))
-        self.sec_edit.setStyleSheet(INPUT_STYLE)
         self.sec_edit.textEdited.connect(self._auto_save_timing)
 
-        ms_lbl = QLabel("Ms:")
-        ms_lbl.setStyleSheet(LABEL_STYLE)
+        self.ms_lbl = QLabel("Ms:")
         self.ms_edit = QLineEdit(str(self.instance.target_ms))
-        self.ms_edit.setStyleSheet(INPUT_STYLE)
         self.ms_edit.textEdited.connect(self._auto_save_timing)
 
-        t_layout.addWidget(sec_lbl)
+        t_layout.addWidget(self.sec_lbl)
         t_layout.addWidget(self.sec_edit)
-        t_layout.addWidget(ms_lbl)
+        t_layout.addWidget(self.ms_lbl)
         t_layout.addWidget(self.ms_edit)
-        main_layout.addWidget(timing_group)
+        main_layout.addWidget(self.timing_group)
 
         # --- 2. BEHAVIOR SECTION ---
-        behavior_group = QGroupBox("BEHAVIOR")
-        behavior_group.setStyleSheet(GROUP_STYLE)
-        b_layout = QVBoxLayout(behavior_group)
+        self.behavior_group = QGroupBox("BEHAVIOR")
+        b_layout = QVBoxLayout(self.behavior_group)
         b_layout.setSpacing(6)
         
-        SWITCH_STYLE = """
-            QCheckBox { color: #CBD5E1; font-size: 11px; spacing: 10px; } 
-            QCheckBox::indicator { width: 36px; height: 20px; border-radius: 10px; background: rgba(255,255,255,0.08); } 
-            QCheckBox::indicator:checked { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10b981, stop:1 #34d399); }
-        """
         self.chk_swap = QCheckBox("Swap currentDate (server-side)")
         self.chk_nav = QCheckBox("Auto-navigate (fallback)")
         self.chk_hide_m = QCheckBox("Hide months before target")
@@ -264,75 +242,66 @@ class EditInstanceDialog(QDialog):
         self.chk_hide_s.setChecked(self.instance.js_hide_s)
 
         for chk in [self.chk_swap, self.chk_nav, self.chk_hide_m, self.chk_hide_s]:
-            chk.setStyleSheet(SWITCH_STYLE)
             chk.setCursor(Qt.CursorShape.PointingHandCursor)
             chk.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
             chk.clicked.connect(self._auto_save_switches)
             b_layout.addWidget(chk)
         
-        main_layout.addWidget(behavior_group)
+        main_layout.addWidget(self.behavior_group)
 
         # --- 3. MAXDATE OVERRIDE SECTION ---
-        maxd_group = QGroupBox("MAXDATE OVERRIDE")
-        maxd_group.setStyleSheet(GROUP_STYLE)
-        max_layout = QHBoxLayout(maxd_group)
+        self.maxd_group = QGroupBox("MAXDATE OVERRIDE")
+        max_layout = QHBoxLayout(self.maxd_group)
         
-        l_y = QLabel("Y:")
-        l_y.setStyleSheet(LABEL_STYLE)
+        self.l_y = QLabel("Y:")
         # Typecasting to string to prevent TypeError
         self.max_y = QLineEdit(str(self.instance.max_year))
-        self.max_y.setStyleSheet(INPUT_STYLE)
         
-        l_m = QLabel("M:")
-        l_m.setStyleSheet(LABEL_STYLE)
+        self.l_m = QLabel("M:")
         # Typecasting to string to prevent TypeError
         self.max_m = QLineEdit(str(self.instance.max_month))
-        self.max_m.setStyleSheet(INPUT_STYLE)
         
         btn_set = QPushButton("Set")
+        btn_set.setObjectName("set-maxdate-btn")
         btn_set.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_set.setStyleSheet("background-color: #F59E0B; color: white; border: none; font-weight: bold; border-radius: 6px; padding: 6px 14px;")
         
         self.max_y.textEdited.connect(self._auto_save_maxdate)
         self.max_m.textEdited.connect(self._auto_save_maxdate)
         btn_set.clicked.connect(self._auto_save_maxdate)
 
-        max_layout.addWidget(l_y)
+        max_layout.addWidget(self.l_y)
         max_layout.addWidget(self.max_y)
-        max_layout.addWidget(l_m)
+        max_layout.addWidget(self.l_m)
         max_layout.addWidget(self.max_m)
         max_layout.addWidget(btn_set)
-        main_layout.addWidget(maxd_group)
+        main_layout.addWidget(self.maxd_group)
 
         # --- 4. STATUS & COUNTERS SECTION ---
-        status_group = QGroupBox("STATUS & COUNTERS")
-        status_group.setStyleSheet(GROUP_STYLE)
-        s_layout = QGridLayout(status_group)
+        self.status_group = QGroupBox("STATUS & COUNTERS")
+        s_layout = QGridLayout(self.status_group)
         
         for idx, text in enumerate(["Target:", "maxDate:", "Showing:", "curDate:"]):
             lbl = QLabel(text)
-            lbl.setStyleSheet("color: #64748B; font-size: 11px;")
+            lbl.setObjectName("statusKey")
             s_layout.addWidget(lbl, idx % 2, (idx // 2) * 2)
 
         self.val_tgt = QLabel(self.instance.target_month)
+        self.val_tgt.setObjectName("val_tgt")
         self.val_max = QLabel(f"{self.instance.max_year}-{str(self.instance.max_month).zfill(2)}")
+        self.val_max.setObjectName("val_max")
         self.val_shw = QLabel("Offline")
+        self.val_shw.setObjectName("val_shw")
         self.val_cur = QLabel("Offline")
+        self.val_cur.setObjectName("val_cur")
 
         for lbl in [self.val_tgt, self.val_shw, self.val_max, self.val_cur]:
             lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             
-        PILL_STYLE = "font-family: 'JetBrains Mono', monospace; font-weight: bold; font-size: 11px; padding: 3px 8px; border-radius: 4px;"
-        self.val_tgt.setStyleSheet(f"color: #34D399; background: rgba(16,185,129,0.15); {PILL_STYLE}")
-        self.val_max.setStyleSheet(f"color: #FBBF24; background: rgba(251,191,36,0.15); {PILL_STYLE}")
-        self.val_shw.setStyleSheet(f"color: #67E8F9; background: transparent; {PILL_STYLE}")
-        self.val_cur.setStyleSheet(f"color: #F0ABFC; background: transparent; {PILL_STYLE}")
-
         s_layout.addWidget(self.val_tgt, 0, 1)
         s_layout.addWidget(self.val_max, 1, 1)
         s_layout.addWidget(self.val_shw, 0, 3)
         s_layout.addWidget(self.val_cur, 1, 3)
-        main_layout.addWidget(status_group)
+        main_layout.addWidget(self.status_group)
 
         # --- 5. BOTTOM ACTIONS ---
         btn_layout = QHBoxLayout()
@@ -357,6 +326,57 @@ class EditInstanceDialog(QDialog):
         btn_layout.addWidget(btn_reload)
         main_layout.addLayout(btn_layout)
 
+    def update_theme(self, theme: str):
+        self.theme = theme
+        p = DARK_THEME if self.theme == 'dark' else LIGHT_THEME
+
+        self.setStyleSheet(f"background-color: {p['dialog_bg']};")
+
+        GROUP_STYLE = f"""
+            QGroupBox {{ color: {p['text_primary']}; font-size: 10px; font-weight: bold; letter-spacing: 1.5px; border: 1px solid {p['group_border']}; border-radius: 8px; margin-top: 12px; }} 
+            QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 5px; }}
+        """
+        INPUT_STYLE = f"background-color: {p['dialog_bg']}; color: {p['text_secondary']}; border: 1px solid {p['group_border']}; border-radius: 6px; padding: 6px; font-size: 12px;"
+        LABEL_STYLE = f"color: {p['label_style_text']}; font-weight: bold; font-size: 10px;"
+        SWITCH_STYLE = f"""
+            QCheckBox {{ color: {p['text_secondary']}; font-size: 11px; spacing: 10px; }} 
+            QCheckBox::indicator {{ width: 36px; height: 20px; border-radius: 10px; background: {p['switch_bg']}; }} 
+            QCheckBox::indicator:checked {{ background: {p['switch_checked_bg']}; }}
+        """
+        PILL_STYLE = "font-family: 'JetBrains Mono', monospace; font-weight: bold; font-size: 11px; padding: 3px 8px; border-radius: 4px;"
+
+        # Apply styles
+        for group in [self.acc_group, self.month_group, self.timing_group, self.behavior_group, self.maxd_group, self.status_group]:
+            group.setStyleSheet(GROUP_STYLE)
+
+        for widget in [self.email_edit, self.city_edit, self.year_edit, self.sec_edit, self.ms_edit, self.max_y, self.max_m]:
+            widget.setStyleSheet(INPUT_STYLE)
+
+        for label in [self.y_label, self.sec_lbl, self.ms_lbl, self.l_y, self.l_m]:
+            label.setStyleSheet(LABEL_STYLE)
+            
+        self.pass_edit.setStyleSheet(f"{INPUT_STYLE} border-right: none;")
+        self.pass_toggle_btn.setStyleSheet(f"background-color: {p['dialog_bg']}; color: {p['pass_toggle_text']}; border: 1px solid {p['group_border']}; border-top-right-radius: 6px; border-bottom-right-radius: 6px; padding: 6px; border-left: none; font-size: 12px;")
+
+        for chk in [self.chk_swap, self.chk_nav, self.chk_hide_m, self.chk_hide_s]:
+            chk.setStyleSheet(SWITCH_STYLE)
+
+        self.val_tgt.setStyleSheet(f"color: {p['pill_tgt_text']}; background: {p['pill_tgt_bg']}; {PILL_STYLE}")
+        self.val_max.setStyleSheet(f"color: {p['pill_max_text']}; background: {p['pill_max_bg']}; {PILL_STYLE}")
+        self.val_shw.setStyleSheet(f"color: {p['pill_shw_text']}; background: transparent; {PILL_STYLE}")
+        self.val_cur.setStyleSheet(f"color: {p['pill_cur_text']}; background: transparent; {PILL_STYLE}")
+
+        self.findChild(QPushButton, "set-maxdate-btn").setStyleSheet(f"""
+            background-color: {p['set_btn_bg']}; 
+            color: {p['set_btn_text']}; 
+            border: none; 
+            font-weight: bold; 
+            border-radius: 6px; 
+            padding: 6px 14px;
+        """)
+
+        self._update_month_btns()
+
     def _toggle_password(self, *args):
         if self.pass_edit.echoMode() == QLineEdit.EchoMode.Password:
             self.pass_edit.setEchoMode(QLineEdit.EchoMode.Normal)
@@ -371,11 +391,12 @@ class EditInstanceDialog(QDialog):
         self._auto_save_date()
 
     def _update_month_btns(self):
+        p = DARK_THEME if self.theme == 'dark' else LIGHT_THEME
         for i, btn in enumerate(self.month_buttons):
             if i == self.current_month_idx:
-                btn.setStyleSheet("background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #10b981, stop:1 #059669); color: white; border: 1px solid #34d399; font-weight: bold; font-size: 11px; padding: 6px 4px; border-radius: 6px;")
+                btn.setStyleSheet(f"background: {p['month_btn_checked_bg']}; color: {p['month_btn_checked_text']}; border: 1px solid {p['month_btn_checked_border']}; font-weight: bold; font-size: 11px; padding: 6px 4px; border-radius: 6px;")
             else:
-                btn.setStyleSheet("background: rgba(6,12,26,0.8); color: #64748B; border: 1px solid rgba(99,102,241,0.2); font-weight: bold; font-size: 11px; padding: 6px 4px; border-radius: 6px;")
+                btn.setStyleSheet(f"background: {p['month_btn_bg']}; color: {p['month_btn_text']}; border: 1px solid {p['group_border']}; font-weight: bold; font-size: 11px; padding: 6px 4px; border-radius: 6px;")
 
     def _auto_save_context(self, *args):
         self.instance.account = self.email_edit.text().strip()

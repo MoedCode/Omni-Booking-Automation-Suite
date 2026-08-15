@@ -9,6 +9,7 @@ URLS = [
 BASE_URL = URLS[0]
 START_URL = URLS[0]
 
+APP_THEME = 'dark'
 # --- MANDATORY ATTRIBUTES ---
 # Columns that MUST be present in the data file for it to be considered valid.
 MANDATORY_ATTRIBUTES = ['Account', 'Password']

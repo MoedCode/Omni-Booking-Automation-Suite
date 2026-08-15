@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Omni-Booking-Automation-Suite/TLS_Germany/browsers/chrome.py
-Synchronous Thread-Based Implementation
+Synchronous Thread-Based Implementation with Persistent UI Injection
 """
 import sys
 import os
@@ -25,7 +25,7 @@ from browsers.injection import inject_date_bypass
 class ChromeManager:
     """
     Manages an isolated Chrome browser instance using pure threading.
-    Handles lifecycle, threading, and precision timing.
+    Handles lifecycle, threading, precision timing, and custom UI overlay.
     """
 
     _driver_init_lock = threading.Lock()
@@ -57,9 +57,9 @@ class ChromeManager:
         
         self.account_safe_name = "".join([c if c.isalnum() else "_" for c in self.account])
         self.profile_path = os.path.abspath(f"./runtime_profiles/{self.account_safe_name}")
-        self.window_title = f"Omni-Booking :: {self.account}"
         
         self.thread: Optional[threading.Thread] = None
+        self.ui_thread: Optional[threading.Thread] = None
         self.is_running = False
         self.driver: Optional[Driver] = None
         self.appointment_found = False
@@ -103,6 +103,132 @@ class ChromeManager:
         )
         self.thread.start()
 
+    def _ui_updater_loop(self):
+            """
+            Background daemon that continuously checks the URL and settings.
+            Updates the tab title, injects the OAS header, and syncs the theme.
+            """
+            # Forced LOWERCASE for "small" account letters in Chrome
+            account_prefix = self.account.split('@')[0].lower()
+            full_account = self.account.lower()
+            
+            while self.is_running:
+                if self.driver:
+                    try:
+                        current_url = self.driver.current_url.lower()
+                        
+                        # 1. Determine process name (max 2 words)
+                        proc_name = "Routing..."
+                        if "login" in current_url or "auth" in current_url:
+                            proc_name = "Login"
+                        elif "country" in current_url:
+                            proc_name = "Select Country"
+                        elif "vac" in current_url or "city" in current_url:
+                            proc_name = "Select City"
+                        elif "application-process" in current_url:
+                            proc_name = "App Process"
+                        elif "service" in current_url:
+                            proc_name = "Select Service"
+                        elif "appointment-booking" in current_url:
+                            proc_name = "Booking Appt"
+
+                        # Fetch the global theme selected in the PyQt main window
+                        current_theme = getattr(settings, 'APP_THEME', 'dark')
+
+                        js_code = f"""
+                        (function() {{
+                            // TAB TITLE LOCK (AREA 1 & 2 - Small letters)
+                            var newTitle = "[OAS] | {account_prefix} | {proc_name}";
+                            if (document.title !== newTitle) document.title = newTitle;
+                            
+                            if (!window.oasTitleLock) {{
+                                window.oasTitleLock = new MutationObserver(() => {{
+                                    if (document.title !== newTitle) document.title = newTitle;
+                                }});
+                                var tNode = document.querySelector('title') || document.head;
+                                window.oasTitleLock.observe(tNode, {{childList: true, subtree: true, characterData: true}});
+                            }}
+
+                            // HEADER INJECTION (AREA 3 & 4 - Small letters + Logo)
+                            var header = document.getElementById('oas-custom-header');
+                            if (!header) {{
+                                header = document.createElement('div');
+                                header.id = 'oas-custom-header';
+                                
+                                header.innerHTML = `
+                                    <div style="display: flex; align-items: center; gap: 15px;">
+                                        <span style="font-family: 'Brush Script MT', 'Comic Sans MS', cursive; color: #00ffff; font-size: 30px; font-weight: bold; letter-spacing: 1px;">OAS</span>
+                                        <span id="oas-account-name" style="font-size: 16px; font-weight: 600; padding-left: 15px;">{full_account}</span>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 20px;">
+                                        <span id="oas-process-name" style="color: #34d399; font-size: 16px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">{proc_name}</span>
+                                    </div>
+                                `;
+                                
+                                // Essential structural styles
+                                header.style.position = "fixed";
+                                header.style.top = "0";
+                                header.style.left = "0";
+                                header.style.width = "100%";
+                                header.style.height = "65px";
+                                header.style.display = "flex";
+                                header.style.alignItems = "center";
+                                header.style.justifyContent = "space-between";
+                                header.style.padding = "0 25px";
+                                header.style.zIndex = "2147483647";
+                                header.style.fontFamily = "system-ui, sans-serif";
+                                header.style.boxSizing = "border-box";
+                                
+                                if (document.body) document.body.insertBefore(header, document.body.firstChild);
+                                else document.documentElement.appendChild(header);
+
+                                // Force TLS UI down by 65px so it doesn't hide behind our custom header
+                                var style = document.getElementById('oas-margin-style');
+                                if(!style) {{
+                                    style = document.createElement('style');
+                                    style.id = 'oas-margin-style';
+                                    style.innerHTML = `
+                                        body {{ padding-top: 65px !important; }} 
+                                        nav#navbar {{ top: 65px !important; }}
+                                        .osano-cm-window {{ top: 65px !important; }}
+                                    `;
+                                    document.head.appendChild(style);
+                                }}
+                            }} else {{
+                                // Update process name dynamically on page transitions
+                                var procSpan = document.getElementById('oas-process-name');
+                                if (procSpan && procSpan.innerText !== "{proc_name}") {{
+                                    procSpan.innerText = "{proc_name}";
+                                }}
+                            }}
+                            
+                            // CONSTANT THEME SYNC (Evaluated every second to match Main Window)
+                            if (header) {{
+                                var theme = "{current_theme}";
+                                var acctSpan = document.getElementById('oas-account-name');
+                                
+                                if(theme === 'dark') {{
+                                    header.style.backgroundColor = "#0b1120";
+                                    header.style.color = "#f8fafc";
+                                    header.style.borderBottom = "1px solid #1e293b";
+                                    header.style.boxShadow = "0 4px 15px rgba(0,0,0,0.7)";
+                                    if (acctSpan) acctSpan.style.borderLeft = "2px solid #334155";
+                                }} else {{
+                                    header.style.backgroundColor = "#ffffff";
+                                    header.style.color = "#0f172a";
+                                    header.style.borderBottom = "2px solid #e2e8f0";
+                                    header.style.boxShadow = "0 4px 10px rgba(0,0,0,0.1)";
+                                    if (acctSpan) acctSpan.style.borderLeft = "2px solid #cbd5e1";
+                                }}
+                            }}
+                        }})();
+                        """
+                        self.driver.execute_script(js_code)
+                    except Exception:
+                        pass # Safely ignore JS execution errors during hard reloads
+                
+                time.sleep(1)
+
     def _print_js_console_logs(self):
         """Fetches browser console logs and prints Hot-Patch messages to the Python Terminal."""
         if not self.driver: return
@@ -110,16 +236,14 @@ class ChromeManager:
             logs = self.driver.get_log('browser')
             for log in logs:
                 msg = log.get('message', '')
-                # Filter to only show our JS injection logs
                 if "Hot-Patch" in msg:
-                    # Clean up standard Chrome log formatting
                     clean_msg = msg.split('"')[-2] if '"' in msg else msg
                     print(f"    [JS ⚙️] {self.account} -> {clean_msg}")
         except Exception:
-            pass # Fails safely if logging is not enabled in standard chromedriver
+            pass
 
     def _inject_hot_patch(self) -> None:
-        """Injects the headless bypass engine into the active appointment booking DOM."""
+        """Injects the headless bypass engine dynamically into the active DOM."""
         if not self.driver:
             return
         
@@ -139,8 +263,8 @@ class ChromeManager:
             
             if success:
                 print(f"[✅] {self.account} JavaScript Engine successfully hooked. Monitoring background tasks...\n")
-                time.sleep(1) # Give JS a moment to execute its hiding logic
-                self._print_js_console_logs() # Print the hidden months to terminal
+                time.sleep(1)
+                self._print_js_console_logs() 
             else:
                 print(f"[❌] {self.account} JavaScript Engine failed to hook (returned False).\n")
         except Exception as e:
@@ -158,7 +282,10 @@ class ChromeManager:
                     incognito=False,
                     chromium_arg=",".join(self._build_stealth_profile())
                 )
-            self.driver.execute_script(f"document.title = '{self.window_title}'")
+            
+            # Start the UI Daemon Thread to monitor tabs and inject Header
+            self.ui_thread = threading.Thread(target=self._ui_updater_loop, daemon=True)
+            self.ui_thread.start()
 
             self.status = "Navigating to Start URL"
             self.driver.get(self.target_url)
@@ -173,16 +300,13 @@ class ChromeManager:
             )
 
             while self.is_running:
-                # 1. Complete Login, 2FA, Select City & Application
                 navigator.navigate_to_target_state()
                 if not self.is_running:
                     break
 
-                # 2. INJECT IMMEDIATELY UPON REACHING APPOINTMENT PAGE
                 self._inject_hot_patch()
-
-                # 3. Enter monitoring loop
                 self._appointment_check_loop()
+                
                 if not self.is_running:
                     break
 
@@ -200,8 +324,11 @@ class ChromeManager:
                 print(f"❌ [Error in {self.account}]: {error_msg}")
                 self.status = f"Error: {error_msg}"
                 self.is_running = False
-        
-        print(f"[💡] Thread for {self.account} has exited.")
+                
+        finally:
+            # --- REQUIREMENT A: ALWAYS CLOSE CHROME ON EXIT ---
+            self.stop_engine()
+            print(f"[💡] Thread for {self.account} has exited and Chrome instance is successfully closed.")
 
     def _appointment_check_loop(self) -> None:
         print(f"[{self.account}] Now monitoring for appointments...")
@@ -211,7 +338,6 @@ class ChromeManager:
                 print(f"🗺️ [{self.account}] {self.status} - returning to navigator.")
                 return 
             
-            # Print any new console logs generated by JS (like hiding newly loaded slots)
             self._print_js_console_logs()
 
             found = self.check_appointment()
@@ -224,7 +350,6 @@ class ChromeManager:
                     time.sleep(1)
                 return 
             
-            # Precision timing synchronization
             target_second = self.target_sec
             if not (0 <= target_second <= 59):
                 interval = self.target_sec if self.target_sec > 0 else settings.APPOINTMENT_CHECK_INTERVAL_SECONDS
@@ -245,28 +370,26 @@ class ChromeManager:
                 print(f"[{self.account}] Performing sync refresh...")
                 self.status = "Refreshing..."
                 
-                # Use get(url) to prevent WinError 10061 Socket Closure
                 self.driver.get(self.driver.current_url) 
                 time.sleep(2)
                 
-                # Re-inject the script right after page reload
                 self._inject_hot_patch()
 
     def check_appointment(self) -> bool:
         try:
             self.status = f"Checking for month: {self.target_month}"
             
-            # --- CRITICAL FIX ---
-            # If JS is handling navigation OR swapping the date entirely, 
-            # Python should NOT try to navigate, as it will crash trying to click hidden elements.
-            if not self.js_nav and not self.js_swap:
+            if self.js_nav and not self.js_swap:
+                target_reached = self._wait_for_js_navigation()
+                if not target_reached:
+                    return False
+            elif not self.js_nav and not self.js_swap:
                 month_found = self._navigate_to_target_month()
                 if not month_found:
                     return False
 
             self.status = f"Scanning {self.target_month} for slots..."
             
-            # Wait for body to be fully ready before reading text
             self.driver.wait_for_element_present("body", timeout=5)
             page_text = self.driver.get_text("body").lower()
             
@@ -290,11 +413,30 @@ class ChromeManager:
             return False
 
         except Exception as e:
-            # Reformat exception so it doesn't just print "Message: "
             error_msg = str(e).replace('\n', ' | ')
-            self.status = f"Error checking page"
+            self.status = "Error checking page"
             print(f"❌ [{self.account}] Exception during slot scan: {error_msg}")
             return False
+
+    def _wait_for_js_navigation(self) -> bool:
+        """Waits for the JS auto-navigator to reach the target month before proceeding."""
+        try:
+            target_date = datetime.datetime.strptime(self.target_month.strip(), "%B %Y")
+        except ValueError:
+            return False
+
+        for _ in range(15):
+            if not self.is_running: return False
+            try:
+                current_month_element = self.driver.find_element(By.CSS_SELECTOR, TLS_SELECTORS['appointment_booking']['current_month_button'])
+                current_date = datetime.datetime.strptime(current_month_element.text.strip(), "%B %Y")
+                if current_date.year == target_date.year and current_date.month == target_date.month:
+                    return True 
+            except Exception:
+                pass
+            time.sleep(1)
+        
+        return False
 
     def _navigate_to_target_month(self) -> bool:
         try:
@@ -350,7 +492,7 @@ class ChromeManager:
         return False
 
     def stop_engine(self) -> None:
-        if not self.is_running:
+        if not self.is_running and not self.driver:
             return
         self.is_running = False 
         if self.driver:
