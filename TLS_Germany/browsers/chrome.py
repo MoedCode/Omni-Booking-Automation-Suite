@@ -104,133 +104,130 @@ class ChromeManager:
         self.thread.start()
 
     def _ui_updater_loop(self):
-            """
-            Background daemon that continuously checks the URL and settings.
-            Updates the tab title, injects the OAS header, and syncs the theme.
-            """
-            # Forced LOWERCASE for "small" account letters in Chrome
-            account_prefix = self.account.split('@')[0].lower()
-            full_account = self.account.lower()
-            
-            while self.is_running:
-                if self.driver:
-                    try:
-                        current_url = self.driver.current_url.lower()
+        """
+        Background daemon that continuously checks the URL and settings.
+        Updates the tab title, injects the OAS header, and syncs the theme.
+        """
+        # Forced LOWERCASE for "small" account letters in Chrome
+        account_prefix = self.account.split('@')[0].lower()
+        full_account = self.account.lower()
+        
+        while self.is_running:
+            if self.driver:
+                try:
+                    current_url = self.driver.current_url.lower()
+                    
+                    # Determine process name (max 2 words)
+                    proc_name = "Routing..."
+                    if "login" in current_url or "auth" in current_url:
+                        proc_name = "Login"
+                    elif "country" in current_url:
+                        proc_name = "Select Country"
+                    elif "vac" in current_url or "city" in current_url:
+                        proc_name = "Select City"
+                    elif "application-process" in current_url:
+                        proc_name = "App Process"
+                    elif "service" in current_url:
+                        proc_name = "Select Service"
+                    elif "appointment-booking" in current_url:
+                        proc_name = "Booking Appt"
+
+                    # Fetch the global theme selected in the PyQt main window
+                    current_theme = getattr(settings, 'APP_THEME', 'dark')
+
+                    js_code = f"""
+                    (function() {{
+                        // TAB TITLE LOCK (AREA 1 & 2 - Small letters)
+                        var newTitle = "[OAS] | {account_prefix} | {proc_name}";
+                        if (document.title !== newTitle) document.title = newTitle;
                         
-                        # 1. Determine process name (max 2 words)
-                        proc_name = "Routing..."
-                        if "login" in current_url or "auth" in current_url:
-                            proc_name = "Login"
-                        elif "country" in current_url:
-                            proc_name = "Select Country"
-                        elif "vac" in current_url or "city" in current_url:
-                            proc_name = "Select City"
-                        elif "application-process" in current_url:
-                            proc_name = "App Process"
-                        elif "service" in current_url:
-                            proc_name = "Select Service"
-                        elif "appointment-booking" in current_url:
-                            proc_name = "Booking Appt"
+                        if (!window.oasTitleLock) {{
+                            window.oasTitleLock = new MutationObserver(() => {{
+                                if (document.title !== newTitle) document.title = newTitle;
+                            }});
+                            var tNode = document.querySelector('title') || document.head;
+                            window.oasTitleLock.observe(tNode, {{childList: true, subtree: true, characterData: true}});
+                        }}
 
-                        # Fetch the global theme selected in the PyQt main window
-                        current_theme = getattr(settings, 'APP_THEME', 'dark')
-
-                        js_code = f"""
-                        (function() {{
-                            // TAB TITLE LOCK (AREA 1 & 2 - Small letters)
-                            var newTitle = "[OAS] | {account_prefix} | {proc_name}";
-                            if (document.title !== newTitle) document.title = newTitle;
+                        // HEADER INJECTION (AREA 3 & 4 - Small letters + Logo)
+                        var header = document.getElementById('oas-custom-header');
+                        if (!header) {{
+                            header = document.createElement('div');
+                            header.id = 'oas-custom-header';
                             
-                            if (!window.oasTitleLock) {{
-                                window.oasTitleLock = new MutationObserver(() => {{
-                                    if (document.title !== newTitle) document.title = newTitle;
-                                }});
-                                var tNode = document.querySelector('title') || document.head;
-                                window.oasTitleLock.observe(tNode, {{childList: true, subtree: true, characterData: true}});
-                            }}
+                            header.innerHTML = `
+                                <div style="display: flex; align-items: center; gap: 15px;">
+                                    <span style="font-family: 'Brush Script MT', 'Comic Sans MS', cursive; color: #00ffff; font-size: 30px; font-weight: bold; letter-spacing: 1px;">OAS</span>
+                                    <span id="oas-account-name" style="font-size: 16px; font-weight: 600; padding-left: 15px;">{full_account}</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 20px;">
+                                    <span id="oas-process-name" style="color: #34d399; font-size: 16px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">{proc_name}</span>
+                                </div>
+                            `;
+                            
+                            // Essential structural styles
+                            header.style.position = "fixed";
+                            header.style.top = "0";
+                            header.style.left = "0";
+                            header.style.width = "100%";
+                            header.style.height = "65px";
+                            header.style.display = "flex";
+                            header.style.alignItems = "center";
+                            header.style.justifyContent = "space-between";
+                            header.style.padding = "0 25px";
+                            header.style.zIndex = "2147483647";
+                            header.style.fontFamily = "system-ui, sans-serif";
+                            header.style.boxSizing = "border-box";
+                            
+                            if (document.body) document.body.insertBefore(header, document.body.firstChild);
+                            else document.documentElement.appendChild(header);
 
-                            // HEADER INJECTION (AREA 3 & 4 - Small letters + Logo)
-                            var header = document.getElementById('oas-custom-header');
-                            if (!header) {{
-                                header = document.createElement('div');
-                                header.id = 'oas-custom-header';
-                                
-                                header.innerHTML = `
-                                    <div style="display: flex; align-items: center; gap: 15px;">
-                                        <span style="font-family: 'Brush Script MT', 'Comic Sans MS', cursive; color: #00ffff; font-size: 30px; font-weight: bold; letter-spacing: 1px;">OAS</span>
-                                        <span id="oas-account-name" style="font-size: 16px; font-weight: 600; padding-left: 15px;">{full_account}</span>
-                                    </div>
-                                    <div style="display: flex; align-items: center; gap: 20px;">
-                                        <span id="oas-process-name" style="color: #34d399; font-size: 16px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">{proc_name}</span>
-                                    </div>
+                            // Force TLS UI down by 65px so it doesn't hide behind our custom header
+                            var style = document.getElementById('oas-margin-style');
+                            if(!style) {{
+                                style = document.createElement('style');
+                                style.id = 'oas-margin-style';
+                                style.innerHTML = `
+                                    body {{ padding-top: 65px !important; }} 
+                                    nav#navbar {{ top: 65px !important; }}
+                                    .osano-cm-window {{ top: 65px !important; }}
                                 `;
-                                
-                                // Essential structural styles
-                                header.style.position = "fixed";
-                                header.style.top = "0";
-                                header.style.left = "0";
-                                header.style.width = "100%";
-                                header.style.height = "65px";
-                                header.style.display = "flex";
-                                header.style.alignItems = "center";
-                                header.style.justifyContent = "space-between";
-                                header.style.padding = "0 25px";
-                                header.style.zIndex = "2147483647";
-                                header.style.fontFamily = "system-ui, sans-serif";
-                                header.style.boxSizing = "border-box";
-                                
-                                if (document.body) document.body.insertBefore(header, document.body.firstChild);
-                                else document.documentElement.appendChild(header);
-
-                                // Force TLS UI down by 65px so it doesn't hide behind our custom header
-                                var style = document.getElementById('oas-margin-style');
-                                if(!style) {{
-                                    style = document.createElement('style');
-                                    style.id = 'oas-margin-style';
-                                    style.innerHTML = `
-                                        body {{ padding-top: 65px !important; }} 
-                                        nav#navbar {{ top: 65px !important; }}
-                                        .osano-cm-window {{ top: 65px !important; }}
-                                    `;
-                                    document.head.appendChild(style);
-                                }}
-                            }} else {{
-                                // Update process name dynamically on page transitions
-                                var procSpan = document.getElementById('oas-process-name');
-                                if (procSpan && procSpan.innerText !== "{proc_name}") {{
-                                    procSpan.innerText = "{proc_name}";
-                                }}
+                                document.head.appendChild(style);
                             }}
+                        }} else {{
+                            var procSpan = document.getElementById('oas-process-name');
+                            if (procSpan && procSpan.innerText !== "{proc_name}") {{
+                                procSpan.innerText = "{proc_name}";
+                            }}
+                        }}
+                        
+                        // CONSTANT THEME SYNC (Evaluated every second to match Main Window)
+                        if (header) {{
+                            var theme = "{current_theme}";
+                            var acctSpan = document.getElementById('oas-account-name');
                             
-                            // CONSTANT THEME SYNC (Evaluated every second to match Main Window)
-                            if (header) {{
-                                var theme = "{current_theme}";
-                                var acctSpan = document.getElementById('oas-account-name');
-                                
-                                if(theme === 'dark') {{
-                                    header.style.backgroundColor = "#0b1120";
-                                    header.style.color = "#f8fafc";
-                                    header.style.borderBottom = "1px solid #1e293b";
-                                    header.style.boxShadow = "0 4px 15px rgba(0,0,0,0.7)";
-                                    if (acctSpan) acctSpan.style.borderLeft = "2px solid #334155";
-                                }} else {{
-                                    header.style.backgroundColor = "#ffffff";
-                                    header.style.color = "#0f172a";
-                                    header.style.borderBottom = "2px solid #e2e8f0";
-                                    header.style.boxShadow = "0 4px 10px rgba(0,0,0,0.1)";
-                                    if (acctSpan) acctSpan.style.borderLeft = "2px solid #cbd5e1";
-                                }}
+                            if(theme === 'dark') {{
+                                header.style.backgroundColor = "#0b1120";
+                                header.style.color = "#f8fafc";
+                                header.style.borderBottom = "1px solid #1e293b";
+                                header.style.boxShadow = "0 4px 15px rgba(0,0,0,0.7)";
+                                if (acctSpan) acctSpan.style.borderLeft = "2px solid #334155";
+                            }} else {{
+                                header.style.backgroundColor = "#ffffff";
+                                header.style.color = "#0f172a";
+                                header.style.borderBottom = "2px solid #e2e8f0";
+                                header.style.boxShadow = "0 4px 10px rgba(0,0,0,0.1)";
+                                if (acctSpan) acctSpan.style.borderLeft = "2px solid #cbd5e1";
                             }}
-                        }})();
-                        """
-                        self.driver.execute_script(js_code)
-                    except Exception:
-                        pass # Safely ignore JS execution errors during hard reloads
-                
-                time.sleep(1)
+                        }}
+                    }})();
+                    """
+                    self.driver.execute_script(js_code)
+                except Exception:
+                    pass 
+            time.sleep(1)
 
     def _print_js_console_logs(self):
-        """Fetches browser console logs and prints Hot-Patch messages to the Python Terminal."""
         if not self.driver: return
         try:
             logs = self.driver.get_log('browser')
@@ -243,7 +240,6 @@ class ChromeManager:
             pass
 
     def _inject_hot_patch(self) -> None:
-        """Injects the headless bypass engine dynamically into the active DOM."""
         if not self.driver:
             return
         
@@ -283,7 +279,6 @@ class ChromeManager:
                     chromium_arg=",".join(self._build_stealth_profile())
                 )
             
-            # Start the UI Daemon Thread to monitor tabs and inject Header
             self.ui_thread = threading.Thread(target=self._ui_updater_loop, daemon=True)
             self.ui_thread.start()
 
@@ -326,7 +321,6 @@ class ChromeManager:
                 self.is_running = False
                 
         finally:
-            # --- REQUIREMENT A: ALWAYS CLOSE CHROME ON EXIT ---
             self.stop_engine()
             print(f"[💡] Thread for {self.account} has exited and Chrome instance is successfully closed.")
 
@@ -369,24 +363,30 @@ class ChromeManager:
             if self.is_running:
                 print(f"[{self.account}] Performing sync refresh...")
                 self.status = "Refreshing..."
-                
                 self.driver.get(self.driver.current_url) 
                 time.sleep(2)
-                
                 self._inject_hot_patch()
 
     def check_appointment(self) -> bool:
         try:
             self.status = f"Checking for month: {self.target_month}"
             
-            if self.js_nav and not self.js_swap:
+            # --- 🛑 CRITICAL FIX FOR RACE CONDITION 🛑 ---
+            # ALWAYS wait for navigation regardless of js_swap setting
+            if self.js_nav:
                 target_reached = self._wait_for_js_navigation()
                 if not target_reached:
                     return False
-            elif not self.js_nav and not self.js_swap:
+                # The label says November, but React needs ~1-3s to fetch the slots from the API!
+                self.status = "Awaiting API Response..."
+                time.sleep(3.5) # Force python to wait before scanning the page.
+                
+            elif not self.js_nav:
                 month_found = self._navigate_to_target_month()
                 if not month_found:
                     return False
+                self.status = "Awaiting API Response..."
+                time.sleep(3.5)
 
             self.status = f"Scanning {self.target_month} for slots..."
             
@@ -419,7 +419,6 @@ class ChromeManager:
             return False
 
     def _wait_for_js_navigation(self) -> bool:
-        """Waits for the JS auto-navigator to reach the target month before proceeding."""
         try:
             target_date = datetime.datetime.strptime(self.target_month.strip(), "%B %Y")
         except ValueError:
