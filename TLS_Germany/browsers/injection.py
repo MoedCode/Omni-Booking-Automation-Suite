@@ -247,7 +247,7 @@ def inject_date_bypass(
     max_month: int = 12,
     js_swap: bool = True,
     **kwargs
-) -> None:
+) -> bool:
     """
     Injects the generated payload into the browser environment.
     Accepts **kwargs to safely absorb any extra parameters passed by the bot.
@@ -274,6 +274,8 @@ def inject_date_bypass(
             print(f"    - [🔄] Refreshing page to apply date bypass hydration...")
             driver.refresh()
             time.sleep(3)
+        return True
             
     except Exception as e:
         print(f"    - [❌] INJECTION ERROR: {e}")
+        return False

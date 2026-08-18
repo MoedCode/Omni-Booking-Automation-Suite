@@ -75,7 +75,9 @@ TLS_SELECTORS = {
         "prev_month_button": "button[data-testid='btn-prev-month-available']",
         
         # --- Slot Detection ---
-        "available_slot": "button[data-testid^='appointment-slot-']",
+        "appointment_day_container": "div.AppointmentDay_appointment-day__1Qnz1",
+        "available_slot": "button[data-testid^='btn-available-slot-']",
+        "no_appointment_text": "p:contains('We currently don’t have any appointment slots available')",
         "book_appointment_button": "button:contains('Book your appointment')",
         "services_breadcrumb": "a[href*='/service-level']",
         "booking_breadcrumb": "a[href*='/appointment-booking']"
