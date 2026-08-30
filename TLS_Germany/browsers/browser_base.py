@@ -25,6 +25,13 @@ class BrowserBase:
         self.captcha_handler = CaptchaHandler(self.driver)
         self.login_attempted_on_this_page = False
 
+    def _normalize_city(self, city_name: str) -> str:
+        """Converts city name to a standardized format for reliable comparison."""
+        if not isinstance(city_name, str):
+            return ""
+        return city_name.lower().replace(" ", "").replace("-", "").replace("_", "")
+
+
     def identify_current_page(self) -> str:
         WebDriverWait(self.driver, settings.WAIT_TIMEOUT_ELEMENT_READY).until(
             lambda d: d.execute_script('return document.readyState') == 'complete'
@@ -293,7 +300,7 @@ class BrowserBase:
             try:
                 card_title = card.find_element(By.CSS_SELECTOR, TLS_SELECTORS['choose_city']['city_card_title']).text
                 
-                if city_name.lower() in card_title.lower():
+                if self._normalize_city(city_name) in self._normalize_city(card_title):
                     print(f"    - Found card for city: {card_title}")
                     continue_button = card.find_element(By.CSS_SELECTOR, TLS_SELECTORS['choose_city']['generic_continue_btn'])
                     self.driver.execute_script("arguments[0].click();", continue_button)
@@ -364,7 +371,7 @@ class BrowserBase:
             selected_tab_element = self.driver.find_element(TLS_SELECTORS['application_list']['selected_city_tab_text'])
             selected_tab_text = self.driver.execute_script("return arguments[0].textContent;", selected_tab_element).strip()
 
-            if self.target_city.lower() in selected_tab_text.lower():
+            if self._normalize_city(self.target_city) in self._normalize_city(selected_tab_text):
                 print(f"    - Correct city tab '{self.target_city}' is already selected.")
             else:
                 print(f"    - Current tab is '{selected_tab_text}'. Switching to '{self.target_city}'...")
@@ -374,8 +381,8 @@ class BrowserBase:
                 tab_found = False
                 
                 for tab in all_tabs:
-                    tab_html = tab.get_attribute("innerHTML").lower()
-                    if self.target_city.lower() in tab_html:
+                    tab_html = tab.get_attribute("innerHTML")
+                    if self._normalize_city(self.target_city) in self._normalize_city(tab_html):
                         target_url = tab.get_attribute("href")
                         if target_url:
                             print(f"    - Found link for '{self.target_city}'. Navigating directly to URL...")

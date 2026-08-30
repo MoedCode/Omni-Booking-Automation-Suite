@@ -32,13 +32,12 @@ class CaptchaHandler:
     def cloudflare(self) -> None:
         """
         Handles the Cloudflare Turnstile challenge page ("Performing security verification").
-        This method waits in a loop, checking for multiple success conditions:
-        1. The URL changing, which means the challenge was passed.
-        2. A "Verification successful" message appearing.
-        It will also attempt to click the interactive checkbox if it appears.
+        This method waits in a loop, attempting a more robust, single click on the
+        interactive checkbox and then waiting for either a URL change or success text.
         """
         print("[🧩] CaptchaHandler: Cloudflare challenge detected. Waiting for resolution...")
         current_url = self.driver.current_url
+        clicked_turnstile = False
 
         # Wait up to 45 seconds for the challenge to be solved.
         for i in range(45):
@@ -61,20 +60,32 @@ class CaptchaHandler:
                     print("[⚠️] CaptchaHandler: Found success text but did not redirect in time.")
                     return # Exit, as something is wrong.
 
-            # Interactive element handling: Periodically check for and click the checkbox.
-            if i > 2 and i % 4 == 0:
+            # Interactive element handling: Find and click the checkbox ONCE.
+            if not clicked_turnstile and i > 2: # Check after 2 seconds
                 try:
                     iframe_selector = TLS_SELECTORS['cloudflare']['turnstile_iframe']
                     if self.driver.is_element_visible(iframe_selector):
-                        # The checkbox is inside the iframe, which might be inside a shadow-root.
-                        # SeleniumBase's `>>>` handles this piercing.
-                        checkbox_selector = f"{iframe_selector} >>> {TLS_SELECTORS['cloudflare']['turnstile_checkbox']}"
-                        if self.driver.is_element_visible(checkbox_selector):
-                            print("    - Found interactive Cloudflare Turnstile. Attempting to click...")
-                            self.driver.click(checkbox_selector)
-                            print("    - Clicked Turnstile checkbox.")
+                        print("    - Found Cloudflare Turnstile iframe. Switching context...")
+                        self.driver.switch_to.frame(iframe_selector)
+
+                        checkbox_selector = TLS_SELECTORS['cloudflare']['turnstile_checkbox']
+                        # Wait for the element to be ready for interaction
+                        self.driver.wait_for_element_clickable(checkbox_selector, timeout=5)
+                        
+                        print("    - Attempting to click Turnstile checkbox...")
+                        self.driver.js_click(checkbox_selector)
+                        clicked_turnstile = True # Set flag so we don't click again
+                        print("    - Clicked Turnstile checkbox. Now waiting for resolution...")
+
+                        self.driver.switch_to.default_content()
                 except Exception:
-                    pass # It's fine if it's not there or fails; we'll just keep waiting.
+                    # If anything fails (e.g., timeout), switch back and continue waiting.
+                    # The page might solve itself without interaction.
+                    self.driver.switch_to.default_content()
+                    # Mark as clicked to prevent repeated failed attempts.
+                    clicked_turnstile = True
+                    print("    - Failed to click Turnstile checkbox, will continue waiting passively.")
+
 
             time.sleep(1)
 
