@@ -41,7 +41,7 @@ const Selectors = {
                 '.sk-ball-spin-clockwise'
             ]
         },
-        cookieBanner: {
+        cookieBanner1: {
             container: ['#onetrust-banner-sdk'],
             acceptButton: [
                 'button#onetrust-accept-btn-handler',

@@ -2,7 +2,7 @@
 
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { EgPtrLoginURL, BROWSER_ARGS, CHANNEL, terminationCmds } from '../Config/settings.js';
+import { EgPtrLoginURL, BROWSER_ARGS, CHANNEL, terminationCmds, debug } from '../Config/settings.js';
 import Selectors from '../Config/Selectors.js';
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
@@ -24,69 +24,108 @@ export class ChromeWorker {
         this.headless = headless;
         this.channel = CHANNEL;
         this.browserArgs = BROWSER_ARGS;
-        this.operationalStatus = ['idl'];
         
         // State properties to hold the active session
         this.browser = null;
         this.page = null;
+        
+        // Data stores for the future GUI Dashboard
+        this.operationalStatus = ['idl'];
         this.warnings = {};
-        this.errors = null;
+        this.errors = {};
     }
+
+    // ==========================================
+    // 🛠️ Centralized Logging & Debugging System
+    // ==========================================
+    
+    /**
+     * Logs operational status for the GUI and conditionally to the terminal.
+     */
+    logStatus(message) {
+        this.operationalStatus.push(message);
+        if (debug?.operationalStatus) {
+            const time = new Date().toLocaleTimeString();
+            console.log(`[${time}] ${message}`);
+        }
+    }
+
+    /**
+     * Logs warnings for the GUI and conditionally to the terminal.
+     */
+    logWarning(key, message) {
+        this.warnings[key] = message;
+        if (debug?.warnings) {
+            const time = new Date().toLocaleTimeString();
+            console.warn(`[${time}] ⚠️ [Warning - ${key}]: ${message}`);
+        }
+    }
+
+    /**
+     * Logs errors for the GUI and conditionally to the terminal.
+     */
+    logError(key, message) {
+        this.errors[key] = message;
+        if (debug?.errors) {
+            const time = new Date().toLocaleTimeString();
+            console.error(`[${time}] ❌ [Error - ${key}]: ${message}`);
+        }
+    }
+
+    // ==========================================
 
     /**
      * Asynchronously launches the browser and navigates to the target URL.
      */
+
     async launchBrowser() {
         try {
-            this.operationalStatus.push(`[Worker] Launching browser (Headless: ${this.headless})...`);
+            this.logStatus(`[Worker] Launching browser (Headless: ${this.headless})...`);
             
-            // Use the dynamic class properties configured in the constructor
             this.browser = await puppeteer.launch({
                 headless: this.headless,
                 channel: this.channel,
                 defaultViewport: null,
                 args: this.browserArgs
             });
-            this.operationalStatus.push(`OPENING`);
+            this.logStatus(`[Worker] OPENING`);
             
             const pages = await this.browser.pages();
             this.page = pages.length > 0 ? pages[0] : await this.browser.newPage();
-
-            this.operationalStatus.push("[Worker] Navigating to VFS...");
+            
+            // 🛑 CRITICAL FIX: Bypass VFS's strict Content Security Policy
+            // This prevents VFS from blocking the customer_script.js injection
+            await this.page.setBypassCSP(true);
+            
+            this.logStatus("[Worker] Navigating to VFS...");
             await this.page.goto(this.targetUrl, { waitUntil: 'domcontentloaded' });
             
-            this.operationalStatus.push("[Worker] Page loaded. Injecting script...");
+            this.logStatus("[Worker] Page loaded. Handling cookies & injecting script...");
             
             // Inject the Tampermonkey script and polyfills
+            await this.acceptCookies();
             await this.injectCustomerScript('./customer_script.js');
-
+            
         } catch (error) {
-            this.operationalStatus.push("[Worker] Initialization Error: " + error.message);
+            this.logError("initialization", `[Worker] Initialization Error: ${error.message}`);
         } finally {
-            this.operationalStatus.push("holding...");
+            this.logStatus("[Worker] holding...");
         }
     }
 
     /**
      * Checks if any selector from an array of fallback selectors exists in the DOM.
-     * @param {string|string[]} selectors - A single selector or array of fallback selectors.
-     * @returns {boolean} - True if at least one selector is found on the page.
      */
     async _isElementPresent(selectors) {
         if (!this.page) return false;
 
-        // Ensure we are working with an array, even if a single string is passed
         const selectorArray = Array.isArray(selectors) ? selectors : [selectors];
 
         for (const selector of selectorArray) {
             try {
-                // page.$() returns the element if found, or null if not found
                 const element = await this.page.$(selector);
-                if (element !== null) {
-                    return true; 
-                }
+                if (element !== null) return true; 
             } catch (error) {
-                // Ignore invalid selector errors and continue to the next fallback
                 continue;
             }
         }
@@ -97,35 +136,20 @@ export class ChromeWorker {
      * Identifies the current page location based on DOM elements.
      */
     async getCurrentLocation() {
-        if (!this.page) {
-            return "BROWSER_NOT_INITIALIZED";
-        }
+        if (!this.page) return "BROWSER_NOT_INITIALIZED";
 
-        // 1. Check Login Page using Selectors object
-        if (await this._isElementPresent(Selectors.login.form.account)) {
-            return "LOGIN_PAGE";
-        }
-
-        // 2. Check Appointment Details using Selectors object
-        if (await this._isElementPresent(Selectors.appointmentDetails.stepper.container)) {
-            return "APPOINTMENT_DETAILS";
-        }
-
-        // 3. Check Dashboard using Selectors object (Desktop or Mobile)
+        if (await this._isElementPresent(Selectors.login.form.account)) return "LOGIN_PAGE";
+        if (await this._isElementPresent(Selectors.appointmentDetails.stepper.container)) return "APPOINTMENT_DETAILS";
         if (await this._isElementPresent(Selectors.dashboard.actions.startNewBookingDesktop) || 
             await this._isElementPresent(Selectors.dashboard.actions.startNewBookingMobile)) {
             return "DASHBOARD";
         }
 
-        // Fallback
         const currentUrl = this.page.url();
-        console.log(`[Location]: UNKNOWN_STATE (${currentUrl})`);
+        this.logStatus(`[Location]: UNKNOWN_STATE (${currentUrl})`);
         return "UNKNOWN_STATE";
     }
 
-    /**
-     * Example method for future DOM interaction.
-     */
     async clickElement(selector) {
         if (!this.page) throw new Error("Browser page is not initialized.");
         await this.page.waitForSelector(selector);
@@ -133,24 +157,17 @@ export class ChromeWorker {
     }
 
     /**
-     * Safely closes the specific browser instance managed by this class.
-     */
-
-
-    /**
      * Injects the Tampermonkey script and its required polyfills into the active page.
-     * @param {string} relativePath - The path to the customer_script.js file.
      */
     async injectCustomerScript(relativePath) {
         if (!this.page) {
-            this.errors = {"injection": "[Worker] Cannot inject script: Page not initialized."};
+            this.logError("injection", "[Worker] Cannot inject script: Page not initialized.");
             return;
         }
 
         try {
-            this.operationalStatus.push("[Worker] Injecting polyfills and script...");
+            this.logStatus("[Worker] Injecting polyfills and script...");
             
-            // 1. Inject Polyfills for Tampermonkey GM_ functions
             await this.page.evaluate(() => {
                 if (typeof window.GM_setValue === 'undefined') {
                     window.GM_setValue = function(key, value) { 
@@ -167,66 +184,58 @@ export class ChromeWorker {
                 }
             });
 
-            // 2. Read the script file from your system
-            await this.acceptCookies();
             const absolutePath = path.resolve(process.cwd(), relativePath);
             const scriptContent = fs.readFileSync(absolutePath, 'utf-8');
             
-            // 3. Inject the script content into the page
             await this.page.addScriptTag({ content: scriptContent });
             
-            console.log(`[Worker] Script successfully injected: ${relativePath}`);
+            this.logStatus(`[Worker] Script successfully injected: ${relativePath}`);
         } catch (error) {
-            console.error(`[Worker] Script injection failed: ${error.message}`);
+            this.logError("injection", `[Worker] Script injection failed: ${error.message}`);
         }
     }
-/**
+
+    /**
      * Checks for the cookie banner and clicks the "Accept All Cookies" button if it appears.
      */
     async acceptCookies() {
         if (!this.page) return;
 
-        this.operationalStatus.push("[Worker] Checking for cookie banner...");
+        this.logStatus("[Worker] Checking for cookie banner...");
         
         try {
-            const acceptSelectors = Selectors.common.cookieBanner.acceptButton;
+            const acceptSelectors = Selectors.common.cookieBanner1.acceptButton;
 
             for (const selector of acceptSelectors) {
                 try {
-                    // Wait up to 4 seconds for the button to become visible in the DOM
-                    const button = await this.page.waitForSelector(selector, { timeout: 4000, visible: true });
+                    // Increased timeout to 8000ms for slow-loading VFS pages
+                    const button = await this.page.waitForSelector(selector, { timeout: 8000, visible: true });
                     if (button) {
                         await button.click();
-                        this.operationalStatus.push(`[Worker] Cookie banner accepted using selector: ${selector}`);
-                        
-                        // Give the UI 1 second to fade out the banner overlay
+                        this.logStatus(`[Worker] Cookie banner accepted using selector: ${selector}`);
                         await new Promise(resolve => setTimeout(resolve, 1000));
                         return; 
                     }
                 } catch (err) {
-                    // If this specific selector times out, silently continue to the next fallback
+                    this.logWarning("cookie_selector_fail", `Selector '${selector}' failed/timeout.`);
                     continue;
                 }
             }
             
-            this.operationalStatus.push("[Worker] Cookie banner not found or already accepted.");
+            this.logStatus("[Worker] Cookie banner not found or already accepted.");
         } catch (error) {
-            this.operationalStatus.push("[Worker] Error handling cookie banner: " + error.message);
+            this.logError("cookie_banner", "[Worker] Error handling cookie banner: " + error.message);
         }
     }
     async closeBrowser() {
         if (this.browser) {
             await this.browser.close();
-            
             this.browser = null;
             this.page = null;
-            console.log("[Worker] Browser closed.");
+            this.logStatus("[Worker] Browser closed.");
         }
     }
 
-    /**
-     * Closes the browser and exits the readline interface.
-     */
     terminate(){
         this.closeBrowser();
         rl.close();
@@ -235,16 +244,20 @@ export class ChromeWorker {
 
 // Example Execution
 if (import.meta.main) {
-    // Easily scale to multiple instances by instantiating new objects
     const worker1 = new ChromeWorker({ headless: false });
     await worker1.launchBrowser();
     
     let terminate = false;
     while(!terminate){
-        console.log(await worker1.getCurrentLocation());
-        const answer = await rl.question("VFS-bot:) ");
+        // Only print the location if we are actively debugging the status
+        const location = await worker1.getCurrentLocation();
+        if(debug?.operationalStatus) {
+             console.log(`[${new Date().toLocaleTimeString()}] Current Location: ${location}`);
+        }
         
+        const answer = await rl.question("VFS-bot:) ");
         let command = answer.trim().toLocaleLowerCase();
+        
         if(terminationCmds.includes(command)){
             console.log("Exiting...");
             worker1.terminate();

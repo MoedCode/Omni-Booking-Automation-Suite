@@ -29,11 +29,14 @@ const allKeys = {
 const terminationCmds = ["exit", "\\q", "q"] 
 BROWSER_ARGS = ['--start-maximized', '--no-sandbox', '--disable-setuid-sandbox'] 
 CHANNEL = '';
+debug = { operationalStatus:true, warnings:true, errors:true}
+// debug = { operationalStatus:false, warnings:false, errors:false}
 module.exports = {
     allKeys,
     FILE_PATH,
     EgPtrLoginURL,
     BROWSER_ARGS, 
     CHANNEL,
-    terminationCmds
+    terminationCmds,
+    debug
 };
