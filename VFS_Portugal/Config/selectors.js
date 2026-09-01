@@ -5,6 +5,8 @@
  * 
  * Hierarchy:
  * Page Object -> Section Object -> Element Name -> [Array of Fallback Selectors]
+ * 
+ * Note: Puppeteer's native ::-p-text() is used instead of Playwright's :has-text()
  */
 
 const Selectors = {
@@ -19,11 +21,12 @@ const Selectors = {
             ],
             acceptButton: [
                 'button#onetrust-accept-btn-handler',
-                'button:has-text("Accept All Cookies")'
+                'button::-p-text(Accept All Cookies)',
+                '#onetrust-button-group .ot-button-order-0'
             ],
             rejectButton: [
                 'button#onetrust-reject-all-handler',
-                'button:has-text("Accept Only Necessary")'
+                'button::-p-text(Accept Only Necessary)'
             ],
             preferencesButton: [
                 'button#onetrust-pc-btn-handler',
@@ -41,15 +44,6 @@ const Selectors = {
                 '.sk-ball-spin-clockwise'
             ]
         },
-        cookieBanner1: {
-            container: ['#onetrust-banner-sdk'],
-            acceptButton: [
-                'button#onetrust-accept-btn-handler',
-                '#onetrust-button-group .ot-button-order-0' // Fallback by order
-            ],
-            rejectButton: ['button#onetrust-reject-all-handler'],
-            preferencesButton: ['button#onetrust-pc-btn-handler']
-        },
         header: {
             logo: ['header.header-main a.navbar-brand img'],
             languageDropdown: [
@@ -57,19 +51,19 @@ const Selectors = {
                 'header .dropdown-toggle'
             ],
             languageOptions: {
-                english: ['a.dropdown-item:has-text("English")'],
-                portuguese: ['a.dropdown-item:has-text("Portuguese")']
+                english: ['a.dropdown-item::-p-text(English)'],
+                portuguese: ['a.dropdown-item::-p-text(Portuguese)']
             },
             logoutButton: [
-                'a.dropdown-item:has-text("Logout")',
-                'a.nav-link:has-text("Sign Out")'
+                'a.dropdown-item::-p-text(Logout)',
+                'a.nav-link::-p-text(Sign Out)'
             ]
         },
         footer: {
             container: ['footer.footer-bottom'],
-            contactUsLink: ['footer a:has-text("Contact Us")'],
-            aboutLink: ['footer a:has-text("About VFS Global")'],
-            deleteAccountLink: ['footer a:has-text("Delete My Account")']
+            contactUsLink: ['footer a::-p-text(Contact Us)'],
+            aboutLink: ['footer a::-p-text(About VFS Global)'],
+            deleteAccountLink: ['footer a::-p-text(Delete My Account)']
         }
     },
 
@@ -78,39 +72,41 @@ const Selectors = {
     // -----------------------------------------------------------
     login: {
         headers: {
-            mainTitle: ['h1.fs-21:has-text("Sign in")'],
-            subtitle: ['p.c-brand-grey-para:has-text("Enter your email and password")']
+            mainTitle: ['h1.fs-21::-p-text(Sign in)'],
+            subtitle: ['p.c-brand-grey-para::-p-text(Enter your email and password)']
         },
         form: {
             account: [
-                'input[formcontrolname="username"]',
-                'input#email'
+                'input#email',
+                'input[formcontrolname="username"]'
             ],
             password: [
-                'input[formcontrolname="password"]',
-                'input#password'
+                'input#password',
+                'input[formcontrolname="password"]'
             ],
             showPasswordIcon: [
                 'i.icon-toggle.fa-eye',
                 'i[aria-label="Show Password"]'
             ],
             submitButton: [
-                'button.btn-brand-orange:has-text("Sign In")',
+                'button.btn-brand-orange',
+                'button::-p-text(Sign In)',
                 'button.mat-mdc-outlined-button'
             ]
         },
         links: {
-            forgotPassword: ['a:has-text("Forgot Password")'],
-            noAccount: ['a:has-text("I don\'t have an account")'],
-            activateAccount: ['a:has-text("Activate my account")']
+            forgotPassword: ['a::-p-text(Forgot Password)'],
+            noAccount: ['a::-p-text(I don\'t have an account)'],
+            activateAccount: ['a::-p-text(Activate my account)']
         },
         captcha: {
             container: ['app-cloudflare-captcha-container'],
             iframe: [
-                'iframe[title*="Cloudflare"]',
-                'iframe[src*="challenges.cloudflare.com"]'
+                'iframe[src*="challenges.cloudflare.com"]',
+                'iframe[title*="Cloudflare"]'
             ],
-            checkbox: ['.cb-c'] // This targets the actual checkbox inside the Cloudflare iframe if needed
+            checkbox: ['.cb-c', 'body'], // Targets inside the Cloudflare iframe
+            responseInput: ['input[name="cf-turnstile-response"]'] // Hidden token input
         }
     },
 
@@ -119,24 +115,23 @@ const Selectors = {
     // -----------------------------------------------------------
     dashboard: {
         headers: {
-            srOnlyTitle: ['h1.sr-only:has-text("Dashboard")']
+            srOnlyTitle: ['h1.sr-only::-p-text(Dashboard)']
         },
         actions: {
-            // Capturing both mobile and desktop versions of the button
             startNewBookingDesktop: [
-                'button.custom-height-button:has-text("Start New Booking")'
+                'button.custom-height-button::-p-text(Start New Booking)'
             ],
             startNewBookingMobile: [
-                'button.mat-btn-lg.btn-block:has-text("Start New Booking")'
+                'button.mat-btn-lg.btn-block::-p-text(Start New Booking)'
             ]
         },
         tabs: {
             activeApplications: [
-                '.mdc-tab__text-label:has-text("Active application(s)")',
+                '.mdc-tab__text-label::-p-text(Active application(s))',
                 '#mat-tab-group-0-label-0'
             ],
             noApplicationsFound: [
-                'div:has-text("No Application(s) Found.")',
+                'div::-p-text(No Application(s) Found.)',
                 'mat-tab-body-content div'
             ]
         }
@@ -149,19 +144,19 @@ const Selectors = {
         stepper: {
             container: ['#stepper', 'ul.steps-nav'],
             activeStep: ['.nav-item.active a.nav-link span.name'],
-            step1: ['li.nav-item:has(span.sr-num:has-text("1"))'],
-            step2: ['li.nav-item:has(span.sr-num:has-text("2"))'],
-            step3: ['li.nav-item:has(span.sr-num:has-text("3"))'],
-            step4: ['li.nav-item:has(span.sr-num:has-text("4"))'],
-            step5: ['li.nav-item:has(span.sr-num:has-text("5"))']
+            step1: ['li.nav-item:has(span.sr-num::-p-text(1))'],
+            step2: ['li.nav-item:has(span.sr-num::-p-text(2))'],
+            step3: ['li.nav-item:has(span.sr-num::-p-text(3))'],
+            step4: ['li.nav-item:has(span.sr-num::-p-text(4))'],
+            step5: ['li.nav-item:has(span.sr-num::-p-text(5))']
         },
         headers: {
             mainTitle: [
-                'h1.fs-24:has-text("Appointment Details")',
+                'h1.fs-24::-p-text(Appointment Details)',
                 'mat-card h1'
             ],
             subtitle: [
-                'p.c-brand-grey-para:has-text("Please provide information about the type of visa")'
+                'p.c-brand-grey-para::-p-text(Please provide information about the type of visa)'
             ]
         },
         form: {
@@ -178,11 +173,10 @@ const Selectors = {
                 'mat-select[aria-labelledby="mat-select-value-3"]'
             ],
             continueButton: [
-                'button.btn-brand-orange:has-text("Continue")',
+                'button.btn-brand-orange::-p-text(Continue)',
                 'button.mat-mdc-raised-button:not([disabled])'
             ]
         },
-        // Dropdown Panel Elements (Used for dynamic reading & comparing)
         dropdownPanel: {
             container: [
                 '.mat-mdc-select-panel',
