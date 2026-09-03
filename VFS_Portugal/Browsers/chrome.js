@@ -2,163 +2,207 @@
 
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { EgPtrLoginURL, BROWSER_ARGS, CHANNEL, terminationCmds, debug } from '../Config/settings.js';
+import { EgPtrLoginURL, BROWSER_ARGS, CHANNEL, terminationCmds, debug, processPriority, cookiesAcceptant } from '../Config/settings.js';
 import Selectors from '../Config/Selectors.js';
+import { BaseBrowser } from './BaseBrowser.js';
+import { CaptchaHandler } from './captchaHandler.js';
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const rl = readline.createInterface({ input, output });
-
-// Register the plugin once globally
 puppeteer.use(StealthPlugin());
 
-export class ChromeWorker {
-    /**
-     * Initializes the configuration for a single browser worker.
-     */
+export class ChromeWorker extends BaseBrowser {
     constructor({ headless = true, targetUrl = EgPtrLoginURL, email, password } = {}) {
+        super();
         this.targetUrl = targetUrl;
         this.headless = headless;
         this.channel = CHANNEL;
         this.browserArgs = BROWSER_ARGS;
-        
-        // 🛑 FIXED: Assign credentials to class properties
+
         this.email = email;
         this.password = password;
-        
-        // State properties to hold the active session
-        this.browser = null;
-        this.page = null;
-        
-        // Data stores for the GUI Dashboard
-        this.operationalStatus = ['idl'];
-        this.warnings = {};
-        this.errors = {};
-    }
 
-    // ==========================================
-    // 🛠️ Centralized Logging & Debugging System
-    // ==========================================
-    
-    logStatus(message) {
-        this.operationalStatus.push(message);
-        if (debug?.operationalStatus) {
-            const time = new Date().toLocaleTimeString();
-            console.log(`[${time}] ${message}`);
-        }
+        this.isOrchestratorRunning = false;
+        this.captchaHandler = new CaptchaHandler(this);
     }
-
-    logWarning(key, message) {
-        this.warnings[key] = message;
-        if (debug?.warnings) {
-            const time = new Date().toLocaleTimeString();
-            console.warn(`[${time}] ⚠️ [Warning - ${key}]: ${message}`);
-        }
-    }
-
-    logError(key, message) {
-        this.errors[key] = message;
-        if (debug?.errors) {
-            const time = new Date().toLocaleTimeString();
-            console.error(`[${time}] ❌ [Error - ${key}]: ${message}`);
-        }
-    }
-
-    // ==========================================
-    // 🌐 Browser Operations
-    // ==========================================
 
     async launchBrowser() {
         try {
             this.logStatus(`[Worker] Launching browser (Headless: ${this.headless})...`);
-            
+
             this.browser = await puppeteer.launch({
                 headless: this.headless,
                 channel: this.channel,
                 defaultViewport: null,
                 args: this.browserArgs
             });
-            this.logStatus(`[Worker] OPENING`);
-            
+
             const pages = await this.browser.pages();
             this.page = pages.length > 0 ? pages[0] : await this.browser.newPage();
-            
+
             await this.page.setBypassCSP(true);
-            
-            this.logStatus("[Worker] Navigating to VFS...");
+
+            this.logStatus("[Worker] Navigating to target portal...");
             await this.page.goto(this.targetUrl, { waitUntil: 'domcontentloaded' });
-            this.logStatus("[Worker] Page loaded.");
-            
-            // 🛑 FIXED: Sequence of execution
-            // 1. Accept Cookies
-            await this.acceptCookies();
-            
-            // 2. Inject Script BEFORE logging in (so it captures API requests during login)
-            await this.injectCustomerScript('./customer_script.js');
-            
-            // 3. Await the signIn process
-            await this.signIn();
-            
+            this.logStatus("[Worker] Page loaded successfully.");
+
+            await this.injection('./customer_script.js');
+            this.startOrchestrator();
+
         } catch (error) {
-            this.logError("initialization", `[Worker] Initialization Error: ${error.message}`);
-        } finally {
-            this.logStatus("[Worker] holding...");
+            this.logError("initialization", `Initialization Error: ${error.message}`);
         }
     }
 
-    async _isElementPresent(selectors) {
-        if (!this.page) return false;
-        const selectorArray = Array.isArray(selectors) ? selectors : [selectors];
+    async domScanner() {
+        if (!this.page) return ['uninitialized'];
+        const states = [];
 
-        for (const selector of selectorArray) {
+        // Now correctly scans for the Cookie Container visibility
+        if (await this.isPresent(Selectors.common.cookieBanner.container)) {
+            states.push('cookies');
+        }
+
+        if (await this.captchaHandler.isPresent()) {
+            const resolved = await this.captchaHandler.isResolved();
+            if (!resolved) states.push('captcha');
+        }
+
+        if (await this.isPresent(Selectors.signIn.email)) {
+            states.push('signIn');
+        }
+
+        if (await this.isPresent(Selectors.dashboard.startNewBooking)) {
+            states.push('dashboard');
+        }
+
+        if (states.length === 0) states.push('unknown');
+        return states;
+    }
+
+    async startOrchestrator() {
+        this.isOrchestratorRunning = true;
+        this.logStatus("[Orchestrator] Dynamic state loop started.");
+
+        while (this.isOrchestratorRunning && this.page) {
             try {
-                const element = await this.page.$(selector);
-                if (element !== null) return true; 
+                const activeStates = await this.domScanner();
+
+                activeStates.sort((a, b) => {
+                    const prioA = processPriority[a] ?? 999;
+                    const prioB = processPriority[b] ?? 999;
+                    return prioA - prioB;
+                });
+
+                const primaryAction = activeStates[0];
+
+                switch (primaryAction) {
+                    case 'cookies':
+                        await this.cookiesHandler();
+                        break;
+                    case 'captcha':
+                        await this.captchaHandler.resolve();
+                        break;
+                    case 'signIn':
+                        await this.signIn();
+                        break;
+                    case 'dashboard':
+                        this.logStatus("[Orchestrator] Dashboard active. Awaiting bookings pipeline...");
+                        await new Promise(r => setTimeout(r, 10000));
+                        break;
+                    case 'unknown':
+                    default:
+                        await new Promise(r => setTimeout(r, 3000));
+                        break;
+                }
+
+                await new Promise(r => setTimeout(r, 1500));
+
             } catch (error) {
-                continue;
+                this.logError("orchestrator", `Loop Error: ${error.message}`);
+                await new Promise(r => setTimeout(r, 2000));
             }
         }
-        return false;
     }
 
-    async getCurrentLocation() {
-        if (!this.page) return "BROWSER_NOT_INITIALIZED";
+    /**
+     * Resolves the cookies settings based on variables injected from Setting.js.
+     */
+    async cookiesHandler() {
+        this.logStatus("[Worker] Processing cookies based on preferences...");
+        try {
+            const pref = (cookiesAcceptant || 'All').toLowerCase();
+            
+            // Decides which semantic descriptor to use dynamically
+            const descriptor = (pref.includes('necessary') || pref.includes('only') || pref === 'reject') 
+                ? Selectors.common.cookieBanner.rejectButton 
+                : Selectors.common.cookieBanner.acceptButton;
 
-        if (await this._isElementPresent(Selectors.login.form.account)) return "LOGIN_PAGE";
-        if (await this._isElementPresent(Selectors.appointmentDetails.stepper.container)) return "APPOINTMENT_DETAILS";
-        if (await this._isElementPresent(Selectors.dashboard.actions.startNewBookingDesktop) || 
-            await this._isElementPresent(Selectors.dashboard.actions.startNewBookingMobile)) {
-            return "DASHBOARD";
+            await this.clickByDescriptor(descriptor);
+            this.logStatus(`[Worker] ✅ Cookies preference applied.`);
+            
+            // Give Angular a moment to fade the cookie overlay out so it doesn't block interactions
+            await new Promise(r => setTimeout(r, 1500));
+        } catch (error) {
+            this.logError("cookies", `Failed to handle cookie banner: ${error.message}`);
         }
-
-        const currentUrl = this.page.url();
-        return `UNKNOWN_STATE (${currentUrl})`;
     }
 
-    // ==========================================
-    // 🧩 Script Injection & Utilities
-    // ==========================================
+    async signIn(email = this.email, password = this.password) {
+        if (!this.page) return;
 
-    async injectCustomerScript(relativePath) {
-        if (!this.page) {
-            this.logError("injection", "[Worker] Cannot inject script: Page not initialized.");
+        !email && (this.errors.credential = "Email not provided");
+        !password && (this.errors.credential = "Password not provided");
+
+        if (this.errors.credential) {
+            this.logError("credential", this.errors.credential);
+            this.isOrchestratorRunning = false;
+            if (debug?.errors) throw new Error(this.errors.credential);
             return;
         }
 
+        this.logStatus(`[Worker] Entering credentials for: ${email}`);
+
         try {
-            this.logStatus("[Worker] Injecting polyfills and script...");
-            
+            await this.typeByDescriptor(Selectors.signIn.email, email);
+            await this.typeByDescriptor(Selectors.signIn.password, password);
+
+            if (await this.captchaHandler.isPresent()) {
+                const tokenReady = await this.captchaHandler.isResolved();
+                if (!tokenReady) {
+                    this.logStatus("[Worker] Deferring Sign In submission until Captcha is solved...");
+                    return; 
+                }
+            }
+
+            const btn = await this.findButton(Selectors.signIn.submitButton);
+            if (!btn) throw new Error("Sign In button not found.");
+
+            await this.page.waitForFunction((button) => !button.disabled, { timeout: 15000 }, btn);
+            await new Promise(r => setTimeout(r, 500));
+
+            await Promise.all([
+                this.page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {}),
+                this.page.evaluate(b => b.click(), btn) // Enforce native click
+            ]);
+
+            this.logStatus("[Worker] ✅ Sign-in submitted successfully.");
+
+        } catch (error) {
+            this.logError("signin", `Sign-in execution error: ${error.message}`);
+        }
+    }
+
+    async injection(relativePath) {
+        try {
             await this.page.evaluate(() => {
                 if (typeof window.GM_setValue === 'undefined') {
-                    window.GM_setValue = function(key, value) { 
-                        localStorage.setItem('VFS_TM_' + key, value); 
-                    };
-                    window.GM_getValue = function(key, defaultValue) { 
-                        return localStorage.getItem('VFS_TM_' + key) || defaultValue; 
-                    };
-                    window.GM_addStyle = function(css) {
+                    window.GM_setValue = (k, v) => localStorage.setItem('VFS_TM_' + k, v);
+                    window.GM_getValue = (k, d) => localStorage.getItem('VFS_TM_' + k) || d;
+                    window.GM_addStyle = (css) => {
                         const style = document.createElement('style');
                         style.textContent = css;
                         document.head.appendChild(style);
@@ -168,171 +212,39 @@ export class ChromeWorker {
 
             const absolutePath = path.resolve(process.cwd(), relativePath);
             const scriptContent = fs.readFileSync(absolutePath, 'utf-8');
-            
             await this.page.addScriptTag({ content: scriptContent });
-            this.logStatus(`[Worker] Script successfully injected.`);
-            
+            this.logStatus(`[Worker] Extension script injected: ${relativePath}`);
         } catch (error) {
-            this.logError("injection", `[Worker] Script injection failed: ${error.message}`);
+            this.logError("injection", `Script injection failed: ${error.message}`);
         }
     }
 
-    async acceptCookies() {
-        if (!this.page) return;
-        this.logStatus("[Worker] Checking for cookie banner...");
-        
-        try {
-            const acceptSelectors = Selectors.common.cookieBanner.acceptButton;
-
-            for (const selector of acceptSelectors) {
-                try {
-                    const button = await this.page.waitForSelector(selector, { timeout: 8000, visible: true });
-                    if (button) {
-                        await button.click();
-                        this.logStatus(`[Worker] Cookie banner accepted.`);
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                        return; 
-                    }
-                } catch (err) {
-                    continue;
-                }
-            }
-            this.logStatus("[Worker] Cookie banner not found or already accepted.");
-        } catch (error) {
-            this.logError("cookie_banner", "[Worker] Error handling cookie banner: " + error.message);
-        }
-    }
-
-    // ==========================================
-    // 🤖 Login & Captcha Automation
-    // ==========================================
-
-    /**
-     * Handles the Cloudflare Turnstile Captcha widget.
-     * Uses the hidden response input to bypass closed shadow DOM restrictions.
-     */
-    async handleCaptcha() {
-        if (!this.page) return false;
-        
-        this.logStatus("[Worker] Handling Cloudflare Captcha...");
-        
-        try {
-            const responseInputSelector = Selectors.login.captcha.responseInput[0];
-            
-            // 1. Ensure the Captcha container actually loaded
-            await this.page.waitForSelector(responseInputSelector, { timeout: 15000 });
-            
-            this.logStatus("[Worker] Waiting for Cloudflare verification token (auto-solving)...");
-            
-            // 2. Wait until Cloudflare populates the hidden input with a long token string
-            await this.page.waitForFunction((selector) => {
-                const el = document.querySelector(selector);
-                return el && el.value && el.value.length > 20;
-            }, { timeout: 60000 }, responseInputSelector);
-
-            this.logStatus("[Worker] ✅ Captcha resolved successfully!");
-            return true;
-            
-        } catch (error) {
-            this.logError("captcha", `Captcha handling failed or timed out: ${error.message}`);
-            return false;
-        }
-    }
-
-    async signIn(email = this.email, password = this.password) {
-        if (!this.page) return;
-
-        // Validation
-        !email && (this.errors.credential = "Email not provided");
-        !password && (this.errors.credential = "Password not provided");
-
-        if (this.errors.credential) {
-            this.logError("credential", this.errors.credential);
-            if (debug?.errors) throw new Error(this.errors.credential);
-            return;
-        }
-
-        this.logStatus(`[Worker] Attempting sign-in for: ${email}`);
-        
-        try {
-            // Enter Email
-            const emailSelector = Selectors.login.form.account[0];
-            await this.page.waitForSelector(emailSelector, { visible: true, timeout: 10000 });
-            await this.page.type(emailSelector, email, { delay: 60 });
-
-            // Enter Password
-            const passwordSelector = Selectors.login.form.password[0];
-            await this.page.type(passwordSelector, password, { delay: 60 });
-
-            // Handle Captcha
-            const captchaResolved = await this.handleCaptcha();
-            if (!captchaResolved) {
-                throw new Error("Cannot proceed because Captcha verification failed.");
-            }
-
-            // Wait for Submit button to become active, then click
-            const btnSelector = Selectors.login.form.submitButton[0];
-            this.logStatus("[Worker] Waiting for Sign In button to become enabled...");
-            
-            await this.page.waitForSelector(`${btnSelector}:not([disabled])`, { timeout: 15000 });
-            await new Promise(resolve => setTimeout(resolve, 800)); // Human-like delay
-            
-            await Promise.all([
-                this.page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }),
-                this.page.click(btnSelector)
-            ]);
-            
-            this.logStatus("[Worker] ✅ Login successful, navigated to Dashboard.");
-
-        } catch (error) {
-            this.logError("signin", `Sign-in process failed: ${error.message}`);
-            if (debug?.errors) throw error;
-        }
-    }
-
-    // ==========================================
-    // 🛑 Teardown
-    // ==========================================
-
-    async closeBrowser() {
-        if (this.browser) {
-            await this.browser.close();
-            this.browser = null;
-            this.page = null;
-            this.logStatus("[Worker] Browser closed.");
-        }
-    }
-
-    terminate(){
+    terminate() {
+        this.isOrchestratorRunning = false;
         this.closeBrowser();
         rl.close();
     }
 }
 
-// Example Execution
+// Execution Block
 if (import.meta.main) {
-    const worker1 = new ChromeWorker({ 
-        headless: false, 
+    const worker1 = new ChromeWorker({
+        headless: false,
         email: "sirmohamedh@gmail.com",
-        password: "Moed!vsfG@26" // <-- Don't forget to add your password here to test
+        password: "Moed!vsfG@26"
     });
-    
+
     await worker1.launchBrowser();
-    
+
     let terminate = false;
-    while(!terminate){
-        const location = await worker1.getCurrentLocation();
-        if(debug?.operationalStatus) {
-             console.log(`[${new Date().toLocaleTimeString()}] Current Location: ${location}`);
-        }
-        
+    while (!terminate) {
         const answer = await rl.question("VFS-bot:) ");
-        let command = answer.trim().toLocaleLowerCase();
-        
-        if(terminationCmds.includes(command)){
-            console.log("Exiting...");
+        const command = answer.trim().toLowerCase();
+
+        if (terminationCmds.includes(command)) {
+            console.log("Shutting down bot...");
             worker1.terminate();
-            terminate = true; 
+            terminate = true;
         }
     }
 }
