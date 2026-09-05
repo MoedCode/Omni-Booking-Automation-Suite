@@ -28,16 +28,15 @@ const CHANNEL = '';
 
 const debug = { operationalStatus: true, warnings: true, errors: true };
 
-const processPriority = {
-    signIn: 1,
-    cookies: 2,
-    captcha: 3,
-    injection: 4,
-    unknown: 99
+const actionsConfig = {
+    cookies: { priority: 1, startDelay: 300, endDelay: 500 },
+    captcha: { priority: 2, startDelay: 300, endDelay: 500 },
+    signIn: { priority: 3, startDelay: 300, endDelay: 0 },
+    injection: { priority: 4, startDelay: 5000, endDelay: 1000 },
+    default: { priority: 99, startDelay: 100, endDelay: 100 }
 };
 
-// ⚙️ Cookie Preferences Config
-// Accepts: "Accept All", "All", "Accept Only Necessary", "Necessary", "Accept Necessary" (Case Insensitive)
+
 const cookiesAcceptant = "Accept All"; 
 
 module.exports = {
@@ -48,6 +47,6 @@ module.exports = {
     CHANNEL,
     terminationCmds,
     debug,
-    processPriority,
+    actionsConfig,
     cookiesAcceptant
 };

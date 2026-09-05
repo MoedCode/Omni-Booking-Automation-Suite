@@ -2,7 +2,7 @@
 
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { EgPtrLoginURL, BROWSER_ARGS, CHANNEL, terminationCmds, debug, processPriority, cookiesAcceptant } from '../Config/settings.js';
+import { EgPtrLoginURL, BROWSER_ARGS, CHANNEL, terminationCmds, debug, actionsConfig, cookiesAcceptant } from '../Config/settings.js';
 import Selectors from '../Config/Selectors.js';
 import { BaseBrowser } from './BaseBrowser.js';
 import { CaptchaHandler } from './captchaHandler.js';
@@ -27,6 +27,49 @@ export class ChromeWorker extends BaseBrowser {
 
         this.isOrchestratorRunning = false;
         this.captchaHandler = new CaptchaHandler(this);
+
+        // Inside ChromeWorker constructor
+        this.completedActivities = new Set();
+        this.activitysQueue = []; // Holds the final approved queue
+
+        this.mappedActions = {
+            cookies: {
+                priority: actionsConfig.cookies.priority,
+                startDelay: actionsConfig.cookies.startDelay,
+                endDelay: actionsConfig.cookies.endDelay,
+                dependencies: [], // No dependencies
+                method: this.cookiesHandler.bind(this)
+            },
+            captcha: {
+                priority: actionsConfig.captcha.priority,
+                startDelay: actionsConfig.captcha.startDelay,
+                endDelay: actionsConfig.captcha.endDelay,
+                dependencies: [],
+                method: async () => {
+                    const success = await this.captchaHandler.resolve();
+                    if (success) this.completedActivities.add('captcha');
+                }
+            },
+            signIn: {
+                priority: actionsConfig.signIn.priority,
+                startDelay: actionsConfig.signIn.startDelay,
+                endDelay: actionsConfig.signIn.endDelay,
+                dependencies: [], // Captcha handles itself dynamically, but you could add it here if preferred
+                method: this.signIn.bind(this)
+            },
+            injection: {
+                priority: actionsConfig.injection.priority,
+                startDelay: actionsConfig.injection.startDelay,
+                endDelay: actionsConfig.injection.endDelay,
+                dependencies: ['signIn'], // HARD DEPENDENCY: signIn MUST be completed first
+                method: async () => {
+                    await this.injection('./customer_script.js');
+                    this.completedActivities.add('injection');
+                }
+            }
+        };
+                // 📋 Current Ordered DOM Action Queue
+        this.currentOrderedDom = [];
     }
 
     async launchBrowser() {
@@ -49,7 +92,9 @@ export class ChromeWorker extends BaseBrowser {
             await this.page.goto(this.targetUrl, { waitUntil: 'domcontentloaded' });
             this.logStatus("[Worker] Page loaded successfully.");
 
-            await this.injection('./customer_script.js');
+            // Removed hardcoded injection here. Orchestrator handles it now.
+            // Bun.sleepSync(3000);
+
             this.startOrchestrator();
 
         } catch (error) {
@@ -58,94 +103,100 @@ export class ChromeWorker extends BaseBrowser {
     }
 
     async domScanner() {
-        if (!this.page) return ['uninitialized'];
-        const states = [];
+        if (!this.page) return [];
+        const detected = [];
 
-        // Now correctly scans for the Cookie Container visibility
-        if (await this.isPresent(Selectors.common.cookieBanner.container)) {
-            states.push('cookies');
-        }
-
+        if (await this.isPresent(Selectors.common.cookieBanner.container)) detected.push('cookies');
+        
         if (await this.captchaHandler.isPresent()) {
-            const resolved = await this.captchaHandler.isResolved();
-            if (!resolved) states.push('captcha');
+            if (!(await this.captchaHandler.isResolved())) detected.push('captcha');
         }
 
-        if (await this.isPresent(Selectors.signIn.email)) {
-            states.push('signIn');
-        }
+        if (await this.isPresent(Selectors.signIn.email)) detected.push('signIn');
+        
+        // Example injection detection: If we are not on the login page, or a target element is present
+        const isScriptInjected = await this.page.evaluate(() => typeof window.GM_setValue !== 'undefined').catch(() => false);
+        if (!isScriptInjected) detected.push('injection');
 
-        if (await this.isPresent(Selectors.dashboard.startNewBooking)) {
-            states.push('dashboard');
-        }
+        // Sort purely by priority
+        detected.sort((a, b) => {
+            const prioA = this.mappedActions[a]?.priority ?? actionsConfig.default.priority;
+            const prioB = this.mappedActions[b]?.priority ?? actionsConfig.default.priority;
+            return prioA - prioB;
+        });
 
-        if (states.length === 0) states.push('unknown');
-        return states;
+        return detected;
+    }
+    cordinateActivitysQueue(scannedActions) {
+        this.activitysQueue = scannedActions.filter(actionKey => {
+            const dependencies = this.mappedActions[actionKey]?.dependencies || [];
+            
+            // Check if every dependency for this action exists in the completed tracker
+            const allDependenciesMet = dependencies.every(dep => this.completedActivities.has(dep));
+            
+            if (!allDependenciesMet) {
+                if (debug?.operationalStatus) {
+                    console.log(`[Orchestrator] ⏸️ Deferring [${actionKey}] - Waiting on dependencies: ${dependencies.join(', ')}`);
+                }
+                return false; // Remove from this cycle's execution queue
+            }
+            
+            return true; // Approved for execution
+        });
     }
 
     async startOrchestrator() {
         this.isOrchestratorRunning = true;
         this.logStatus("[Orchestrator] Dynamic state loop started.");
-
+        
         while (this.isOrchestratorRunning && this.page) {
             try {
-                const activeStates = await this.domScanner();
+                // 1. Scan the DOM for what is present (Sorted by Priority)
+                const scannedActions = await this.domScanner();
 
-                activeStates.sort((a, b) => {
-                    const prioA = processPriority[a] ?? 999;
-                    const prioB = processPriority[b] ?? 999;
-                    return prioA - prioB;
-                });
+                // 2. Filter out actions that are waiting on dependencies
+                this.cordinateActivitysQueue(scannedActions);
 
-                const primaryAction = activeStates[0];
-
-                switch (primaryAction) {
-                    case 'cookies':
-                        await this.cookiesHandler();
-                        break;
-                    case 'captcha':
-                        await this.captchaHandler.resolve();
-                        break;
-                    case 'signIn':
-                        await this.signIn();
-                        break;
-                    case 'dashboard':
-                        this.logStatus("[Orchestrator] Dashboard active. Awaiting bookings pipeline...");
-                        await new Promise(r => setTimeout(r, 10000));
-                        break;
-                    case 'unknown':
-                    default:
-                        await new Promise(r => setTimeout(r, 3000));
-                        break;
+                if (this.activitysQueue.length === 0) {
+                    Bun.sleepSync(actionsConfig.default.startDelay);
+                    continue;
                 }
 
-                await new Promise(r => setTimeout(r, 1500));
+                // 3. Execute the top approved action
+                const currentActionKey = this.activitysQueue[0];
+                const actionMeta = this.mappedActions[currentActionKey];
+
+                if (actionMeta && typeof actionMeta.method === 'function') {
+                    if (actionMeta.startDelay > 0) Bun.sleepSync(actionMeta.startDelay);
+                    
+                    this.logStatus(`[Orchestrator] Executing action: [${currentActionKey}]`);
+                    
+                    await actionMeta.method();
+
+                    if (actionMeta.endDelay > 0) Bun.sleepSync(actionMeta.endDelay);
+                } else {
+                    Bun.sleepSync(actionsConfig.default.startDelay);
+                }
+
+                Bun.sleepSync(actionsConfig.default.endDelay);
 
             } catch (error) {
                 this.logError("orchestrator", `Loop Error: ${error.message}`);
-                await new Promise(r => setTimeout(r, 2000));
+                Bun.sleepSync(actionsConfig.default.startDelay);
             }
         }
     }
-
-    /**
-     * Resolves the cookies settings based on variables injected from Setting.js.
-     */
     async cookiesHandler() {
         this.logStatus("[Worker] Processing cookies based on preferences...");
         try {
             const pref = (cookiesAcceptant || 'All').toLowerCase();
-            
-            // Decides which semantic descriptor to use dynamically
             const descriptor = (pref.includes('necessary') || pref.includes('only') || pref === 'reject') 
                 ? Selectors.common.cookieBanner.rejectButton 
                 : Selectors.common.cookieBanner.acceptButton;
 
             await this.clickByDescriptor(descriptor);
-            this.logStatus(`[Worker] ✅ Cookies preference applied.`);
-            
-            // Give Angular a moment to fade the cookie overlay out so it doesn't block interactions
-            await new Promise(r => setTimeout(r, 1500));
+            this.logStatus("[Worker] ✅ Cookies preference applied.");
+            await new Promise(r => setTimeout(r, 1000));
         } catch (error) {
             this.logError("cookies", `Failed to handle cookie banner: ${error.message}`);
         }
@@ -186,7 +237,7 @@ export class ChromeWorker extends BaseBrowser {
 
             await Promise.all([
                 this.page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {}),
-                this.page.evaluate(b => b.click(), btn) // Enforce native click
+                this.page.evaluate(b => b.click(), btn) 
             ]);
 
             this.logStatus("[Worker] ✅ Sign-in submitted successfully.");
@@ -213,7 +264,7 @@ export class ChromeWorker extends BaseBrowser {
             const absolutePath = path.resolve(process.cwd(), relativePath);
             const scriptContent = fs.readFileSync(absolutePath, 'utf-8');
             await this.page.addScriptTag({ content: scriptContent });
-            this.logStatus(`[Worker] Extension script injected: ${relativePath}`);
+            this.logStatus(`[Worker] ✅ Extension script injected: ${relativePath}`);
         } catch (error) {
             this.logError("injection", `Script injection failed: ${error.message}`);
         }
