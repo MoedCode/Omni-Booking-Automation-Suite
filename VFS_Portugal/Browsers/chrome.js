@@ -50,6 +50,16 @@ export class ChromeWorker extends BaseBrowser {
                     if (success) this.completedActivities.add('captcha');
                 }
             },
+            dashboard: {
+                priority: 5, // Automatically runs after login
+                startDelay: 1000,
+                endDelay: 5000,
+                dependencies: ['signIn'],
+                method: async () => {
+                    this.logStatus("[Orchestrator] Dashboard active. Awaiting bookings pipeline...");
+                    Bun.sleepSync(10000);
+                }
+            },
             signIn: {
                 priority: actionsConfig.signIn.priority,
                 startDelay: actionsConfig.signIn.startDelay,
@@ -123,9 +133,9 @@ export class ChromeWorker extends BaseBrowser {
             }
 
             // 👈 FIX: Detect the Dashboard
-            // if (await this.isPresent(Selectors.dashboard.startNewBooking)) {
-            //     detected.push('dashboard');
-            // }
+            if (await this.isPresent(Selectors.dashboard.startNewBooking)) {
+                detected.push('dashboard');
+            }
             
             // Detect if injection is needed by checking if the polyfill exists
             const isScriptInjected = await this.page.evaluate(() => typeof window.GM_setValue !== 'undefined').catch(() => false);
