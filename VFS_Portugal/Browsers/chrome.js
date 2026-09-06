@@ -313,6 +313,20 @@ if (import.meta.main) {
         password: "Moed!vsfG@26"
     });
 
+    setTimeout(() => {
+           const worker3 = new ChromeWorker({
+        headless: false,
+        email: "sirmohamedh@gmail.com",
+        password: "Moed!vsfG@26"
+    }); 
+        const worker2 = new ChromeWorker({
+        headless: false,
+        email: "sirmohamedh@gmail.com",
+        password: "Moed!vsfG@26"
+    });
+    }, 200);
+
+
     await worker1.launchBrowser();
 
     let terminate = false;
@@ -323,6 +337,8 @@ if (import.meta.main) {
         if (terminationCmds.includes(command)) {
             console.log("Shutting down bot...");
             worker1.terminate();
+            worker2.terminate();
+            worker3.terminate();
             terminate = true;
         }
     }
