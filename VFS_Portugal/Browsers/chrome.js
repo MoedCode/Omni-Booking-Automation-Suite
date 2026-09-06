@@ -307,38 +307,32 @@ export class ChromeWorker extends BaseBrowser {
 
 // Execution Block
 if (import.meta.main) {
-    const worker1 = new ChromeWorker({
+    const accounts = [
+        { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" },
+        { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" },
+        { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" }
+    ];
+
+    // 1. إنشاء الـ Workers في مصفوفة موحدة
+    const workers = accounts.map(acc => new ChromeWorker({
         headless: false,
-        email: "sirmohamedh@gmail.com",
-        password: "Moed!vsfG@26"
-    });
+        email: acc.email,
+        password: acc.password
+    }));
 
-    setTimeout(() => {
-           const worker3 = new ChromeWorker({
-        headless: false,
-        email: "sirmohamedh@gmail.com",
-        password: "Moed!vsfG@26"
-    }); 
-        const worker2 = new ChromeWorker({
-        headless: false,
-        email: "sirmohamedh@gmail.com",
-        password: "Moed!vsfG@26"
-    });
-    }, 200);
+    // 2. تشغيل كل المتصفحات في نفس الوقت بالتوازي
+    console.log(`[Main] Launching ${workers.length} browser instances concurrently...`);
+    await Promise.all(workers.map(worker => worker.launchBrowser()));
 
-
-    await worker1.launchBrowser();
-
+    // 3. إدارة الإيقاف لجميع النسخ بنقرة واحدة
     let terminate = false;
     while (!terminate) {
         const answer = await rl.question("VFS-bot:) ");
         const command = answer.trim().toLowerCase();
 
         if (terminationCmds.includes(command)) {
-            console.log("Shutting down bot...");
-            worker1.terminate();
-            worker2.terminate();
-            worker3.terminate();
+            console.log("Shutting down all bots...");
+            workers.forEach(worker => worker.terminate());
             terminate = true;
         }
     }
