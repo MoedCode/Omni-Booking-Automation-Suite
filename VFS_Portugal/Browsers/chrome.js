@@ -27,7 +27,7 @@ export class ChromeWorker extends BaseBrowser {
 
         this.isOrchestratorRunning = false;
         this.captchaHandler = new CaptchaHandler(this);
-
+        this.lastDeferLogTime = 0;
         // Inside ChromeWorker constructor
         this.completedActivities = new Set();
         this.activitysQueue = []; // Holds the final approved queue
@@ -55,7 +55,10 @@ export class ChromeWorker extends BaseBrowser {
                 startDelay: actionsConfig.signIn.startDelay,
                 endDelay: actionsConfig.signIn.endDelay,
                 dependencies: [], // Captcha handles itself dynamically, but you could add it here if preferred
-                method: this.signIn.bind(this)
+                method: async () => {
+                    await this.signIn();
+                    this.completedActivities.add('signIn'); // 👈 FIX: Mark as completed
+                }
             },
             injection: {
                 priority: actionsConfig.injection.priority,
@@ -103,43 +106,58 @@ export class ChromeWorker extends BaseBrowser {
     }
 
     async domScanner() {
-        if (!this.page) return [];
-        const detected = [];
+            if (!this.page) return [];
+            const detected = [];
 
-        if (await this.isPresent(Selectors.common.cookieBanner.container)) detected.push('cookies');
-        
-        if (await this.captchaHandler.isPresent()) {
-            if (!(await this.captchaHandler.isResolved())) detected.push('captcha');
+            if (await this.isPresent(Selectors.common.cookieBanner.container)) {
+                detected.push('cookies');
+            }
+
+            if (await this.captchaHandler.isPresent()) {
+                const resolved = await this.captchaHandler.isResolved();
+                if (!resolved) detected.push('captcha');
+            }
+
+            if (await this.isPresent(Selectors.signIn.email)) {
+                detected.push('signIn');
+            }
+
+            // 👈 FIX: Detect the Dashboard
+            // if (await this.isPresent(Selectors.dashboard.startNewBooking)) {
+            //     detected.push('dashboard');
+            // }
+            
+            // Detect if injection is needed by checking if the polyfill exists
+            const isScriptInjected = await this.page.evaluate(() => typeof window.GM_setValue !== 'undefined').catch(() => false);
+            if (!isScriptInjected) {
+                detected.push('injection');
+            }
+
+            // Sort actions dynamically based on mapped configuration priorities
+            detected.sort((a, b) => {
+                const prioA = this.mappedActions[a]?.priority ?? actionsConfig.default.priority;
+                const prioB = this.mappedActions[b]?.priority ?? actionsConfig.default.priority;
+                return prioA - prioB;
+            });
+
+            this.currentOrderedDom = [...detected];
+            return this.currentOrderedDom;
         }
-
-        if (await this.isPresent(Selectors.signIn.email)) detected.push('signIn');
-        
-        // Example injection detection: If we are not on the login page, or a target element is present
-        const isScriptInjected = await this.page.evaluate(() => typeof window.GM_setValue !== 'undefined').catch(() => false);
-        if (!isScriptInjected) detected.push('injection');
-
-        // Sort purely by priority
-        detected.sort((a, b) => {
-            const prioA = this.mappedActions[a]?.priority ?? actionsConfig.default.priority;
-            const prioB = this.mappedActions[b]?.priority ?? actionsConfig.default.priority;
-            return prioA - prioB;
-        });
-
-        return detected;
-    }
     cordinateActivitysQueue(scannedActions) {
         this.activitysQueue = scannedActions.filter(actionKey => {
             const dependencies = this.mappedActions[actionKey]?.dependencies || [];
             
             // Check if every dependency for this action exists in the completed tracker
             const allDependenciesMet = dependencies.every(dep => this.completedActivities.has(dep));
-            
+            const now = Date.now();
             if (!allDependenciesMet) {
-                if (debug?.operationalStatus) {
-                    console.log(`[Orchestrator] ⏸️ Deferring [${actionKey}] - Waiting on dependencies: ${dependencies.join(', ')}`);
+                // Log only if 10 seconds have elapsed since the last deferral log
+                if (now - this.lastDeferLogTime >= 10000) {
+                    this.logStatus(`[Orchestrator] ⏸️ Deferring [${actionKey}] - Waiting on dependencies: ${dependencies.join(', ')}`);
+                    this.lastDeferLogTime = now;
                 }
                 return false; // Remove from this cycle's execution queue
-            }
+                }
             
             return true; // Approved for execution
         });
