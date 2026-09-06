@@ -14,19 +14,12 @@ export class CaptchaHandler {
         return this.worker.page;
     }
 
-    /**
-     * Checks whether a Cloudflare captcha widget is present on the page.
-     * We target the Container because the iframe is hidden inside a Closed Shadow DOM.
-     */
     async isPresent() {
         if (!this.page) return false;
         const containerSelector = Selectors.captcha.container.selector;
         return (await this.page.$(containerSelector)) !== null;
     }
 
-    /**
-     * Checks if Cloudflare has already resolved and populated the response token.
-     */
     async isResolved() {
         if (!this.page) return false;
         try {
@@ -38,10 +31,6 @@ export class CaptchaHandler {
         }
     }
 
-    /**
-     * Waits for the Turnstile token to populate. 
-     * Uses Geometric Bounding Box clicking to bypass Closed Shadow DOM restrictions.
-     */
     async resolve(timeout = 60000) {
         if (!this.page) return false;
 
@@ -53,23 +42,60 @@ export class CaptchaHandler {
 
             // 1. Wait for the outer container to exist
             const container = await this.page.waitForSelector(containerSelector, { timeout: 15000 });
-
-            // 2. Wait 2 seconds to ensure the iframe inside the shadow root has fully rendered
             await new Promise(r => setTimeout(r, 2000));
 
-            // 3. Shadow DOM Bypass: Click using physical coordinates
-            if (container) {
+            let clickedViaFrame = false;
+
+            // 2. STRATEGY 1: Pierce Shadow DOM via Puppeteer's Frame Tree
+            const cfFrame = this.page.frames().find(f => f.url().includes('challenges.cloudflare.com'));
+            
+            if (cfFrame) {
+                try {
+                    // Wait for the body of the Turnstile iframe and click it
+                    const frameBody = await cfFrame.waitForSelector('body', { timeout: 3000 });
+                    if (frameBody) {
+                        // Scroll container into view first to ensure native click works
+                        await this.page.evaluate((el) => {
+                            el.scrollIntoView({ behavior: 'instant', block: 'center' });
+                        }, container);
+                        
+                        await frameBody.click();
+                        this.worker.logStatus("[Captcha] Clicked widget directly via Frame Tree.");
+                        clickedViaFrame = true;
+                    }
+                } catch (e) {
+                    this.worker.logWarning("captcha", "Frame click failed, falling back to geometric click.");
+                }
+            }
+
+            // 3. STRATEGY 2: Smart Geometric Click (If frame piercing fails)
+            if (!clickedViaFrame && container) {
+                // Crucial: Bring the element to the center of the viewport before clicking
+                await this.page.evaluate((el) => {
+                    el.scrollIntoView({ behavior: 'instant', block: 'center' });
+                }, container);
+
+                await new Promise(r => setTimeout(r, 1000)); // Wait for scroll to settle
+
                 const box = await container.boundingBox();
                 if (box) {
-                    // Click 30 pixels from the left edge (where the Turnstile checkbox is located)
-                    await this.page.mouse.click(box.x + 30, box.y + (box.height / 2));
-                    this.worker.logStatus("[Captcha] Clicked widget coordinates (Shadow DOM bypass).");
+                    let targetX = box.x + 30; // Default: widget is aligned to the left
+                    
+                    // If container is wider than a standard Turnstile widget (300px), it's likely centered
+                    if (box.width > 400) {
+                        targetX = box.x + (box.width / 2) - 120; // 120px left of the center hits the checkbox
+                    }
+                    
+                    const targetY = box.y + (box.height / 2);
+
+                    await this.page.mouse.click(targetX, targetY);
+                    this.worker.logStatus("[Captcha] Clicked widget coordinates (Smart Geometric Bypass).");
                 }
             }
 
             this.worker.logStatus("[Captcha] Waiting for verification token...");
 
-            // 4. Wait until the hidden input gets the long string token
+            // 4. Wait until the hidden input gets the generated token
             await this.page.waitForFunction((selector) => {
                 const el = document.querySelector(selector);
                 return el && el.value && el.value.trim().length > 20;
