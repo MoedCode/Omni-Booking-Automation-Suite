@@ -4,103 +4,63 @@ import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { terminationCmds } from './Config/settings.js';
 import { ChromeWorker } from './Browsers/chrome.js';
+import SheetHandler from './FileHandler/sheetsHandler.js';
 
-// ==========================================
-// 1. MAIN THREAD (Manager & Orchestrator)
-// ==========================================
-if (import.meta.main) {
-    const rl = readline.createInterface({ input, output });
+const rl = readline.createInterface({ input, output });
 
-    // ضع الحسابات التي تريد تشغيلها هنا
-    const accounts = [
-        { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" },
-        // { email: "account2@gmail.com", password: "Password2@" },
-        // { email: "account3@gmail.com", password: "Password3@" }
-    ];
+const handler = new SheetHandler();
+const result = handler.loadFromExcel();
+const accounts = result.data
 
-    console.log(`\n🚀 [Main Process] Initializing ${accounts.length} isolated Worker Thread(s)...\n`);
 
-    const activeThreads = [];
 
-    // تشغيل كل حساب في Thread مستقل مع فاصل زمني لتجنب الضغط
-    for (let i = 0; i < accounts.length; i++) {
-        const account = accounts[i];
-        const threadIndex = i + 1;
+// console.log(`Data: `, result.data);
+// console.log(`Success Status : ${result.success}`);
+// console.log(`Total Processed: ${result.totalRowsProcessed}`);
+// console.log(`Valid Rows     : ${result.validRowsCount}`);
+// console.log(`Ignored Rows   : ${result.ignoredRowsCount}`);
 
-        // استدعاء نفس الملف داخل Worker Thread مستقل
-        const thread = new Worker(import.meta.url);
+console.log(`\n🚀 Starting ${accounts.length} browser instance(s)...\n`);
 
-        thread.onmessage = (event) => {
-            const { email, message } = event.data;
-            console.log(`[Thread-${threadIndex} | ${email}] ${message}`);
-        };
+// Initialize worker instances with global scope
+let workers = [];
 
-        // إرسال بيانات الحساب للـ Worker للبدء
-        thread.postMessage({
-            action: 'START',
-            account: account,
-            index: threadIndex
+if (accounts && accounts.length > 0) {
+    workers = accounts.map((acc, index) => {
+        const worker = new ChromeWorker({
+            headless: false,
+            email: acc.account,
+            password: acc.password
         });
+        
+        // Tag worker logs with instance index and account email
+        worker.logStatus = (msg) => {
+            console.log(`[Worker-${index + 1} | ${acc.email}] ${msg}`);
+        };
+        
+        return worker;
+    });
+}
 
-        activeThreads.push(thread);
+// Stagger browser launches by 2 seconds to mitigate CPU and memory spikes
+for (const worker of workers) {
+    worker.launchBrowser();
+    await Bun.sleep(2000);
+}
 
-        // فاصل زمني (3 ثوانٍ) بين فتح المتصفحات
-        if (i < accounts.length - 1) {
-            await new Promise(r => setTimeout(r, 3000));
+// Non-blocking interactive CLI listener for graceful shutdown
+let terminate = false;
+while (!terminate) {
+    const answer = await rl.question("\nVFS-bot (type 'q' or 'exit' to stop all): ");
+    const command = answer.trim().toLowerCase();
+
+    if (terminationCmds.includes(command)) {
+        console.log("\n🛑 Terminating all browsers...");
+        for (const worker of workers) {
+            worker.terminate();
         }
+        rl.close();
+        terminate = true;
+        process.exit(0);
     }
-
-    // إدارة الإيقاف الفوري لجميع الخيوط
-    let terminate = false;
-    while (!terminate) {
-        const answer = await rl.question("\nVFS-bot (type 'q' or 'exit' to stop all): ");
-        const command = answer.trim().toLowerCase();
-
-        if (terminationCmds.includes(command)) {
-            console.log("\n🛑 [Main Process] Terminating all background threads and browsers...");
-            for (const thread of activeThreads) {
-                thread.postMessage({ action: 'TERMINATE' });
-                thread.terminate();
-            }
-            rl.close();
-            terminate = true;
-            process.exit(0);
-        }
-    }
-} 
-
-// ==========================================
-// 2. WORKER THREAD (Isolated Browser Instance)
-// ==========================================
-else {
-    let currentWorker = null;
-
-    self.onmessage = async (event) => {
-        const { action, account } = event.data;
-
-        if (action === 'START') {
-            currentWorker = new ChromeWorker({
-                headless: false,
-                email: account.email,
-                password: account.password
-            });
-
-            // إعادة توجيه الـ Logs للـ Main Thread ليتم تنسيقها
-            currentWorker.logStatus = (msg) => {
-                postMessage({ email: account.email, message: msg });
-            };
-
-            try {
-                await currentWorker.launchBrowser();
-            } catch (err) {
-                postMessage({ email: account.email, message: `❌ Thread Error: ${err.message}` });
-            }
-        }
-
-        if (action === 'TERMINATE') {
-            if (currentWorker) {
-                currentWorker.terminate();
-            }
-        }
-    };
 }

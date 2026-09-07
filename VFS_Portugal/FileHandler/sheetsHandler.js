@@ -107,7 +107,7 @@ class SheetHandler {
 
         // Apply Key Conversion and Normalization
         const normalizedRows = rawRows.map(row => this._normalizeRowKeys(row));
-        console.log(`=> \n`, normalizedRows, "\n");
+        // console.log(`=> \n`, normalizedRows, "\n");
         // 1. File-Level Validation
         if (this.hasMandatory) {
             const fileHeaders = new Set();

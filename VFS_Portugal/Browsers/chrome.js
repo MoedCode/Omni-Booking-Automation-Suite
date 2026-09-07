@@ -309,8 +309,8 @@ export class ChromeWorker extends BaseBrowser {
 if (import.meta.main) {
     const accounts = [
         { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" },
-        { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" },
-        { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" }
+        // { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" },
+        // { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" }
     ];
 
     // 1. إنشاء الـ Workers في مصفوفة موحدة
