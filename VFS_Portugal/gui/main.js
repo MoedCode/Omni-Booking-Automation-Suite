@@ -65,12 +65,18 @@ ipcMain.handle('fetch-google-sheet', async (event, url) => {
 });
 
 // --- Bot IPC Handlers ---
+/* gui/main.js */
+/* gui/main.js */
+
 ipcMain.on('launch-bots', async (event, instances) => {
     for (const instance of instances) {
         if (activeWorkers.has(instance.id)) continue;
 
+        // 👈 التأكد من أن القيمة (true / false) صريحة تماماً للمحرك
+        const isHeadless = instance.headless === true;
+
         const worker = new ChromeWorker({
-            headless: false,
+            headless: isHeadless,
             email: instance.data.account,
             password: instance.data.password
         });
@@ -88,6 +94,7 @@ ipcMain.on('launch-bots', async (event, instances) => {
         await new Promise(r => setTimeout(r, 2000));
     }
 });
+console.log(`\n\n\n   Hello From Main.js  ال main بمسي عليكم \n\n\n`);
 
 ipcMain.on('close-bots', (event, ids) => {
     for (const id of ids) {

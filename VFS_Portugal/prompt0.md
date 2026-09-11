@@ -1,24 +1,29 @@
-now i want make p
-we have mapped object on chrome it mapped according to `processPriority`in settings with all section and  actions methods  
+there some diffrances between when i run script from run.js or wen i run t from gui ... im freist place  this diffrances exist 
+..
+script ddint get injected when i run from  gui 
+also when i close run.js   chrome windows are closed with it but in script there some closed  other still
 
-```js
-this.mappedActions
- {
-    signIn: {priority:3, startDelay:300, endDelay:0 , <method that do this action>},
-    cookies: {priority:1, startDelay:300, endDelay:0 , <method that do this action>},
-    captcha: {priority:2, startDelay:300, endDelay:0 , <method that do this action>},
-    injection: {priority:4, startDelay:300, endDelay:0 , <method that do this action>},
+PS C:\Users\Active\Desktop\Coding\Gradutaion\CustProjects\Omni-Booking-Automation-Suite\VFS_Portugal\gui> 
+:) bun run dev
+$ vite
 
-}
-```
-in chrome class wil Add object dor currant  `array` for currant section VFS pager 
+  VITE v8.2.2  ready in 556 ms
 
-so bot is driven by many  things 
-A- so domScanner() will read all Dome element/sections  
-which  element  exist or which location  on VFS webpage then adjust  array of actions names  sorted by   Priority`this.courantOdoredDom` like for example `[signIn, cookies, captcha]`  then sort them like 
-for example`[cookies, captcha, signIn]` 
- founded  sections and it selectors on vsf 
-B- then then actions bigan to be executed according to this.courantOdoredDom
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+  ➜  press h + enter to show help
+
+PS C:\Users\Active\Desktop\Coding\Gradutaion\CustProjects\Omni-Booking-Automation-Suite\VFS_Portugal\gui> 
+:) bun run electron:start
+$ cross-env NODE_ENV=development electron .
+
+(node:15216) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/Users/Active/Desktop/Coding/Gradutaion/CustProjects/Omni-Booking-Automation-Suite/VFS_Portugal/Browsers/chrome.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\Users\Active\Desktop\Coding\Gradutaion\CustProjects\Omni-Booking-Automation-Suite\VFS_Portugal\package.json.
+(Use `electron --trace-warnings ...` to show where the warning was created)
+'taskkill' is not recognized as an internal or external command,
+operable program or batch file.
+PS C:\Users\Active\Desktop\Coding\Gradutaion\CustProjects\Omni-Booking-Automation-Suite\VFS_Portugal\gui> 
+:) 
 
 
-do you understand me ?

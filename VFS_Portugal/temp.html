@@ -1,11 +1,451 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mohamed Mahmoud - Backend Engineer CV</title>
+  <style>
+    :root {
+      --primary: #0f172a;
+      --accent: #1e3a8a;
+      --text-main: #334155;
+      --text-muted: #64748b;
+      --border-color: #cbd5e1;
+      --bg-page: #f8fafc;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-page);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text-main);
+      line-height: 1.45;
+      font-size: 9.6pt;
+      padding: 30px 15px;
+    }
+
+    .cv-sheet {
+      max-width: 860px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 40px 48px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.07);
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+    }
+
+    /* Header */
+    .header {
+      border-bottom: 2px solid var(--primary);
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    h1.name {
+      font-size: 20pt;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      color: var(--primary);
+      text-transform: uppercase;
+    }
+
+    .title-badge {
+      font-size: 10.5pt;
+      font-weight: 600;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .contact-bar {
+      margin-top: 6px;
+      font-size: 9pt;
+      color: var(--text-muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .contact-bar a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .contact-bar a:hover {
+      text-decoration: underline;
+    }
+
+    /* Sections */
+    section {
+      margin-bottom: 14px;
+    }
+
+    .section-title {
+      font-size: 10.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--primary);
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 3px;
+      margin-bottom: 8px;
+    }
+
+    .summary-text {
+      text-align: justify;
+      color: var(--text-main);
+      margin-bottom: 4px;
+    }
+
+    /* Skills Grid */
+    .skills-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .skill-row {
+      display: flex;
+      font-size: 9.3pt;
+      line-height: 1.4;
+    }
+
+    .skill-label {
+      width: 170px;
+      min-width: 170px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .skill-desc {
+      flex: 1;
+      color: var(--text-main);
+    }
+
+    /* Timeline & Experience Items */
+    .item-block {
+      margin-bottom: 10px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .item-header {
+      font-weight: 700;
+      font-size: 9.8pt;
+      color: var(--primary);
+    }
+
+    .item-sub {
+      font-size: 9pt;
+      color: var(--text-muted);
+      font-style: italic;
+      margin-bottom: 3px;
+    }
+
+    .item-bullets {
+      list-style-type: square;
+      padding-left: 18px;
+      margin-top: 2px;
+    }
+
+    .item-bullets li {
+      margin-bottom: 2.5px;
+      text-align: justify;
+      color: var(--text-main);
+    }
+
+    .project-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 1px;
+    }
+
+    .project-title {
+      font-weight: 700;
+      color: var(--primary);
+      font-size: 9.5pt;
+    }
+
+    .project-tech {
+      font-weight: 500;
+      font-style: italic;
+      font-size: 8.7pt;
+      color: var(--text-muted);
+    }
+
+    /* Print Setup */
+    @page {
+      size: A4;
+      margin: 10mm 12mm;
+    }
+
+    @media print {
+      body {
+        background: transparent;
+        padding: 0;
+        color: #000000;
+      }
+
+      .cv-sheet {
+        box-shadow: none;
+        border: none;
+        padding: 0;
+        max-width: 100%;
+        margin: 0;
+      }
+
+      .contact-bar a {
+        color: #000000;
+        text-decoration: none;
+      }
+
+      .section-title {
+        border-bottom: 1px solid #999999;
+      }
+    }
+  </style>
 </head>
 <body>
-    
+
+  <div class="cv-sheet">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="header-top">
+        <h1 class="name">Mohamed Mahmoud</h1>
+        <span class="title-badge">Software & Backend Engineer</span>
+      </div>
+      <div class="contact-bar">
+        <span>📍 Alexandria, Egypt</span>
+        <span>📞 +20 110 0783735</span>
+        <span>✉️ <a href="mailto:mohamed71291@gmail.com">mohamed71291@gmail.com</a></span>
+        <span>🔗 <a href="https://linkedin.com/in/mohamed-mahmoud-4874b41b0" target="_blank">LinkedIn</a></span>
+        <span>💻 <a href="https://github.com/MoedCode" target="_blank">GitHub</a></span>
+      </div>
+    </header>
+
+    <!-- Summary -->
+    <section>
+      <div class="section-title">Summary</div>
+      <p class="summary-text">
+        Backend-focused software engineer working primarily with Python (Django, DRF, FastAPI), C++, and modern JavaScript (Next.js, React). Practical experience engineering high-throughput asynchronous automation pipelines, building secure RESTful APIs, and maintaining multi-tenant database infrastructures. Proven record delivering production systems containerized via Docker and load-balanced behind HAProxy on Linux, with an emphasis on database query performance, access control, and low-latency workflows. Currently completing a Postgraduate Diploma in Computer Science at Cairo University.
+      </p>
+    </section>
+
+    <!-- Technical Skills -->
+    <section>
+      <div class="section-title">Technical Skills</div>
+      <div class="skills-grid">
+        <div class="skill-row">
+          <div class="skill-label">Languages</div>
+          <div class="skill-desc">Python, C++, JavaScript, TypeScript, SQL</div>
+        </div>
+        <div class="skill-row">
+          <div class="skill-label">Backend & Architecture</div>
+          <div class="skill-desc">Django, Django REST Framework (DRF), FastAPI, Flask, Celery, SQLAlchemy, Asyncio</div>
+        </div>
+        <div class="skill-row">
+          <div class="skill-label">Frontend & Desktop</div>
+          <div class="skill-desc">Next.js, React.js, Tailwind CSS, PyQt6, PySide6, Custom Tkinter, HTML5, CSS3</div>
+        </div>
+        <div class="skill-row">
+          <div class="skill-label">Databases & Caching</div>
+          <div class="skill-desc">PostgreSQL, MySQL, SQLite, Redis</div>
+        </div>
+        <div class="skill-row">
+          <div class="skill-label">DevOps & Tooling</div>
+          <div class="skill-desc">Docker, Docker Compose, HAProxy, Nginx, Gunicorn, Linux (Ubuntu 24.04), Git, Postman, Nuitka</div>
+        </div>
+        <div class="skill-row">
+          <div class="skill-label">Automation & Scraping</div>
+          <div class="skill-desc">Async I/O, SeleniumBase, Selenium, Web Scraping, Dynamic DOM Parsing</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Work Experience -->
+    <section>
+      <div class="section-title">Work Experience</div>
+
+      <div class="item-block">
+        <div class="item-header">Global Trans & Services</div>
+        <div class="item-sub">Software Engineer (Contractor) – Remote (USA Market: NY/NJ)</div>
+        <ul class="item-bullets">
+          <li>Developed and scaled backend RESTful API endpoints powering real-time dispatching and fleet tracking across busy metropolitan routes.</li>
+          <li>Refined relational schemas and streamlined query execution paths to maintain low response latencies during peak booking hours.</li>
+        </ul>
+      </div>
+
+      <div class="item-block">
+        <div class="item-header">High-Frequency Scheduling Systems</div>
+        <div class="item-sub">Backend & Automation Engineer – Remote</div>
+        <ul class="item-bullets">
+          <li>Engineered an asynchronous automation engine using Python <code>asyncio</code> to coordinate high-traffic appointment booking under strict concurrency and rate limits.</li>
+          <li>Implemented persistent TCP connection pools, dynamic proxy rotation daemons, and microsecond retry logic to maintain continuous uptime during high-demand booking windows.</li>
+        </ul>
+      </div>
+
+      <div class="item-block">
+        <div class="item-header">El-Salam Furniture Moving (<a href="https://www.el-salam.net" target="_blank">el-salam.net</a>)</div>
+        <div class="item-sub">Backend & DevOps Engineer – Remote</div>
+        <ul class="item-bullets">
+          <li>Architected the complete backend using Django and DRF, implementing JWT authentication with refresh-token blacklisting and secure OTP phone verification.</li>
+          <li>Configured granular access control list (ACL) rules for media and order endpoints to prevent unauthorized access to sensitive customer documents.</li>
+          <li>Implemented full bilingual localization (Arabic and English) across customer dashboards and administration views via Django <code>i18n</code>.</li>
+          <li>Packaged the platform stack using Docker Compose and deployed on Ubuntu 24.04 LTS servers at Hetzner, using HAProxy as a reverse proxy and load balancer.</li>
+        </ul>
+      </div>
+
+      <div class="item-block">
+        <div class="item-header">Freelance Backend & Software Engineer</div>
+        <div class="item-sub">Multi-Client / Agency (Active Computer & Partner Clients)</div>
+        <ul class="item-bullets">
+          <li>Designed the database architecture and backend core for an internal ERP system at Active Computer, streamlining operations across company units.</li>
+          <li>Built customized REST APIs, data workflows, and backend performance fixes for commercial web properties.</li>
+        </ul>
+      </div>
+
+      <div class="item-block">
+        <div class="item-header">Safety Alert Mobile Application</div>
+        <div class="item-sub">Backend Developer (Contract / Prototype) – Remote</div>
+        <ul class="item-bullets">
+          <li>Developed the backend architecture for an emergency broadcast mobile framework using Django REST Framework and MySQL.</li>
+          <li>Integrated Apple Push Notification Service (APNs) pathways for rapid alert distribution when emergency actions are triggered.</li>
+          <li>Maintained private staging environments behind an HAProxy reverse proxy for live testing and collaborative reviews.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Key Projects -->
+    <section>
+      <div class="section-title">Key Projects</div>
+
+      <div class="item-block">
+        <div class="project-header">
+          <span class="project-title">Custom Visa Processing & Automation Suite (Yalla Visa)</span>
+          <span class="project-tech">Python, PyQt6, Asyncio, Dynamic Scraping</span>
+        </div>
+        <ul class="item-bullets">
+          <li>Built an asynchronous desktop automation engine under a repeat contract to streamline client data validation and direct portal interactions.</li>
+          <li>Optimized submission retries and fault tolerance during portal peak periods, cutting repetitive booking verification time by 75%.</li>
+        </ul>
+      </div>
+
+      <div class="item-block">
+        <div class="project-header">
+          <span class="project-title">VFS Global Appointment Automation Engine (Yalla Visa)</span>
+          <span class="project-tech">Python, Web Automation, Desktop UI</span>
+        </div>
+        <ul class="item-bullets">
+          <li>Engineered a browser automation system to monitor appointment openings for the Netherlands visa via VFS Global Egypt.</li>
+          <li>Automated real-time slot detection, dynamic DOM parsing, and autofill workflows to eliminate manual monitoring delays and prevent session expiration.</li>
+        </ul>
+      </div>
+
+      <div class="item-block">
+        <div class="project-header">
+          <span class="project-title">AI Shopping Agent</span>
+          <span class="project-tech">Next.js 14, Django REST, Algolia Agent Studio, PostgreSQL, Bun, SSE</span>
+        </div>
+        <ul class="item-bullets">
+          <li>Developed a decoupled conversational product search engine utilizing Algolia AI Agent Studio and Server-Sent Events (SSE) for streaming responses.</li>
+          <li>Implemented a guest session architecture using UUID-backed cookies to retain user interaction history prior to registration; featured on the DEV Community platform.</li>
+        </ul>
+      </div>
+
+      <div class="item-block">
+        <div class="project-header">
+          <span class="project-title">LawFirm-Manager Desktop Suite</span>
+          <span class="project-tech">PySide6 / PyQt6, SQLAlchemy, SQLite, PostgreSQL, Nuitka</span>
+        </div>
+        <ul class="item-bullets">
+          <li>Built an offline-first management desktop application for law practices featuring dynamic database switching between local SQLite and remote PostgreSQL.</li>
+          <li>Compiled the code into native executables via Nuitka, incorporating hardware identification (HWID) node locking to restrict license distribution.</li>
+        </ul>
+      </div>
+
+      <div class="item-block">
+        <div class="project-header">
+          <span class="project-title">Commercial CRM Platform</span>
+          <span class="project-tech">Django, MySQL, Django Template Language (DTL)</span>
+        </div>
+        <ul class="item-bullets">
+          <li>Developed an internal customer relationship management tool featuring multi-tier permission controls, client activity tracking, and dynamic sales reports.</li>
+        </ul>
+      </div>
+
+      <div class="item-block">
+        <div class="project-header">
+          <span class="project-title">Talx – Tech-Focused Social Media Platform</span>
+          <span class="project-tech">Django, React.js, REST APIs</span>
+        </div>
+        <ul class="item-bullets">
+          <li>Engineered backend services and user interfaces for a developer discussion platform, handling user auth, posting pipelines, and threaded replies.</li>
+        </ul>
+      </div>
+
+      <div class="item-block">
+        <div class="project-header">
+          <span class="project-title">PyExpress Integration Server</span>
+          <span class="project-tech">Pure Python (Sockets / HTTP), Express.js, Custom CSV Engine</span>
+        </div>
+        <ul class="item-bullets">
+          <li>Constructed a bare-metal HTTP web server from scratch in pure Python to explore low-level socket handling, routing, and raw header management.</li>
+          <li>Wrote a lightweight CSV-backed indexing engine for record queries, connected to Express.js middleware for token-based authentication flows.</li>
+        </ul>
+      </div>
+
+      <div class="item-block">
+        <div class="project-header">
+          <span class="project-title">Microservices Infrastructure / Airbnb Clone</span>
+          <span class="project-tech">Flask, MySQL, Nginx, HAProxy, Linux</span>
+        </div>
+        <ul class="item-bullets">
+          <li>Configured a multi-tier microservices platform featuring master-replica database clustering, Nginx static proxying, and HAProxy load balancing.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Education & Credentials -->
+    <section>
+      <div class="section-title">Education & Credentials</div>
+      <div class="item-block">
+        <div class="item-header">Postgraduate Diploma in Computer Science</div>
+        <div class="item-sub">Faculty of Graduate Studies for Statistical Research (FGSSR), Cairo University</div>
+      </div>
+
+      <div class="item-block">
+        <div class="item-header">Software Engineering Program (15-Month Intensive Curriculum)</div>
+        <div class="item-sub">ALX SE Academy / Holberton School</div>
+      </div>
+
+      <div class="item-block">
+        <div class="item-header">Advanced C++ Software Engineering Track</div>
+        <div class="item-sub">ProgrammingAdvices Platform</div>
+      </div>
+
+      <div class="item-block">
+        <div class="item-header">Bachelor’s Degree in Commerce / Economics</div>
+        <div class="item-sub">Alexandria University</div>
+      </div>
+    </section>
+
+  </div>
+
 </body>
 </html>

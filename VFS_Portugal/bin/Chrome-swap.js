@@ -1,3 +1,4 @@
+/* Omni-Booking-Automation-Suite/VFS_Portugal/Browsers/injection.js*/
 /* Omni-Booking-Automation-Suite/VFS_Portugal/Browsers/chrome.js */
 
 import puppeteer from 'puppeteer-extra';
@@ -10,16 +11,12 @@ import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url'; // 👈 Added
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const rl = readline.createInterface({ input, output });
 puppeteer.use(StealthPlugin());
 
 export class ChromeWorker extends BaseBrowser {
-    constructor({ headless = false, targetUrl = EgPtrLoginURL, email, password } = {}) {
+    constructor({ headless = true, targetUrl = EgPtrLoginURL, email, password } = {}) {
         super();
         this.targetUrl = targetUrl;
         this.headless = headless;
@@ -32,15 +29,16 @@ export class ChromeWorker extends BaseBrowser {
         this.isOrchestratorRunning = false;
         this.captchaHandler = new CaptchaHandler(this);
         this.lastDeferLogTime = 0;
+        // Inside ChromeWorker constructor
         this.completedActivities = new Set();
-        this.activitysQueue = [];
+        this.activitysQueue = []; // Holds the final approved queue
 
         this.mappedActions = {
             cookies: {
                 priority: actionsConfig.cookies.priority,
                 startDelay: actionsConfig.cookies.startDelay,
                 endDelay: actionsConfig.cookies.endDelay,
-                dependencies: [],
+                dependencies: [], // No dependencies
                 method: this.cookiesHandler.bind(this)
             },
             captcha: {
@@ -54,55 +52,48 @@ export class ChromeWorker extends BaseBrowser {
                 }
             },
             dashboard: {
-                priority: 5,
+                priority: 5, // Automatically runs after login
                 startDelay: 1000,
                 endDelay: 5000,
                 dependencies: ['signIn'],
                 method: async () => {
                     this.logStatus("[Orchestrator] Dashboard active. Awaiting bookings pipeline...");
-                    await new Promise(r => setTimeout(r, 10000));
                 }
             },
             signIn: {
                 priority: actionsConfig.signIn.priority,
                 startDelay: actionsConfig.signIn.startDelay,
                 endDelay: actionsConfig.signIn.endDelay,
-                dependencies: [],
+                dependencies: [], // Captcha handles itself dynamically, but you could add it here if preferred
                 method: async () => {
                     await this.signIn();
-                    this.completedActivities.add('signIn');
+                    this.completedActivities.add('signIn'); // 👈 FIX: Mark as completed
                 }
             },
             injection: {
                 priority: actionsConfig.injection.priority,
                 startDelay: actionsConfig.injection.startDelay,
                 endDelay: actionsConfig.injection.endDelay,
-                dependencies: ['signIn'],
+                dependencies: ['signIn'], // HARD DEPENDENCY: signIn MUST be completed first
                 method: async () => {
                     await this.injection('./customer_script.js');
                     this.completedActivities.add('injection');
                 }
             }
         };
+                // 📋 Current Ordered DOM Action Queue
         this.currentOrderedDom = [];
     }
-/* Omni-Booking-Automation-Suite/VFS_Portugal/Browsers/chrome.js */
 
     async launchBrowser() {
         try {
             this.logStatus(`[Worker] Launching browser (Headless: ${this.headless})...`);
 
-            // 👈 1. إزالة '--start-maximized' لو المتصفح مخفي عشان ميجبرش الويندوز يفتحه
-            const activeArgs = this.headless 
-                ? this.browserArgs.filter(arg => arg !== '--start-maximized') 
-                : this.browserArgs;
-
             this.browser = await puppeteer.launch({
-                // 👈 2. استخدام وضع 'new' الصارم لإخفاء المتصفح كلياً
-                headless: this.headless ? 'new' : false, 
-                channel: this.channel ? this.channel : undefined,
+                headless: this.headless,
+                channel: this.channel,
                 defaultViewport: null,
-                args: activeArgs
+                args: this.browserArgs
             });
 
             const pages = await this.browser.pages();
@@ -114,6 +105,9 @@ export class ChromeWorker extends BaseBrowser {
             await this.page.goto(this.targetUrl, { waitUntil: 'domcontentloaded' });
             this.logStatus("[Worker] Page loaded successfully.");
 
+            // Removed hardcoded injection here. Orchestrator handles it now.
+            // Bun.sleepSync(3000);
+
             this.startOrchestrator();
 
         } catch (error) {
@@ -122,54 +116,60 @@ export class ChromeWorker extends BaseBrowser {
     }
 
     async domScanner() {
-        if (!this.page) return [];
-        const detected = [];
+            if (!this.page) return [];
+            const detected = [];
 
-        if (await this.isPresent(Selectors.common.cookieBanner.container)) {
-            detected.push('cookies');
+            if (await this.isPresent(Selectors.common.cookieBanner.container)) {
+                detected.push('cookies');
+            }
+
+            if (await this.captchaHandler.isPresent()) {
+                const resolved = await this.captchaHandler.isResolved();
+                if (!resolved) detected.push('captcha');
+            }
+
+            if (await this.isPresent(Selectors.signIn.email)) {
+                detected.push('signIn');
+            }
+
+            // 👈 FIX: Detect the Dashboard
+            if (await this.isPresent(Selectors.dashboard.startNewBooking)) {
+                detected.push('dashboard');
+            }
+            
+            // Detect if injection is needed by checking if the polyfill exists
+            const isScriptInjected = await this.page.evaluate(() => typeof window.GM_setValue !== 'undefined').catch(() => false);
+            if (!isScriptInjected) {
+                detected.push('injection');
+            }
+
+            // Sort actions dynamically based on mapped configuration priorities
+            detected.sort((a, b) => {
+                const prioA = this.mappedActions[a]?.priority ?? actionsConfig.default.priority;
+                const prioB = this.mappedActions[b]?.priority ?? actionsConfig.default.priority;
+                return prioA - prioB;
+            });
+
+            this.currentOrderedDom = [...detected];
+            return this.currentOrderedDom;
         }
-
-        if (await this.captchaHandler.isPresent()) {
-            const resolved = await this.captchaHandler.isResolved();
-            if (!resolved) detected.push('captcha');
-        }
-
-        if (await this.isPresent(Selectors.signIn.email)) {
-            detected.push('signIn');
-        }
-
-        if (await this.isPresent(Selectors.dashboard.startNewBooking)) {
-            detected.push('dashboard');
-        }
-        
-        const isScriptInjected = await this.page.evaluate(() => typeof window.GM_setValue !== 'undefined').catch(() => false);
-        if (!isScriptInjected) {
-            detected.push('injection');
-        }
-
-        detected.sort((a, b) => {
-            const prioA = this.mappedActions[a]?.priority ?? actionsConfig.default.priority;
-            const prioB = this.mappedActions[b]?.priority ?? actionsConfig.default.priority;
-            return prioA - prioB;
-        });
-
-        this.currentOrderedDom = [...detected];
-        return this.currentOrderedDom;
-    }
-
     cordinateActivitysQueue(scannedActions) {
         this.activitysQueue = scannedActions.filter(actionKey => {
             const dependencies = this.mappedActions[actionKey]?.dependencies || [];
+            
+            // Check if every dependency for this action exists in the completed tracker
             const allDependenciesMet = dependencies.every(dep => this.completedActivities.has(dep));
             const now = Date.now();
             if (!allDependenciesMet) {
+                // Log only if 10 seconds have elapsed since the last deferral log
                 if (now - this.lastDeferLogTime >= 10000) {
                     this.logStatus(`[Orchestrator] ⏸️ Deferring [${actionKey}] - Waiting on dependencies: ${dependencies.join(', ')}`);
                     this.lastDeferLogTime = now;
                 }
-                return false;
-            }
-            return true;
+                return false; // Remove from this cycle's execution queue
+                }
+            
+            return true; // Approved for execution
         });
     }
 
@@ -183,7 +183,7 @@ export class ChromeWorker extends BaseBrowser {
                 this.cordinateActivitysQueue(scannedActions);
 
                 if (this.activitysQueue.length === 0) {
-                    await new Promise(r => setTimeout(r, actionsConfig.default.startDelay));
+                    await new Promise(r => setTimeout(r, actionsConfig.default.startDelay)); // 👈 Fix
                     continue;
                 }
 
@@ -191,25 +191,25 @@ export class ChromeWorker extends BaseBrowser {
                 const actionMeta = this.mappedActions[currentActionKey];
 
                 if (actionMeta && typeof actionMeta.method === 'function') {
-                    if (actionMeta.startDelay > 0) await new Promise(r => setTimeout(r, actionMeta.startDelay));
+                    if (actionMeta.startDelay > 0) await new Promise(r => setTimeout(r, actionMeta.startDelay)); // 👈 Fix
                     
                     this.logStatus(`[Orchestrator] Executing action: [${currentActionKey}]`);
+                    
                     await actionMeta.method();
 
-                    if (actionMeta.endDelay > 0) await new Promise(r => setTimeout(r, actionMeta.endDelay));
+                    if (actionMeta.endDelay > 0) await new Promise(r => setTimeout(r, actionMeta.endDelay)); // 👈 Fix
                 } else {
-                    await new Promise(r => setTimeout(r, actionsConfig.default.startDelay));
+                    await new Promise(r => setTimeout(r, actionsConfig.default.startDelay)); // 👈 Fix
                 }
 
-                await new Promise(r => setTimeout(r, actionsConfig.default.endDelay));
+                await new Promise(r => setTimeout(r, actionsConfig.default.endDelay)); // 👈 Fix
 
             } catch (error) {
                 this.logError("orchestrator", `Loop Error: ${error.message}`);
-                await new Promise(r => setTimeout(r, actionsConfig.default.startDelay));
+                await new Promise(r => setTimeout(r, actionsConfig.default.startDelay)); // 👈 Fix
             }
         }
     }
-
     async cookiesHandler() {
         this.logStatus("[Worker] Processing cookies based on preferences...");
         try {
@@ -265,6 +265,7 @@ export class ChromeWorker extends BaseBrowser {
             ]);
 
             this.logStatus("[Worker] ✅ Sign-in submitted successfully.");
+
         } catch (error) {
             this.logError("signin", `Sign-in execution error: ${error.message}`);
         }
@@ -284,16 +285,7 @@ export class ChromeWorker extends BaseBrowser {
                 }
             });
 
-            // Fallback resolution: checks current working directory and project root
-            let absolutePath = path.resolve(process.cwd(), relativePath);
-            if (!fs.existsSync(absolutePath)) {
-                absolutePath = path.resolve(__dirname, '..', relativePath);
-            }
-
-            if (!fs.existsSync(absolutePath)) {
-                throw new Error(`Target script not found at ${absolutePath}`);
-            }
-
+            const absolutePath = path.resolve(process.cwd(), relativePath);
             const scriptContent = fs.readFileSync(absolutePath, 'utf-8');
             await this.page.addScriptTag({ content: scriptContent });
             this.logStatus(`[Worker] ✅ Extension script injected: ${relativePath}`);
@@ -306,5 +298,38 @@ export class ChromeWorker extends BaseBrowser {
         this.isOrchestratorRunning = false;
         this.closeBrowser();
         rl.close();
+    }
+}
+
+// Execution Block
+if (import.meta.main) {
+    const accounts = [
+        { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" },
+        // { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" },
+        // { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" }
+    ];
+
+    // 1. إنشاء الـ Workers في مصفوفة موحدة
+    const workers = accounts.map(acc => new ChromeWorker({
+        headless: false,
+        email: acc.email,
+        password: acc.password
+    }));
+
+    // 2. تشغيل كل المتصفحات في نفس الوقت بالتوازي
+    console.log(`[Main] Launching ${workers.length} browser instances concurrently...`);
+    await Promise.all(workers.map(worker => worker.launchBrowser()));
+
+    // 3. إدارة الإيقاف لجميع النسخ بنقرة واحدة
+    let terminate = false;
+    while (!terminate) {
+        const answer = await rl.question("VFS-bot:) ");
+        const command = answer.trim().toLowerCase();
+
+        if (terminationCmds.includes(command)) {
+            console.log("Shutting down all bots...");
+            workers.forEach(worker => worker.terminate());
+            terminate = true;
+        }
     }
 }

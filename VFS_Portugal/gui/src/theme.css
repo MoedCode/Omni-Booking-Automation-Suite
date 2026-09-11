@@ -1,4 +1,7 @@
-:root {
+/* gui/src/theme.css */
+
+/* --- Dark Theme Variables (Default) --- */
+.dark-theme {
     --bg-main: #0f172a;
     --bg-panel: #1e293b;
     --bg-row-hover: #334155;
@@ -6,11 +9,33 @@
     --text-main: #e2e8f0;
     --text-muted: #94a3b8;
     --border-color: #334155;
-    
-    --color-launch: #0ea5e9; /* Teal/Cyan */
-    --color-close: #f59e0b;  /* Orange */
-    --color-delete: #ef4444; /* Red */
-    --color-add: #10b981;    /* Green */
+    --table-header-bg: #0b1120;
+    --input-bg: #0f172a;
+    --modal-overlay: rgba(0, 0, 0, 0.75);
+
+    --color-launch: #0ea5e9;
+    --color-close: #f59e0b;
+    --color-delete: #ef4444;
+    --color-add: #10b981;
+}
+
+/* --- Light Theme Variables --- */
+.light-theme {
+    --bg-main: #f1f5f9;
+    --bg-panel: #ffffff;
+    --bg-row-hover: #f8fafc;
+    --bg-selected: #e0f2fe;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --border-color: #cbd5e1;
+    --table-header-bg: #e2e8f0;
+    --input-bg: #f8fafc;
+    --modal-overlay: rgba(15, 23, 42, 0.5);
+
+    --color-launch: #0284c7;
+    --color-close: #d97706;
+    --color-delete: #dc2626;
+    --color-add: #059669;
 }
 
 body {
@@ -26,9 +51,10 @@ body {
     height: 100vh;
     padding: 20px;
     box-sizing: border-box;
+    background-color: var(--bg-main);
+    transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-/* Header & Controls */
 .header-panel {
     background-color: var(--bg-panel);
     padding: 15px 20px;
@@ -51,21 +77,20 @@ body {
 
 .sheet-fetcher input {
     flex: 1;
-    background: var(--bg-main);
+    background: var(--input-bg);
     border: 1px solid var(--border-color);
     color: var(--text-main);
     padding: 8px 12px;
     border-radius: 4px;
 }
 
-/* Bulk Actions */
 .bulk-actions {
     display: flex;
     gap: 10px;
     margin-bottom: 15px;
 }
 
-/* Buttons */
+/* Action Buttons */
 button {
     border: none;
     border-radius: 4px;
@@ -73,10 +98,10 @@ button {
     cursor: pointer;
     font-weight: 600;
     color: white;
-    transition: opacity 0.2s;
+    transition: opacity 0.2s, background-color 0.2s;
 }
-button:hover:not(:disabled) { opacity: 0.8; }
-button:disabled { opacity: 0.3; cursor: not-allowed; }
+button:hover:not(:disabled) { opacity: 0.85; }
+button:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .btn-add { background-color: var(--color-add); }
 .btn-launch { background-color: var(--color-launch); }
@@ -84,58 +109,69 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 .btn-delete { background-color: var(--color-delete); }
 .btn-outline { 
     background-color: transparent; 
-    border: 1px solid var(--text-muted); 
+    border: 1px solid var(--border-color); 
     color: var(--text-main); 
 }
 
-.btn-sm {
-    padding: 4px 10px;
-    font-size: 0.85em;
-    border-radius: 3px;
+.theme-toggle-btn {
+    min-width: 85px;
 }
 
-/* Data Table */
+.btn-sm { padding: 4px 10px; font-size: 0.85em; border-radius: 3px; }
+
+/* Table Container & Sticky Elements */
 .table-container {
     flex: 1;
     background-color: var(--bg-panel);
     border-radius: 8px;
     border: 1px solid var(--border-color);
     overflow: auto;
+    max-width: 100%;
 }
 
 .data-table {
     width: 100%;
-    border-collapse: collapse;
+    min-width: 1150px;
+    border-collapse: separate;
+    border-spacing: 0;
     text-align: left;
 }
 
-.data-table th {
-    background-color: #0b1120;
-    color: var(--text-muted);
+.data-table th, .data-table td {
     padding: 12px;
-    font-size: 0.85em;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.9em;
+}
+
+.data-table th {
+    background-color: var(--table-header-bg);
+    color: var(--text-muted);
+    font-size: 0.82em;
     text-transform: uppercase;
     position: sticky;
     top: 0;
     z-index: 1;
 }
 
-.data-table td {
-    padding: 12px;
-    border-bottom: 1px solid var(--border-color);
-    font-size: 0.9em;
-}
-
 .data-table tr:hover { background-color: var(--bg-row-hover); }
 .data-table tr.selected-row { background-color: var(--bg-selected); }
 
-.status-cell {
-    color: var(--text-muted);
-    max-width: 250px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+.data-table th:last-child,
+.data-table td:last-child {
+    position: sticky;
+    right: 0;
+    background-color: var(--bg-panel);
+    border-left: 2px solid var(--border-color);
+    z-index: 2;
 }
+
+.data-table th:last-child {
+    background-color: var(--table-header-bg);
+    z-index: 3;
+}
+
+.data-table tr:hover td:last-child { background-color: var(--bg-row-hover); }
+.data-table tr.selected-row td:last-child { background-color: var(--bg-selected); }
 
 .action-cells {
     display: flex;
@@ -143,11 +179,119 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
     justify-content: center;
 }
 
-/* Modal */
+/* Status & Copy Elements */
+.flex-row-copy {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.copy-btn {
+    background: transparent;
+    border: none;
+    padding: 2px 4px;
+    font-size: 1.1em;
+    cursor: pointer;
+    filter: grayscale(100%);
+    opacity: 0.4;
+    transition: all 0.2s;
+}
+.copy-btn:hover {
+    filter: grayscale(0%);
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.status-text {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+    cursor: help;
+}
+
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: 3px 8px;
+    font-size: 0.78em;
+    border-radius: 12px;
+    font-weight: 600;
+}
+.badge-headless {
+    background-color: rgba(14, 165, 233, 0.15);
+    color: var(--color-launch);
+    border: 1px solid var(--color-launch);
+}
+.badge-headed {
+    background-color: rgba(245, 158, 11, 0.15);
+    color: var(--color-close);
+    border: 1px solid var(--color-close);
+}
+
+/* --- Drag/Slider Switch Styling --- */
+.toggle-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.toggle-title {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 22px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: var(--border-color);
+    transition: 0.3s;
+    border-radius: 22px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: var(--color-launch);
+}
+
+input:checked + .slider:before {
+    transform: translateX(22px);
+}
+
+/* --- Modal Styling --- */
 .modal-overlay {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.7);
+    background: var(--modal-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -156,23 +300,51 @@ button:disabled { opacity: 0.3; cursor: not-allowed; }
 
 .modal-content {
     background: var(--bg-panel);
-    padding: 20px;
+    padding: 24px;
     border-radius: 8px;
-    width: 400px;
+    width: 430px;
     border: 1px solid var(--border-color);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 1.25em;
+    color: var(--text-main);
 }
 
 .form-grid {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
     margin-bottom: 20px;
 }
 
-.form-grid input {
-    background: var(--bg-main);
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.form-group label {
+    font-size: 0.8em;
+    font-weight: 700;
+    color: var(--color-launch);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.form-group input {
+    background: var(--input-bg);
     border: 1px solid var(--border-color);
-    color: white;
+    color: var(--text-main);
     padding: 10px;
     border-radius: 4px;
 }
