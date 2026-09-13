@@ -65,20 +65,20 @@ ipcMain.handle('fetch-google-sheet', async (event, url) => {
 });
 
 // --- Bot IPC Handlers ---
-/* gui/main.js */
-/* gui/main.js */
+/* gui/main.js (Fragment) */
 
 ipcMain.on('launch-bots', async (event, instances) => {
     for (const instance of instances) {
         if (activeWorkers.has(instance.id)) continue;
 
-        // 👈 التأكد من أن القيمة (true / false) صريحة تماماً للمحرك
+        // Force strictly boolean parsing for Headless mode
         const isHeadless = instance.headless === true;
 
         const worker = new ChromeWorker({
             headless: isHeadless,
             email: instance.data.account,
-            password: instance.data.password
+            password: instance.data.password,
+            instanceData: instance.data // <-- Pass the full config here
         });
         
         worker.logStatus = (msg) => {

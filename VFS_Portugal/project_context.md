@@ -64,6 +64,14 @@ const Selectors = {
             elementType: "Button",
             text: ["Start New Booking", "New Booking"]
         }
+    },
+
+    appointmentDetails: {
+        // Core indicator that the Appointment Details page has loaded
+        centerDropdown: {
+            elementType: "Container",
+            selector: "mat-select[formcontrolname='centerCode']"
+        }
     }
 };
 
@@ -95,6 +103,14 @@ const allKeys = {
     }
 };
 
+// Default values applied if the user leaves fields blank in the GUI Hot Batch
+const defaultBatchConfig = {
+    country: "Egypt",
+    city: "Alexandria",
+    appointmentCategory: "Short Term Visa",
+    subCategory: "Tourism"
+};
+
 const terminationCmds = ["exit", "\\q", "q"];
 const BROWSER_ARGS = ['--start-maximized', '--no-sandbox', '--disable-setuid-sandbox'];
 const CHANNEL = '';
@@ -105,15 +121,16 @@ const actionsConfig = {
     cookies: { priority: 1, startDelay: 300, endDelay: 500 },
     captcha: { priority: 2, startDelay: 300, endDelay: 500 },
     signIn: { priority: 3, startDelay: 300, endDelay: 0 },
-    injection: { priority: 4, startDelay: 5000, endDelay: 1000 },
+    dashboard: { priority: 4, startDelay: 2000, endDelay: 2000 },
+    appointmentDetails: { priority: 5, startDelay: 1500, endDelay: 2000 },
     default: { priority: 99, startDelay: 100, endDelay: 100 }
 };
-
 
 const cookiesAcceptant = "Accept All"; 
 
 module.exports = {
     allKeys,
+    defaultBatchConfig,
     FILE_PATH,
     EgPtrLoginURL,
     BROWSER_ARGS, 
@@ -840,20 +857,23 @@ export class CaptchaHandler {
 
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { EgPtrLoginURL, BROWSER_ARGS, CHANNEL, terminationCmds, debug, actionsConfig, cookiesAcceptant } from '../Config/settings.js';
+import { EgPtrLoginURL, BROWSER_ARGS, CHANNEL, terminationCmds, debug, actionsConfig, cookiesAcceptant, defaultBatchConfig } from '../Config/settings.js';
 import Selectors from '../Config/Selectors.js';
 import { BaseBrowser } from './BaseBrowser.js';
 import { CaptchaHandler } from './captchaHandler.js';
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
-import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const rl = readline.createInterface({ input, output });
 puppeteer.use(StealthPlugin());
 
 export class ChromeWorker extends BaseBrowser {
-    constructor({ headless = true, targetUrl = EgPtrLoginURL, email, password } = {}) {
+    constructor({ headless = false, targetUrl = EgPtrLoginURL, email, password, instanceData } = {}) {
         super();
         this.targetUrl = targetUrl;
         this.headless = headless;
@@ -863,19 +883,25 @@ export class ChromeWorker extends BaseBrowser {
         this.email = email;
         this.password = password;
 
+        // Apply GUI Hot Batch data, falling back to global settings defaults if fields are empty
+        this.instanceData = {
+            city: instanceData?.city || defaultBatchConfig.city,
+            appointmentCategory: instanceData?.appointmentCategory || defaultBatchConfig.appointmentCategory,
+            subCategory: instanceData?.subCategory || defaultBatchConfig.subCategory
+        };
+
         this.isOrchestratorRunning = false;
         this.captchaHandler = new CaptchaHandler(this);
         this.lastDeferLogTime = 0;
-        // Inside ChromeWorker constructor
         this.completedActivities = new Set();
-        this.activitysQueue = []; // Holds the final approved queue
+        this.activitysQueue = [];
 
         this.mappedActions = {
             cookies: {
                 priority: actionsConfig.cookies.priority,
                 startDelay: actionsConfig.cookies.startDelay,
                 endDelay: actionsConfig.cookies.endDelay,
-                dependencies: [], // No dependencies
+                dependencies: [],
                 method: this.cookiesHandler.bind(this)
             },
             captcha: {
@@ -888,37 +914,38 @@ export class ChromeWorker extends BaseBrowser {
                     if (success) this.completedActivities.add('captcha');
                 }
             },
-            dashboard: {
-                priority: 5, // Automatically runs after login
-                startDelay: 1000,
-                endDelay: 5000,
-                dependencies: ['signIn'],
-                method: async () => {
-                    this.logStatus("[Orchestrator] Dashboard active. Awaiting bookings pipeline...");
-                }
-            },
             signIn: {
                 priority: actionsConfig.signIn.priority,
                 startDelay: actionsConfig.signIn.startDelay,
                 endDelay: actionsConfig.signIn.endDelay,
-                dependencies: [], // Captcha handles itself dynamically, but you could add it here if preferred
+                dependencies: [],
                 method: async () => {
                     await this.signIn();
-                    this.completedActivities.add('signIn'); // 👈 FIX: Mark as completed
+                    this.completedActivities.add('signIn');
                 }
             },
-            injection: {
-                priority: actionsConfig.injection.priority,
-                startDelay: actionsConfig.injection.startDelay,
-                endDelay: actionsConfig.injection.endDelay,
-                dependencies: ['signIn'], // HARD DEPENDENCY: signIn MUST be completed first
+            dashboard: {
+                priority: actionsConfig.dashboard.priority,
+                startDelay: actionsConfig.dashboard.startDelay,
+                endDelay: actionsConfig.dashboard.endDelay,
+                dependencies: ['signIn'],
                 method: async () => {
-                    await this.injection('./customer_script.js');
-                    this.completedActivities.add('injection');
+                    this.logStatus("[Dashboard] Executing external click on 'Start New Booking'...");
+                    await this.clickByDescriptor(Selectors.dashboard.startNewBooking);
+                    this.completedActivities.add('dashboard');
+                }
+            },
+            appointmentDetails: {
+                priority: actionsConfig.appointmentDetails.priority,
+                startDelay: actionsConfig.appointmentDetails.startDelay,
+                endDelay: actionsConfig.appointmentDetails.endDelay,
+                dependencies: ['dashboard'],
+                method: async () => {
+                    await this.injectSmartFormFiller(this.instanceData);
+                    this.completedActivities.add('appointmentDetails');
                 }
             }
         };
-                // 📋 Current Ordered DOM Action Queue
         this.currentOrderedDom = [];
     }
 
@@ -926,11 +953,15 @@ export class ChromeWorker extends BaseBrowser {
         try {
             this.logStatus(`[Worker] Launching browser (Headless: ${this.headless})...`);
 
+            const activeArgs = this.headless 
+                ? this.browserArgs.filter(arg => arg !== '--start-maximized') 
+                : this.browserArgs;
+
             this.browser = await puppeteer.launch({
-                headless: this.headless,
-                channel: this.channel,
+                headless: this.headless ? 'new' : false, 
+                channel: this.channel ? this.channel : undefined,
                 defaultViewport: null,
-                args: this.browserArgs
+                args: activeArgs
             });
 
             const pages = await this.browser.pages();
@@ -938,12 +969,38 @@ export class ChromeWorker extends BaseBrowser {
 
             await this.page.setBypassCSP(true);
 
+            // =====================================================================
+            // Module 1: Continuous Page Title Modifier (Evaluated on every navigation)
+            // =====================================================================
+            await this.page.evaluateOnNewDocument((accountEmail) => {
+                const prefix = `[${accountEmail}] `;
+                
+                const enforcePageTitle = () => {
+                    if (document.title && !document.title.startsWith(prefix)) {
+                        // Strip existing bracketed tags to avoid nested prefix duplication
+                        const cleanTitle = document.title.replace(/^\[.*?\]\s*/, '');
+                        document.title = prefix + cleanTitle;
+                    }
+                };
+
+                // Trigger title update when DOM is parsed
+                window.addEventListener('DOMContentLoaded', () => {
+                    enforcePageTitle();
+                    
+                    // Attach a MutationObserver to the <title> tag for Angular SPA routing modifications
+                    const titleElement = document.querySelector('title');
+                    if (titleElement) {
+                        new MutationObserver(enforcePageTitle).observe(titleElement, { childList: true, characterData: true, subtree: true });
+                    }
+                });
+                
+                // Redundant interval loop to guarantee title persistence if Angular entirely replaces the <title> tag
+                setInterval(enforcePageTitle, 1000);
+            }, this.email);
+
             this.logStatus("[Worker] Navigating to target portal...");
             await this.page.goto(this.targetUrl, { waitUntil: 'domcontentloaded' });
             this.logStatus("[Worker] Page loaded successfully.");
-
-            // Removed hardcoded injection here. Orchestrator handles it now.
-            // Bun.sleepSync(3000);
 
             this.startOrchestrator();
 
@@ -953,60 +1010,56 @@ export class ChromeWorker extends BaseBrowser {
     }
 
     async domScanner() {
-            if (!this.page) return [];
-            const detected = [];
+        if (!this.page) return [];
+        const detected = [];
 
-            if (await this.isPresent(Selectors.common.cookieBanner.container)) {
-                detected.push('cookies');
-            }
-
-            if (await this.captchaHandler.isPresent()) {
-                const resolved = await this.captchaHandler.isResolved();
-                if (!resolved) detected.push('captcha');
-            }
-
-            if (await this.isPresent(Selectors.signIn.email)) {
-                detected.push('signIn');
-            }
-
-            // 👈 FIX: Detect the Dashboard
-            if (await this.isPresent(Selectors.dashboard.startNewBooking)) {
-                detected.push('dashboard');
-            }
-            
-            // Detect if injection is needed by checking if the polyfill exists
-            const isScriptInjected = await this.page.evaluate(() => typeof window.GM_setValue !== 'undefined').catch(() => false);
-            if (!isScriptInjected) {
-                detected.push('injection');
-            }
-
-            // Sort actions dynamically based on mapped configuration priorities
-            detected.sort((a, b) => {
-                const prioA = this.mappedActions[a]?.priority ?? actionsConfig.default.priority;
-                const prioB = this.mappedActions[b]?.priority ?? actionsConfig.default.priority;
-                return prioA - prioB;
-            });
-
-            this.currentOrderedDom = [...detected];
-            return this.currentOrderedDom;
+        if (await this.isPresent(Selectors.common.cookieBanner.container)) {
+            detected.push('cookies');
         }
+
+        if (await this.captchaHandler.isPresent()) {
+            const resolved = await this.captchaHandler.isResolved();
+            if (!resolved) detected.push('captcha');
+        }
+
+        if (await this.isPresent(Selectors.signIn.email)) {
+            detected.push('signIn');
+        }
+
+        // Detect Dashboard view based on the presence of the Start New Booking button
+        if (await this.isPresent(Selectors.dashboard.startNewBooking)) {
+            detected.push('dashboard');
+        }
+        
+        // Detect Appointment Details view based on the presence of the Angular center dropdown
+        if (await this.isPresent(Selectors.appointmentDetails.centerDropdown)) {
+            detected.push('appointmentDetails');
+        }
+
+        detected.sort((a, b) => {
+            const prioA = this.mappedActions[a]?.priority ?? actionsConfig.default.priority;
+            const prioB = this.mappedActions[b]?.priority ?? actionsConfig.default.priority;
+            return prioA - prioB;
+        });
+
+        this.currentOrderedDom = [...detected];
+        return this.currentOrderedDom;
+    }
+
     cordinateActivitysQueue(scannedActions) {
         this.activitysQueue = scannedActions.filter(actionKey => {
             const dependencies = this.mappedActions[actionKey]?.dependencies || [];
-            
-            // Check if every dependency for this action exists in the completed tracker
             const allDependenciesMet = dependencies.every(dep => this.completedActivities.has(dep));
             const now = Date.now();
+            
             if (!allDependenciesMet) {
-                // Log only if 10 seconds have elapsed since the last deferral log
                 if (now - this.lastDeferLogTime >= 10000) {
                     this.logStatus(`[Orchestrator] ⏸️ Deferring [${actionKey}] - Waiting on dependencies: ${dependencies.join(', ')}`);
                     this.lastDeferLogTime = now;
                 }
-                return false; // Remove from this cycle's execution queue
-                }
-            
-            return true; // Approved for execution
+                return false;
+            }
+            return true;
         });
     }
 
@@ -1020,7 +1073,7 @@ export class ChromeWorker extends BaseBrowser {
                 this.cordinateActivitysQueue(scannedActions);
 
                 if (this.activitysQueue.length === 0) {
-                    await new Promise(r => setTimeout(r, actionsConfig.default.startDelay)); // 👈 Fix
+                    await new Promise(r => setTimeout(r, 500));
                     continue;
                 }
 
@@ -1028,25 +1081,25 @@ export class ChromeWorker extends BaseBrowser {
                 const actionMeta = this.mappedActions[currentActionKey];
 
                 if (actionMeta && typeof actionMeta.method === 'function') {
-                    if (actionMeta.startDelay > 0) await new Promise(r => setTimeout(r, actionMeta.startDelay)); // 👈 Fix
+                    if (actionMeta.startDelay > 0) await new Promise(r => setTimeout(r, actionMeta.startDelay));
                     
                     this.logStatus(`[Orchestrator] Executing action: [${currentActionKey}]`);
-                    
                     await actionMeta.method();
 
-                    if (actionMeta.endDelay > 0) await new Promise(r => setTimeout(r, actionMeta.endDelay)); // 👈 Fix
+                    if (actionMeta.endDelay > 0) await new Promise(r => setTimeout(r, actionMeta.endDelay));
                 } else {
-                    await new Promise(r => setTimeout(r, actionsConfig.default.startDelay)); // 👈 Fix
+                    await new Promise(r => setTimeout(r, 500));
                 }
 
-                await new Promise(r => setTimeout(r, actionsConfig.default.endDelay)); // 👈 Fix
+                await new Promise(r => setTimeout(r, 500));
 
             } catch (error) {
                 this.logError("orchestrator", `Loop Error: ${error.message}`);
-                await new Promise(r => setTimeout(r, actionsConfig.default.startDelay)); // 👈 Fix
+                await new Promise(r => setTimeout(r, 1000));
             }
         }
     }
+
     async cookiesHandler() {
         this.logStatus("[Worker] Processing cookies based on preferences...");
         try {
@@ -1102,32 +1155,99 @@ export class ChromeWorker extends BaseBrowser {
             ]);
 
             this.logStatus("[Worker] ✅ Sign-in submitted successfully.");
-
         } catch (error) {
             this.logError("signin", `Sign-in execution error: ${error.message}`);
         }
     }
 
-    async injection(relativePath) {
+    // =====================================================================
+    // Module 2: Smart Angular DOM Automator
+    // =====================================================================
+    /**
+     * Injects an execution block directly into the page context to handle Angular dropdowns.
+     * This relies strictly on element innerText parsing to map the Hot Batch config to the UI options.
+     */
+    async injectSmartFormFiller(config) {
+        this.logStatus("[Appointment Details] Injecting smart Angular form logic...");
+        
         try {
-            await this.page.evaluate(() => {
-                if (typeof window.GM_setValue === 'undefined') {
-                    window.GM_setValue = (k, v) => localStorage.setItem('VFS_TM_' + k, v);
-                    window.GM_getValue = (k, d) => localStorage.getItem('VFS_TM_' + k) || d;
-                    window.GM_addStyle = (css) => {
-                        const style = document.createElement('style');
-                        style.textContent = css;
-                        document.head.appendChild(style);
-                    };
-                }
-            });
+            await this.page.evaluate(async (cfg) => {
+                
+                // Utility to pause script execution without blocking the main browser thread
+                const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-            const absolutePath = path.resolve(process.cwd(), relativePath);
-            const scriptContent = fs.readFileSync(absolutePath, 'utf-8');
-            await this.page.addScriptTag({ content: scriptContent });
-            this.logStatus(`[Worker] ✅ Extension script injected: ${relativePath}`);
+                /**
+                 * Interacts with an Angular Material select element by matching internal text.
+                 * @param {string} controlName - The exact 'formcontrolname' attribute of the target dropdown.
+                 * @param {string} targetText - The specific string to search for within the dropdown options.
+                 * @returns {boolean} - Returns true if the option is found and clicked, or if it is already selected.
+                 */
+                const selectDropdownByText = async (controlName, targetText) => {
+                    // Bypass interaction safely if the user did not provide a configuration value
+                    if (!targetText || targetText.trim() === '') return true; 
+                    
+                    const trigger = document.querySelector(`mat-select[formcontrolname="${controlName}"]`);
+                    if (!trigger) return false;
+
+                    // 1. Verify if the target value is already the active selection
+                    const selectedValueSpan = trigger.querySelector('.mat-mdc-select-value-text');
+                    if (selectedValueSpan && selectedValueSpan.innerText.toLowerCase().includes(targetText.toLowerCase())) {
+                        return true; 
+                    }
+
+                    // 2. Dispatch a click event to render the CDK overlay panel containing the options
+                    trigger.click();
+                    await sleep(800); // Allow Angular animation to render the DOM elements
+
+                    // 3. Locate the dynamically injected overlay panel
+                    const panelId = trigger.getAttribute('aria-controls');
+                    const panel = document.getElementById(panelId) || document.querySelector('.mat-mdc-select-panel');
+                    
+                    if (!panel) return false;
+
+                    // 4. Retrieve all available options and filter them via innerText mapping
+                    const options = Array.from(panel.querySelectorAll('mat-option'));
+                    const targetOption = options.find(opt => 
+                        opt.innerText && opt.innerText.toLowerCase().includes(targetText.toLowerCase())
+                    );
+
+                    if (targetOption) {
+                        targetOption.click();
+                        await sleep(1000); // Delay for backend HTTP calls triggered by the selection
+                        return true;
+                    } else {
+                        // Click outside to collapse the panel if no matching text is discovered
+                        document.body.click(); 
+                        await sleep(500);
+                        return false;
+                    }
+                };
+
+                // Sequential Execution Pipeline: Ensure strict chronological execution of dependent dropdowns
+                const isCityDone = await selectDropdownByText('centerCode', cfg.city);
+                if (isCityDone) {
+                    const isCatDone = await selectDropdownByText('selectedSubvisaCategory', cfg.appointmentCategory);
+                    if (isCatDone) {
+                        const isSubCatDone = await selectDropdownByText('visaCategoryCode', cfg.subCategory);
+                        
+                        // Proceed to submit the form once all parameters are successfully mapped
+                        if (isSubCatDone) {
+                            const continueBtn = Array.from(document.querySelectorAll('button')).find(b => 
+                                b.innerText && b.innerText.includes('Continue')
+                            );
+                            if (continueBtn && !continueBtn.disabled) {
+                                continueBtn.click();
+                            }
+                        }
+                    }
+                }
+
+            }, config);
+
+            this.logStatus("[Appointment Details] ✅ Form configuration dynamically injected and executed.");
+
         } catch (error) {
-            this.logError("injection", `Script injection failed: ${error.message}`);
+            this.logError("appointmentDetails", `Smart injection execution failed: ${error.message}`);
         }
     }
 
@@ -1135,39 +1255,6 @@ export class ChromeWorker extends BaseBrowser {
         this.isOrchestratorRunning = false;
         this.closeBrowser();
         rl.close();
-    }
-}
-
-// Execution Block
-if (import.meta.main) {
-    const accounts = [
-        { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" },
-        // { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" },
-        // { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" }
-    ];
-
-    // 1. إنشاء الـ Workers في مصفوفة موحدة
-    const workers = accounts.map(acc => new ChromeWorker({
-        headless: false,
-        email: acc.email,
-        password: acc.password
-    }));
-
-    // 2. تشغيل كل المتصفحات في نفس الوقت بالتوازي
-    console.log(`[Main] Launching ${workers.length} browser instances concurrently...`);
-    await Promise.all(workers.map(worker => worker.launchBrowser()));
-
-    // 3. إدارة الإيقاف لجميع النسخ بنقرة واحدة
-    let terminate = false;
-    while (!terminate) {
-        const answer = await rl.question("VFS-bot:) ");
-        const command = answer.trim().toLowerCase();
-
-        if (terminationCmds.includes(command)) {
-            console.log("Shutting down all bots...");
-            workers.forEach(worker => worker.terminate());
-            terminate = true;
-        }
     }
 }
 ```
@@ -1273,127 +1360,105 @@ if __name__ == "__main__":
 ```
 ## *injection.js*
 ```javascript
-/* Omni-Booking-Automation-Suite/VFS_Portugal/Browsers/injection.js*/
-```
-## *run.js*
-```javascript
-/* Omni-Booking-Automation-Suite/VFS_Portugal/run.js */
+/* Omni-Booking-Automation-Suite/VFS_Portugal/Browsers/injection.js */
 
-import { fork } from 'node:child_process';
-import readline from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
-import { terminationCmds } from './Config/settings.js';
-import { ChromeWorker } from './Browsers/chrome.js';
+(function () {
+    // Prevent multiple injections
+    if (window.__VFS_BOT_INJECTED__) return;
+    window.__VFS_BOT_INJECTED__ = true;
 
-// ==========================================
-// 1. WORKER PROCESS (Isolated Child)
-// ==========================================
-if (process.env.IS_CHILD_WORKER === 'true') {
-    let currentWorker = null;
+    // Load configuration passed from ChromeWorker
+    const config = window.BOT_CONFIG || {};
 
-    process.on('message', async (data) => {
-        if (data.action === 'START') {
-            const { account } = data;
+    /**
+     * Module 1: Continuous Page Title Modifier
+     * Prepend the account email to the page title regardless of Angular routing.
+     */
+    const updateTitle = () => {
+        const prefix = `[${config.account || 'BOT'}] `;
+        if (document.title && !document.title.startsWith(prefix)) {
+            // Strip any existing brackets to prevent duplication
+            document.title = prefix + document.title.replace(/^\[.*?\]\s*/, '');
+        }
+    };
 
-            currentWorker = new ChromeWorker({
-                headless: false,
-                email: account.email,
-                password: account.password
-            });
+    // Aggressively observe DOM `<title>` changes
+    const titleObserver = new MutationObserver(updateTitle);
+    const titleEl = document.querySelector('title');
+    if (titleEl) {
+        titleObserver.observe(titleEl, { childList: true, characterData: true, subtree: true });
+    }
+    // Fallback interval to guarantee title injection on full page reloads
+    setInterval(updateTitle, 1000);
 
-            // إعادة توجيه الـ Logs للعملية الرئيسية عبر قناة IPC
-            currentWorker.logStatus = (msg) => {
-                if (process.send) {
-                    process.send({ type: 'log', message: msg });
+
+    /**
+     * Module 2: Angular DOM Automator
+     * Scans for expected views and interacts with elements based on BOT_CONFIG
+     */
+    setInterval(() => {
+        
+        // --- View A: Dashboard ---
+        const startBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.includes('Start New Booking'));
+        if (startBtn && !startBtn.disabled && window.getComputedStyle(startBtn).display !== 'none') {
+            startBtn.click();
+        }
+
+        // --- View B: Appointment Details ---
+        const header = document.querySelector('h1');
+        if (header && header.innerText.includes('Appointment Details')) {
+            
+            // Helper function to handle Angular mat-select interactions
+            const selectDropdown = (formControlName, targetText) => {
+                if (!targetText) return false;
+                
+                const trigger = document.querySelector(`mat-select[formcontrolname="${formControlName}"]`);
+                if (!trigger) return false;
+
+                const valueSpan = trigger.querySelector('.mat-mdc-select-value-text');
+                const currentValue = valueSpan ? valueSpan.innerText : '';
+                
+                // Return true if the required value is already selected
+                if (currentValue.toLowerCase().includes(targetText.toLowerCase())) {
+                    return true; 
                 }
+                
+                const panelId = trigger.getAttribute('aria-controls');
+                const panel = document.getElementById(panelId);
+                
+                if (!panel) {
+                    // Open the dropdown panel
+                    trigger.click(); 
+                } else {
+                    // Search for the matching mat-option and click it
+                    const options = Array.from(panel.querySelectorAll('mat-option'));
+                    const targetOpt = options.find(opt => opt.innerText.toLowerCase().includes(targetText.toLowerCase()));
+                    if (targetOpt) {
+                        targetOpt.click();
+                    }
+                }
+                return false;
             };
 
-            try {
-                await currentWorker.launchBrowser();
-            } catch (err) {
-                if (process.send) {
-                    process.send({ type: 'log', message: `❌ Process Error: ${err.message}` });
+            // Process dropdowns sequentially to prevent UI overlap failures
+            const isCenterDone = selectDropdown('centerCode', config.city);
+            if (isCenterDone) {
+                const isCatDone = selectDropdown('selectedSubvisaCategory', config.appointmentCategory);
+                if (isCatDone) {
+                    const isSubCatDone = selectDropdown('visaCategoryCode', config.subCategory);
+                    
+                    if (isSubCatDone) {
+                        const continueBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.includes('Continue'));
+                        if (continueBtn && !continueBtn.disabled) {
+                            continueBtn.click();
+                        }
+                    }
                 }
             }
         }
+    }, 1500); 
 
-        if (data.action === 'TERMINATE') {
-            if (currentWorker) {
-                currentWorker.terminate();
-            }
-            process.exit(0);
-        }
-    });
-} 
-
-// ==========================================
-// 2. MAIN PROCESS (CLI & Supervisor)
-// ==========================================
-else {
-    const rl = readline.createInterface({ input, output });
-
-    // ضع الحسابات التي تريد تشغيلها هنا
-    const accounts = [
-        { email: "sirmohamedh@gmail.com", password: "Moed!vsfG@26" },
-        // { email: "account2@gmail.com", password: "Password2@" },
-    ];
-
-    console.log(`\n🚀 [Main Process] Spawning ${accounts.length} independent OS Process(es)...\n`);
-
-    const childProcesses = [];
-
-    for (let i = 0; i < accounts.length; i++) {
-        const account = accounts[i];
-        const index = i + 1;
-
-        // تشغيل نفس الملف في Process فرعي جديد تماماً ومعزول
-        const child = fork(process.argv[1], [], {
-            env: { ...process.env, IS_CHILD_WORKER: 'true' },
-            stdio: ['ignore', 'inherit', 'inherit', 'ipc'] // 'ignore' يمنع الـ child من لمس الـ stdin
-        });
-
-        // استقبال وطباعة الرسائل من الـ Worker
-        child.on('message', (data) => {
-            if (data.type === 'log') {
-                console.log(`[Worker-${index} | ${account.email}] ${data.message}`);
-            }
-        });
-
-        // إرسال أمر البدء
-        child.send({ action: 'START', account });
-        childProcesses.push(child);
-
-        // فاصل زمني لتفادي صدمة فتح متصفحات متعددة في نفس الثانية
-        if (i < accounts.length - 1) {
-            await new Promise(r => setTimeout(r, 3000));
-        }
-    }
-
-    // إدارة الإيقاف الفوري لجميع الـ Processes من الـ Main
-    let terminate = false;
-    while (!terminate) {
-        const answer = await rl.question("\nVFS-bot (type 'q' or 'exit' to stop all): ");
-        const command = answer.trim().toLowerCase();
-
-        if (terminationCmds.includes(command)) {
-            console.log("\n🛑 [Main Process] Terminating all browser instances...");
-            for (const child of childProcesses) {
-                child.send({ action: 'TERMINATE' });
-            }
-
-            // إعطاء مهلة ثانية واحدة للإغلاق النظيف ثم إنهاء العملية
-            setTimeout(() => {
-                for (const child of childProcesses) {
-                    try { child.kill(); } catch {}
-                }
-                rl.close();
-                process.exit(0);
-            }, 1000);
-
-            terminate = true;
-        }
-    }
-}
+})();
 ```
 
 ------------------------------------------------
@@ -2337,18 +2402,20 @@ ipcMain.handle('fetch-google-sheet', async (event, url) => {
 });
 
 // --- Bot IPC Handlers ---
-/* gui/main.js */
+/* gui/main.js (Fragment) */
+
 ipcMain.on('launch-bots', async (event, instances) => {
     for (const instance of instances) {
         if (activeWorkers.has(instance.id)) continue;
 
-        // Dynamic headless resolution (defaults to true)
-        const isHeadless = instance.headless !== undefined ? instance.headless : true;
+        // Force strictly boolean parsing for Headless mode
+        const isHeadless = instance.headless === true;
 
         const worker = new ChromeWorker({
             headless: isHeadless,
             email: instance.data.account,
-            password: instance.data.password
+            password: instance.data.password,
+            instanceData: instance.data // <-- Pass the full config here
         });
         
         worker.logStatus = (msg) => {
@@ -2883,7 +2950,7 @@ export default function App() {
                 <div className="modal-overlay" onClick={cancelEdit}>
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h3>{editingId === 'NEW' ? 'Add New Instance' : 'Edit Instance'}</h3>
+                            <h3>{editingId === 'NEW' ? 'Hot Batch New' : 'Hot Batch Edit'}</h3>
                             
                             {/* Instance Headless Switch */}
                             <div className="toggle-wrapper">

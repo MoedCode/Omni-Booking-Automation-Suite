@@ -9,7 +9,7 @@
 // @grant        GM_getValue
 // @grant        GM_addStyle
 // ==/UserScript==
-
+/*
 (function () {
     'use strict';
 
@@ -820,3 +820,4 @@
     addLog("📋 Step 3: تأكد من الأكواد في الخانات، ثم اضغط 'Start Booking'.");
 
 })();
+*/

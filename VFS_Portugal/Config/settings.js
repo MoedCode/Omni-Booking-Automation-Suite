@@ -22,6 +22,14 @@ const allKeys = {
     }
 };
 
+// Default values applied if the user leaves fields blank in the GUI Hot Batch
+const defaultBatchConfig = {
+    country: "Egypt",
+    city: "Alexandria",
+    appointmentCategory: "Short Term Visa",
+    subCategory: "Tourism"
+};
+
 const terminationCmds = ["exit", "\\q", "q"];
 const BROWSER_ARGS = ['--start-maximized', '--no-sandbox', '--disable-setuid-sandbox'];
 const CHANNEL = '';
@@ -32,15 +40,16 @@ const actionsConfig = {
     cookies: { priority: 1, startDelay: 300, endDelay: 500 },
     captcha: { priority: 2, startDelay: 300, endDelay: 500 },
     signIn: { priority: 3, startDelay: 300, endDelay: 0 },
-    injection: { priority: 4, startDelay: 5000, endDelay: 1000 },
+    dashboard: { priority: 4, startDelay: 2000, endDelay: 2000 },
+    appointmentDetails: { priority: 5, startDelay: 1500, endDelay: 2000 },
     default: { priority: 99, startDelay: 100, endDelay: 100 }
 };
-
 
 const cookiesAcceptant = "Accept All"; 
 
 module.exports = {
     allKeys,
+    defaultBatchConfig,
     FILE_PATH,
     EgPtrLoginURL,
     BROWSER_ARGS, 

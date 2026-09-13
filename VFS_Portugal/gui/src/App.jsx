@@ -228,7 +228,7 @@ export default function App() {
                 <div className="modal-overlay" onClick={cancelEdit}>
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h3>{editingId === 'NEW' ? 'Add New Instance' : 'Edit Instance'}</h3>
+                            <h3>{editingId === 'NEW' ? 'Hot Batch New' : 'Hot Batch Edit'}</h3>
                             
                             {/* Instance Headless Switch */}
                             <div className="toggle-wrapper">

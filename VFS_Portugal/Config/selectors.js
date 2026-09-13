@@ -60,6 +60,14 @@ const Selectors = {
             elementType: "Button",
             text: ["Start New Booking", "New Booking"]
         }
+    },
+
+    appointmentDetails: {
+        // Core indicator that the Appointment Details page has loaded
+        centerDropdown: {
+            elementType: "Container",
+            selector: "mat-select[formcontrolname='centerCode']"
+        }
     }
 };
 
