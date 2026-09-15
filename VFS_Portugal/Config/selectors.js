@@ -62,11 +62,14 @@ const Selectors = {
         }
     },
 
-    appointmentDetails: {
-        // Core indicator that the Appointment Details page has loaded
+appointmentDetails: {
         centerDropdown: {
             elementType: "Container",
             selector: "mat-select[formcontrolname='centerCode']"
+        },
+        alertBox: {
+            elementType: "Container",
+            selector: "div[role='alert']"
         }
     }
 };

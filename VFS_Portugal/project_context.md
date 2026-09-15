@@ -66,11 +66,14 @@ const Selectors = {
         }
     },
 
-    appointmentDetails: {
-        // Core indicator that the Appointment Details page has loaded
+appointmentDetails: {
         centerDropdown: {
             elementType: "Container",
             selector: "mat-select[formcontrolname='centerCode']"
+        },
+        alertBox: {
+            elementType: "Container",
+            selector: "div[role='alert']"
         }
     }
 };
@@ -883,7 +886,6 @@ export class ChromeWorker extends BaseBrowser {
         this.email = email;
         this.password = password;
 
-        // Apply GUI Hot Batch data, falling back to global settings defaults if fields are empty
         this.instanceData = {
             city: instanceData?.city || defaultBatchConfig.city,
             appointmentCategory: instanceData?.appointmentCategory || defaultBatchConfig.appointmentCategory,
@@ -941,7 +943,25 @@ export class ChromeWorker extends BaseBrowser {
                 endDelay: actionsConfig.appointmentDetails.endDelay,
                 dependencies: ['dashboard'],
                 method: async () => {
-                    await this.injectSmartFormFiller(this.instanceData);
+                    // 1. Inject and execute the form dropdown mapper
+                    const formFilledSuccessfully = await this.injectSmartFormFiller(this.instanceData);
+                    
+                    if (formFilledSuccessfully) {
+                        this.logStatus("[Appointment Details] Submitting details...");
+                        
+                        // 2. Click the 'Continue' button natively via Puppeteer (bypasses Angular evaluate quirks)
+                        const btn = await this.findButton(Selectors.appointmentDetails.continueButton);
+                        if (btn) {
+                            // Safely wait for the button to become enabled before clicking
+                            await this.page.waitForFunction(b => !b.disabled, { timeout: 15000 }, btn);
+                            await btn.click();
+                            
+                            // 3. Initiate the alert observer
+                            await this.checkAppointmentAvailability();
+                        } else {
+                            this.logWarning("appointmentDetails", "Continue button not found in the DOM.");
+                        }
+                    }
                     this.completedActivities.add('appointmentDetails');
                 }
             }
@@ -970,31 +990,26 @@ export class ChromeWorker extends BaseBrowser {
             await this.page.setBypassCSP(true);
 
             // =====================================================================
-            // Module 1: Continuous Page Title Modifier (Evaluated on every navigation)
+            // Module 1: Continuous Page Title Modifier
             // =====================================================================
             await this.page.evaluateOnNewDocument((accountEmail) => {
                 const prefix = `[${accountEmail}] `;
                 
                 const enforcePageTitle = () => {
                     if (document.title && !document.title.startsWith(prefix)) {
-                        // Strip existing bracketed tags to avoid nested prefix duplication
                         const cleanTitle = document.title.replace(/^\[.*?\]\s*/, '');
                         document.title = prefix + cleanTitle;
                     }
                 };
 
-                // Trigger title update when DOM is parsed
                 window.addEventListener('DOMContentLoaded', () => {
                     enforcePageTitle();
-                    
-                    // Attach a MutationObserver to the <title> tag for Angular SPA routing modifications
                     const titleElement = document.querySelector('title');
                     if (titleElement) {
                         new MutationObserver(enforcePageTitle).observe(titleElement, { childList: true, characterData: true, subtree: true });
                     }
                 });
                 
-                // Redundant interval loop to guarantee title persistence if Angular entirely replaces the <title> tag
                 setInterval(enforcePageTitle, 1000);
             }, this.email);
 
@@ -1026,19 +1041,17 @@ export class ChromeWorker extends BaseBrowser {
             detected.push('signIn');
         }
 
-        // Detect Dashboard view based on the presence of the Start New Booking button
         if (await this.isPresent(Selectors.dashboard.startNewBooking)) {
             detected.push('dashboard');
         }
         
-        // Detect Appointment Details view based on the presence of the Angular center dropdown
         if (await this.isPresent(Selectors.appointmentDetails.centerDropdown)) {
             detected.push('appointmentDetails');
         }
 
         detected.sort((a, b) => {
-            const prioA = this.mappedActions[a]?.priority ?? actionsConfig.default.priority;
-            const prioB = this.mappedActions[b]?.priority ?? actionsConfig.default.priority;
+            const prioA = this.mappedActions[a]?.priority ?? 99;
+            const prioB = this.mappedActions[b]?.priority ?? 99;
             return prioA - prioB;
         });
 
@@ -1161,51 +1174,43 @@ export class ChromeWorker extends BaseBrowser {
     }
 
     // =====================================================================
-    // Module 2: Smart Angular DOM Automator
+    // Component: Smart Angular Form Automator
     // =====================================================================
-    /**
-     * Injects an execution block directly into the page context to handle Angular dropdowns.
-     * This relies strictly on element innerText parsing to map the Hot Batch config to the UI options.
-     */
     async injectSmartFormFiller(config) {
         this.logStatus("[Appointment Details] Injecting smart Angular form logic...");
         
         try {
-            await this.page.evaluate(async (cfg) => {
-                
-                // Utility to pause script execution without blocking the main browser thread
+            return await this.page.evaluate(async (cfg) => {
                 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-                /**
-                 * Interacts with an Angular Material select element by matching internal text.
-                 * @param {string} controlName - The exact 'formcontrolname' attribute of the target dropdown.
-                 * @param {string} targetText - The specific string to search for within the dropdown options.
-                 * @returns {boolean} - Returns true if the option is found and clicked, or if it is already selected.
-                 */
+                const waitForLoader = async () => {
+                    let loader = document.querySelector('ngx-ui-loader .ngx-overlay');
+                    while (loader && window.getComputedStyle(loader).display !== 'none' && loader.offsetHeight > 0) {
+                        await sleep(500);
+                        loader = document.querySelector('ngx-ui-loader .ngx-overlay');
+                    }
+                };
+
                 const selectDropdownByText = async (controlName, targetText) => {
-                    // Bypass interaction safely if the user did not provide a configuration value
                     if (!targetText || targetText.trim() === '') return true; 
                     
                     const trigger = document.querySelector(`mat-select[formcontrolname="${controlName}"]`);
                     if (!trigger) return false;
 
-                    // 1. Verify if the target value is already the active selection
                     const selectedValueSpan = trigger.querySelector('.mat-mdc-select-value-text');
                     if (selectedValueSpan && selectedValueSpan.innerText.toLowerCase().includes(targetText.toLowerCase())) {
                         return true; 
                     }
 
-                    // 2. Dispatch a click event to render the CDK overlay panel containing the options
+                    await waitForLoader();
                     trigger.click();
-                    await sleep(800); // Allow Angular animation to render the DOM elements
+                    await sleep(800); 
 
-                    // 3. Locate the dynamically injected overlay panel
                     const panelId = trigger.getAttribute('aria-controls');
                     const panel = document.getElementById(panelId) || document.querySelector('.mat-mdc-select-panel');
                     
                     if (!panel) return false;
 
-                    // 4. Retrieve all available options and filter them via innerText mapping
                     const options = Array.from(panel.querySelectorAll('mat-option'));
                     const targetOption = options.find(opt => 
                         opt.innerText && opt.innerText.toLowerCase().includes(targetText.toLowerCase())
@@ -1213,41 +1218,77 @@ export class ChromeWorker extends BaseBrowser {
 
                     if (targetOption) {
                         targetOption.click();
-                        await sleep(1000); // Delay for backend HTTP calls triggered by the selection
+                        await sleep(500); 
+                        await waitForLoader(); 
                         return true;
                     } else {
-                        // Click outside to collapse the panel if no matching text is discovered
                         document.body.click(); 
                         await sleep(500);
                         return false;
                     }
                 };
 
-                // Sequential Execution Pipeline: Ensure strict chronological execution of dependent dropdowns
+                // Sequential Execution Pipeline
                 const isCityDone = await selectDropdownByText('centerCode', cfg.city);
                 if (isCityDone) {
                     const isCatDone = await selectDropdownByText('selectedSubvisaCategory', cfg.appointmentCategory);
                     if (isCatDone) {
                         const isSubCatDone = await selectDropdownByText('visaCategoryCode', cfg.subCategory);
-                        
-                        // Proceed to submit the form once all parameters are successfully mapped
-                        if (isSubCatDone) {
-                            const continueBtn = Array.from(document.querySelectorAll('button')).find(b => 
-                                b.innerText && b.innerText.includes('Continue')
-                            );
-                            if (continueBtn && !continueBtn.disabled) {
-                                continueBtn.click();
-                            }
-                        }
+                        return isSubCatDone; // Return true if the entire sequence finished successfully
                     }
                 }
+                return false;
 
             }, config);
 
-            this.logStatus("[Appointment Details] ✅ Form configuration dynamically injected and executed.");
-
         } catch (error) {
             this.logError("appointmentDetails", `Smart injection execution failed: ${error.message}`);
+            return false;
+        }
+    }
+
+    // =====================================================================
+    // Component: Alert & Availability Checker
+    // =====================================================================
+    async checkAppointmentAvailability() {
+        this.logStatus("[Scanner] Awaiting appointment availability result...");
+        
+        try {
+            // Polling interval reduced to 500ms for faster alert detection
+            const result = await this.page.waitForFunction(() => {
+                
+                // 1. Target the alert using explicit textContent (bypasses Angular CSS visibility quirks)
+                const alertBox = document.querySelector('div[role="alert"]');
+                if (alertBox) {
+                    const text = (alertBox.textContent || alertBox.innerText || '').toLowerCase();
+                    if (text.includes('no appointment') || text.includes('sorry') || text.includes('try again')) {
+                        return { status: 'unavailable', message: text.trim() };
+                    }
+                }
+                
+                // 2. Identify progression to 'Your Details' phase
+                const activeStep = document.querySelector('li.active .name');
+                if (activeStep && (activeStep.textContent || '').toLowerCase().includes('your details')) {
+                    return { status: 'available', message: 'Proceeding to Your Details phase.' };
+                }
+                
+                return false; 
+            }, { timeout: 25000, polling: 500 });
+            
+            // Transmit results to the GUI
+            if (result.status === 'unavailable') {
+                this.logStatus(`[Result] 🚫 ${result.message}`);
+                if (typeof this.onAppointmentResult === 'function') {
+                    this.onAppointmentResult('unavailable');
+                }
+            } else if (result.status === 'available') {
+                this.logStatus(`[Result] ✅ Appointments found! ${result.message}`);
+                if (typeof this.onAppointmentResult === 'function') {
+                    this.onAppointmentResult('available');
+                }
+            }
+        } catch (e) {
+            this.logStatus("[Result] ⏳ Timeout waiting for appointment status. Check logs.");
         }
     }
 
@@ -2340,7 +2381,6 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// استيراد ملفات البوت الأساسية بنظام ES Modules
 import { ChromeWorker } from '../Browsers/chrome.js';
 import SheetHandler from '../FileHandler/SheetsHandler.js';
 
@@ -2356,12 +2396,15 @@ function createWindow() {
         height: 900,
         backgroundColor: '#0f172a',
         webPreferences: {
-            // ربط ملف الـ CJS الجديد
             preload: path.join(__dirname, 'preload.cjs'),
             nodeIntegration: false,
             contextIsolation: true
         }
     });
+    
+    // 👈 Disable the native OS menu bar (File, Edit, View, Window)
+    mainWindow.setMenu(null);
+    
     mainWindow.loadURL('http://localhost:5173');
 }
 
@@ -2374,7 +2417,6 @@ app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
 });
 
-// --- File IPC Handlers ---
 ipcMain.handle('select-local-file', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
         properties: ['openFile'],
@@ -2401,21 +2443,17 @@ ipcMain.handle('fetch-google-sheet', async (event, url) => {
     }
 });
 
-// --- Bot IPC Handlers ---
-/* gui/main.js (Fragment) */
-
 ipcMain.on('launch-bots', async (event, instances) => {
     for (const instance of instances) {
         if (activeWorkers.has(instance.id)) continue;
 
-        // Force strictly boolean parsing for Headless mode
         const isHeadless = instance.headless === true;
 
         const worker = new ChromeWorker({
             headless: isHeadless,
             email: instance.data.account,
             password: instance.data.password,
-            instanceData: instance.data // <-- Pass the full config here
+            instanceData: instance.data 
         });
         
         worker.logStatus = (msg) => {
@@ -2425,13 +2463,16 @@ ipcMain.on('launch-bots', async (event, instances) => {
             event.reply('bot-status', { id: instance.id, status: `Error: ${msg}` });
         };
 
+        worker.onAppointmentResult = (resultType) => {
+            event.reply('appointment-result', { id: instance.id, result: resultType });
+        };
+
         activeWorkers.set(instance.id, worker);
         worker.launchBrowser();
         
         await new Promise(r => setTimeout(r, 2000));
     }
 });
-console.log(`\n\n\n   Hello From Main.js  ال main بمسي عليكم \n\n\n`);
 
 ipcMain.on('close-bots', (event, ids) => {
     for (const id of ids) {
@@ -2484,18 +2525,21 @@ ipcMain.on('close-bots', (event, ids) => {
 ```
 ## *preload.cjs*
 ```javascript
+/* Omni-Booking-Automation-Suite/VFS_Portugal/gui/preload.cjs */
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     selectLocalFile: () => ipcRenderer.invoke('select-local-file'),
     fetchGoogleSheet: (url) => ipcRenderer.invoke('fetch-google-sheet', url),
     
-    // Bot Control Methods
     launchBots: (instances) => ipcRenderer.send('launch-bots', instances),
     closeBots: (ids) => ipcRenderer.send('close-bots', ids),
     
-    // Status Listener
-    onBotStatusUpdate: (callback) => ipcRenderer.on('bot-status', (_event, data) => callback(data))
+    // Status Listeners
+    onBotStatusUpdate: (callback) => ipcRenderer.on('bot-status', (_event, data) => callback(data)),
+    
+    // New: Dedicated listener for appointment availability results
+    onAppointmentResult: (callback) => ipcRenderer.on('appointment-result', (_event, data) => callback(data))
 });
 ```
 ## *README.md*
@@ -2726,17 +2770,41 @@ import './theme.css';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
+// Custom SVG Logo matching your brand requirements
+const YallaVisaLogo = () => (
+    <svg viewBox="0 0 450 120" height="50" xmlns="http://www.w3.org/2000/svg">
+        <g transform="translate(10, 10)">
+            <circle cx="50" cy="40" r="35" fill="#0284c7" />
+            <path d="M 25 25 C 40 10, 60 10, 75 25 C 65 40, 35 40, 25 25 Z" fill="#bae6fd" opacity="0.3"/>
+            <path d="M 15 50 Q 50 80 90 25" fill="none" stroke="#ea580c" strokeWidth="5" strokeLinecap="round"/>
+            <path d="M 10 60 Q 55 90 100 35" fill="none" stroke="#f59e0b" strokeWidth="3" strokeLinecap="round"/>
+            <path d="M 75 15 L 90 5 L 95 15 L 115 15 L 105 25 L 115 45 L 100 35 L 85 45 L 80 25 Z" fill="#f59e0b"/>
+            
+            <text x="130" y="45" fontFamily="'Segoe UI', Tahoma, sans-serif" fontWeight="900" fontSize="42" fill="#0284c7" letterSpacing="1">
+                YALLA <tspan fill="#ea580c">VISA</tspan>
+            </text>
+            <text x="135" y="70" fontFamily="'Segoe UI', Tahoma, sans-serif" fontWeight="700" fontSize="12" fill="#64748b" letterSpacing="1.5">
+                YOUR WAY TO DISCOVER THE WORLD
+            </text>
+        </g>
+    </svg>
+);
+
 export default function App() {
     const [instances, setInstances] = useState([]);
     const [sheetUrl, setSheetUrl] = useState('');
     
-    // Global Headless Default (Defaults to true)
     const [defaultHeadless, setDefaultHeadless] = useState(true);
-    
-    // Theme State ('dark' | 'light')
     const [theme, setTheme] = useState('dark');
 
-    // Modal State
+    const [globalDefaults, setGlobalDefaults] = useState({
+        country: 'Egypt',
+        city: 'Alexandria',
+        appointmentCategory: 'Short Term Visa',
+        subCategory: 'Tourism'
+    });
+    const [showDefaultsModal, setShowDefaultsModal] = useState(false);
+
     const [editingId, setEditingId] = useState(null);
     const [editForm, setEditForm] = useState(null);
 
@@ -2747,21 +2815,26 @@ export default function App() {
                     inst.id === id ? { ...inst, status: status } : inst
                 ));
             });
+
+            window.electronAPI.onAppointmentResult(({ id, result }) => {
+                setInstances(prev => prev.map(inst => 
+                    inst.id === id ? { ...inst, aptStatus: result } : inst
+                ));
+            });
         }
     }, []);
 
-    const toggleTheme = () => {
-        setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
-    };
+    const toggleTheme = () => setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
 
     const handleLocalFile = async () => {
         const data = await window.electronAPI.selectLocalFile();
         if (data && !data.error) {
             const newInstances = data.map(item => ({
                 id: generateId(),
-                data: item,
-                headless: defaultHeadless, // Inherits default headless state
+                data: { ...globalDefaults, ...item },
+                headless: defaultHeadless,
                 status: 'Idle',
+                aptStatus: 'idle', 
                 selected: false
             }));
             setInstances(prev => [...prev, ...newInstances]);
@@ -2773,9 +2846,10 @@ export default function App() {
         if (data && !data.error) {
             const newInstances = data.map(item => ({
                 id: generateId(),
-                data: item,
+                data: { ...globalDefaults, ...item },
                 headless: defaultHeadless,
                 status: 'Idle',
+                aptStatus: 'idle',
                 selected: false
             }));
             setInstances(prev => [...prev, ...newInstances]);
@@ -2788,10 +2862,7 @@ export default function App() {
         setEditForm({
             account: '',
             password: '',
-            country: '',
-            city: '',
-            appointmentCategory: '',
-            subCategory: '',
+            ...globalDefaults,
             headless: defaultHeadless
         });
     };
@@ -2802,7 +2873,9 @@ export default function App() {
     const launchBots = (ids) => {
         const toLaunch = instances.filter(i => ids.includes(i.id));
         window.electronAPI.launchBots(toLaunch);
-        setInstances(prev => prev.map(inst => ids.includes(inst.id) ? { ...inst, status: 'Launching...' } : inst));
+        setInstances(prev => prev.map(inst => 
+            ids.includes(inst.id) ? { ...inst, status: 'Launching...', aptStatus: 'checking' } : inst
+        ));
     };
 
     const closeBots = (ids) => window.electronAPI.closeBots(ids);
@@ -2823,14 +2896,14 @@ export default function App() {
         const { headless, ...dataFields } = editForm;
 
         if (editingId === 'NEW') {
-            const newInst = {
+            setInstances(prev => [...prev, {
                 id: generateId(),
                 data: dataFields,
                 headless: headless,
                 status: 'Idle',
+                aptStatus: 'idle',
                 selected: false
-            };
-            setInstances(prev => [...prev, newInst]);
+            }]);
         } else {
             setInstances(prev => prev.map(inst => 
                 inst.id === editingId ? { ...inst, data: dataFields, headless: headless } : inst
@@ -2845,127 +2918,151 @@ export default function App() {
     };
 
     const copyInstanceData = (data) => {
-        const text = `Account: ${data.account}\nPassword: ${data.password}\nCountry: ${data.country}\nCity: ${data.city}\nCategory: ${data.appointmentCategory}\nSub-category: ${data.subCategory}`;
-        navigator.clipboard.writeText(text);
+        navigator.clipboard.writeText(`Account: ${data.account}\nPassword: ${data.password}\nCountry: ${data.country}\nCity: ${data.city}\nCategory: ${data.appointmentCategory}\nSub-category: ${data.subCategory}`);
     };
-
-    const copyStatus = (status) => navigator.clipboard.writeText(status);
 
     return (
         <div className={`app-container ${theme}-theme`}>
+            
+            {/* 3-Column Flush Header Panel */}
             <header className="header-panel">
-                <div className="import-controls">
+                <div className="header-left">
                     <button className="btn-add" onClick={handleManualAdd}>+ Add Account</button>
                     <button className="btn-outline" onClick={handleLocalFile}>📁 Browse Files...</button>
-                    
                     <div className="sheet-fetcher">
-                        <input 
-                            type="text" 
-                            placeholder="Google Sheet URL" 
-                            value={sheetUrl} 
-                            onChange={e => setSheetUrl(e.target.value)} 
-                        />
+                        <input type="text" placeholder="Google Sheet URL" value={sheetUrl} onChange={e => setSheetUrl(e.target.value)} />
                         <button className="btn-outline" onClick={handleGoogleSheet}>Fetch Cloud Sheet</button>
                     </div>
+                </div>
 
-                    {/* Global Headless Switch */}
+                <div className="header-center">
+                    <YallaVisaLogo />
+                </div>
+
+                <div className="header-right">
+                    <button className="btn-outline" onClick={() => setShowDefaultsModal(true)}>⚙️ Defaults Config</button>
                     <div className="toggle-wrapper" title="Default headless setting for new instances">
                         <span className="toggle-title">Default Headless</span>
                         <label className="switch">
-                            <input 
-                                type="checkbox" 
-                                checked={defaultHeadless} 
-                                onChange={e => setDefaultHeadless(e.target.checked)} 
-                            />
+                            <input type="checkbox" checked={defaultHeadless} onChange={e => setDefaultHeadless(e.target.checked)} />
                             <span className="slider"></span>
                         </label>
                     </div>
-
-                    {/* Dark/Light Theme Button */}
                     <button className="btn-outline theme-toggle-btn" onClick={toggleTheme}>
                         {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
                     </button>
                 </div>
             </header>
 
-            <div className="bulk-actions">
-                <button className="btn-launch" disabled={selectedIds.length === 0} onClick={() => launchBots(selectedIds)}>Launch Selected</button>
-                <button className="btn-close" disabled={selectedIds.length === 0} onClick={() => closeBots(selectedIds)}>Close Selected</button>
-                <button className="btn-delete" disabled={selectedIds.length === 0} onClick={() => deleteBots(selectedIds)}>Delete Selected</button>
-            </div>
+            <div className="inner-workspace">
+                <div className="bulk-actions">
+                    <button className="btn-launch" disabled={selectedIds.length === 0} onClick={() => launchBots(selectedIds)}>Launch Selected</button>
+                    <button className="btn-close" disabled={selectedIds.length === 0} onClick={() => closeBots(selectedIds)}>Close Selected</button>
+                    <button className="btn-delete" disabled={selectedIds.length === 0} onClick={() => deleteBots(selectedIds)}>Delete Selected</button>
+                </div>
 
-            <div className="table-container">
-                <table className="data-table">
-                    <thead>
-                        <tr>
-                            <th width="40px"><input type="checkbox" onChange={toggleSelectAll} checked={instances.length > 0 && selectedIds.length === instances.length} /></th>
-                            <th width="40px">#</th>
-                            <th width="240px">Target Account</th>
-                            <th>Country</th>
-                            <th>Target City</th>
-                            <th>Category</th>
-                            <th width="100px">Mode</th>
-                            <th>Operational State</th>
-                            <th width="240px" style={{textAlign:'center'}}>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {instances.map((inst, index) => (
-                            <tr key={inst.id} onDoubleClick={() => startEdit(inst)} className={inst.selected ? 'selected-row' : ''}>
-                                <td><input type="checkbox" checked={inst.selected} onChange={() => toggleSelect(inst.id)} /></td>
-                                <td>{index + 1}</td>
-                                <td>
-                                    <div className="flex-row-copy">
-                                        <span>{inst.data.account}</span>
-                                        <button className="copy-btn" onClick={(e) => { e.stopPropagation(); copyInstanceData(inst.data); }} title="Copy Instance Data">📋</button>
-                                    </div>
-                                </td>
-                                <td>{inst.data.country || '-'}</td>
-                                <td>{inst.data.city || '-'}</td>
-                                <td>{inst.data.appointmentCategory || '-'}</td>
-                                <td>
-                                    <span className={`badge ${inst.headless ? 'badge-headless' : 'badge-headed'}`}>
-                                        {inst.headless ? 'Headless' : 'Headed'}
-                                    </span>
-                                </td>
-                                <td>
-                                    <div className="flex-row-copy">
-                                        <span className="status-text" title={inst.status}>{inst.status}</span>
-                                        <button className="copy-btn" onClick={(e) => { e.stopPropagation(); copyStatus(inst.status); }} title="Copy Operational State">📋</button>
-                                    </div>
-                                </td>
-                                <td className="action-cells">
-                                    <button className="btn-sm btn-launch" onClick={(e) => { e.stopPropagation(); launchBots([inst.id]); }}>Launch</button>
-                                    <button className="btn-sm btn-close" onClick={(e) => { e.stopPropagation(); closeBots([inst.id]); }}>Close</button>
-                                    <button className="btn-sm btn-delete" onClick={(e) => { e.stopPropagation(); deleteBots([inst.id]); }}>Delete</button>
-                                </td>
+                <div className="table-container">
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                <th width="40px"><input type="checkbox" onChange={toggleSelectAll} checked={instances.length > 0 && selectedIds.length === instances.length} /></th>
+                                <th width="40px">#</th>
+                                <th width="30px" title="Availability Status">🎯</th>
+                                <th width="240px">Target Account</th>
+                                <th>Country</th>
+                                <th>Target City</th>
+                                <th>Category</th>
+                                <th width="100px">Mode</th>
+                                <th>Operational State</th>
+                                <th width="240px" style={{textAlign:'center'}}>Actions</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {instances.map((inst, index) => (
+                                <tr key={inst.id} onDoubleClick={() => startEdit(inst)} className={inst.selected ? 'selected-row' : ''}>
+                                    <td><input type="checkbox" checked={inst.selected} onChange={() => toggleSelect(inst.id)} /></td>
+                                    <td>{index + 1}</td>
+                                    <td>
+                                        <div className={`status-dot ${inst.aptStatus}`} title={`Status: ${inst.aptStatus}`}></div>
+                                    </td>
+                                    <td>
+                                        <div className="flex-row-copy">
+                                            <span>{inst.data.account}</span>
+                                            <button className="copy-btn" onClick={(e) => { e.stopPropagation(); copyInstanceData(inst.data); }} title="Copy Data">📋</button>
+                                        </div>
+                                    </td>
+                                    <td>{inst.data.country || '-'}</td>
+                                    <td>{inst.data.city || '-'}</td>
+                                    <td>{inst.data.appointmentCategory || '-'}</td>
+                                    <td>
+                                        <span className={`badge ${inst.headless ? 'badge-headless' : 'badge-headed'}`}>
+                                            {inst.headless ? 'Headless' : 'Headed'}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div className="flex-row-copy">
+                                            <span className="status-text" title={inst.status}>{inst.status}</span>
+                                            <button className="copy-btn" onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(inst.status); }} title="Copy Log">📋</button>
+                                        </div>
+                                    </td>
+                                    <td className="action-cells">
+                                        <button className="btn-sm btn-launch" onClick={(e) => { e.stopPropagation(); launchBots([inst.id]); }}>Launch</button>
+                                        <button className="btn-sm btn-close" onClick={(e) => { e.stopPropagation(); closeBots([inst.id]); }}>Close</button>
+                                        <button className="btn-sm btn-delete" onClick={(e) => { e.stopPropagation(); deleteBots([inst.id]); }}>Delete</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            {/* Edit / Add Modal */}
+            {/* Global Defaults Modal */}
+            {showDefaultsModal && (
+                <div className="modal-overlay" onClick={() => setShowDefaultsModal(false)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>Global Defaults Config</h3>
+                        </div>
+                        <div className="form-grid">
+                            <div className="form-group">
+                                <label>Default Country</label>
+                                <input type="text" value={globalDefaults.country} onChange={e => setGlobalDefaults({...globalDefaults, country: e.target.value})} />
+                            </div>
+                            <div className="form-group">
+                                <label>Default City</label>
+                                <input type="text" value={globalDefaults.city} onChange={e => setGlobalDefaults({...globalDefaults, city: e.target.value})} />
+                            </div>
+                            <div className="form-group">
+                                <label>Default Appointment Category</label>
+                                <input type="text" value={globalDefaults.appointmentCategory} onChange={e => setGlobalDefaults({...globalDefaults, appointmentCategory: e.target.value})} />
+                            </div>
+                            <div className="form-group">
+                                <label>Default Sub Category</label>
+                                <input type="text" value={globalDefaults.subCategory} onChange={e => setGlobalDefaults({...globalDefaults, subCategory: e.target.value})} />
+                            </div>
+                        </div>
+                        <div className="modal-actions">
+                            <button className="btn-launch" onClick={() => setShowDefaultsModal(false)}>Done</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit / Add Instance Modal */}
             {editingId && (
                 <div className="modal-overlay" onClick={cancelEdit}>
                     <div className="modal-content" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h3>{editingId === 'NEW' ? 'Hot Batch New' : 'Hot Batch Edit'}</h3>
-                            
-                            {/* Instance Headless Switch */}
+                            <h3>{editingId === 'NEW' ? 'Hot Batch New' : `${editForm.account || 'Account'} Hot Batch`}</h3>
                             <div className="toggle-wrapper">
                                 <span className="toggle-title">Headless</span>
                                 <label className="switch">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={editForm.headless} 
-                                        onChange={e => setEditForm({...editForm, headless: e.target.checked})} 
-                                    />
+                                    <input type="checkbox" checked={editForm.headless} onChange={e => setEditForm({...editForm, headless: e.target.checked})} />
                                     <span className="slider"></span>
                                 </label>
                             </div>
                         </div>
-
                         <div className="form-grid">
                             <div className="form-group">
                                 <label>Account Email</label>
@@ -3005,69 +3102,32 @@ export default function App() {
 ```
 ### *index.css*
 ```css
+/* gui/src/index.css */
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
-
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  font: 18px/145% var(--sans);
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  line-height: 145%;
   letter-spacing: 0.18px;
   color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
 }
 
 body {
   margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
 }
 
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -3075,46 +3135,20 @@ body {
 
 h1,
 h2 {
-  font-family: var(--heading);
   font-weight: 500;
-  color: var(--text-h);
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
 p {
   margin: 0;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
+code {
+  font-family: ui-monospace, Consolas, monospace;
   display: inline-flex;
   border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
   font-size: 15px;
   line-height: 135%;
   padding: 4px 8px;
-  background: var(--code-bg);
 }
 ```
 ### *main.jsx*
@@ -3134,7 +3168,6 @@ createRoot(document.getElementById('root')).render(
 ```css
 /* gui/src/theme.css */
 
-/* --- Dark Theme Variables (Default) --- */
 .dark-theme {
     --bg-main: #0f172a;
     --bg-panel: #1e293b;
@@ -3146,14 +3179,12 @@ createRoot(document.getElementById('root')).render(
     --table-header-bg: #0b1120;
     --input-bg: #0f172a;
     --modal-overlay: rgba(0, 0, 0, 0.75);
-
     --color-launch: #0ea5e9;
     --color-close: #f59e0b;
     --color-delete: #ef4444;
     --color-add: #10b981;
 }
 
-/* --- Light Theme Variables --- */
 .light-theme {
     --bg-main: #f1f5f9;
     --bg-panel: #ffffff;
@@ -3165,7 +3196,6 @@ createRoot(document.getElementById('root')).render(
     --table-header-bg: #e2e8f0;
     --input-bg: #f8fafc;
     --modal-overlay: rgba(15, 23, 42, 0.5);
-
     --color-launch: #0284c7;
     --color-close: #d97706;
     --color-delete: #dc2626;
@@ -3174,39 +3204,55 @@ createRoot(document.getElementById('root')).render(
 
 body {
     margin: 0;
+    padding: 0;
     font-family: 'Segoe UI', Tahoma, sans-serif;
     background-color: var(--bg-main);
     color: var(--text-main);
 }
 
+/* 👈 Completely stripped padding from the main container */
 .app-container {
     display: flex;
     flex-direction: column;
     height: 100vh;
-    padding: 20px;
     box-sizing: border-box;
     background-color: var(--bg-main);
     transition: background-color 0.25s ease, color 0.25s ease;
 }
 
+/* 👈 Edge-to-edge 3-column header layout */
 .header-panel {
     background-color: var(--bg-panel);
-    padding: 15px 20px;
-    border-radius: 8px;
-    margin-bottom: 15px;
-    border: 1px solid var(--border-color);
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
-.import-controls {
+.header-left, .header-right {
     display: flex;
-    gap: 15px;
     align-items: center;
+    gap: 15px;
+    flex: 1;
+}
+.header-right { justify-content: flex-end; }
+.header-center { flex: 0 1 auto; display: flex; justify-content: center; }
+
+/* Workspace padding reinstated internally so the table isn't touching the window edges */
+.inner-workspace {
+    padding: 20px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .sheet-fetcher {
     display: flex;
     gap: 5px;
     flex: 1;
+    max-width: 300px;
 }
 
 .sheet-fetcher input {
@@ -3224,7 +3270,6 @@ body {
     margin-bottom: 15px;
 }
 
-/* Action Buttons */
 button {
     border: none;
     border-radius: 4px;
@@ -3246,14 +3291,9 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
     border: 1px solid var(--border-color); 
     color: var(--text-main); 
 }
-
-.theme-toggle-btn {
-    min-width: 85px;
-}
-
+.theme-toggle-btn { min-width: 85px; }
 .btn-sm { padding: 4px 10px; font-size: 0.85em; border-radius: 3px; }
 
-/* Table Container & Sticky Elements */
 .table-container {
     flex: 1;
     background-color: var(--bg-panel);
@@ -3290,8 +3330,7 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 .data-table tr:hover { background-color: var(--bg-row-hover); }
 .data-table tr.selected-row { background-color: var(--bg-selected); }
 
-.data-table th:last-child,
-.data-table td:last-child {
+.data-table th:last-child, .data-table td:last-child {
     position: sticky;
     right: 0;
     background-color: var(--bg-panel);
@@ -3299,21 +3338,12 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
     z-index: 2;
 }
 
-.data-table th:last-child {
-    background-color: var(--table-header-bg);
-    z-index: 3;
-}
-
+.data-table th:last-child { background-color: var(--table-header-bg); z-index: 3; }
 .data-table tr:hover td:last-child { background-color: var(--bg-row-hover); }
 .data-table tr.selected-row td:last-child { background-color: var(--bg-selected); }
 
-.action-cells {
-    display: flex;
-    gap: 5px;
-    justify-content: center;
-}
+.action-cells { display: flex; gap: 5px; justify-content: center; }
 
-/* Status & Copy Elements */
 .flex-row-copy {
     display: flex;
     align-items: center;
@@ -3331,11 +3361,7 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
     opacity: 0.4;
     transition: all 0.2s;
 }
-.copy-btn:hover {
-    filter: grayscale(0%);
-    opacity: 1;
-    transform: scale(1.1);
-}
+.copy-btn:hover { filter: grayscale(0%); opacity: 1; transform: scale(1.1); }
 
 .status-text {
     flex: 1;
@@ -3346,7 +3372,6 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
     cursor: help;
 }
 
-/* Badges */
 .badge {
     display: inline-block;
     padding: 3px 8px;
@@ -3354,74 +3379,19 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
     border-radius: 12px;
     font-weight: 600;
 }
-.badge-headless {
-    background-color: rgba(14, 165, 233, 0.15);
-    color: var(--color-launch);
-    border: 1px solid var(--color-launch);
-}
-.badge-headed {
-    background-color: rgba(245, 158, 11, 0.15);
-    color: var(--color-close);
-    border: 1px solid var(--color-close);
-}
+.badge-headless { background-color: rgba(14, 165, 233, 0.15); color: var(--color-launch); border: 1px solid var(--color-launch); }
+.badge-headed { background-color: rgba(245, 158, 11, 0.15); color: var(--color-close); border: 1px solid var(--color-close); }
 
-/* --- Drag/Slider Switch Styling --- */
-.toggle-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
+.toggle-wrapper { display: flex; align-items: center; gap: 10px; }
+.toggle-title { font-size: 0.85em; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
 
-.toggle-title {
-    font-size: 0.85em;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-}
+.switch { position: relative; display: inline-block; width: 44px; height: 22px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border-color); transition: 0.3s; border-radius: 22px; }
+.slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: 0.3s; border-radius: 50%; }
+input:checked + .slider { background-color: var(--color-launch); }
+input:checked + .slider:before { transform: translateX(22px); }
 
-.switch {
-    position: relative;
-    display: inline-block;
-    width: 44px;
-    height: 22px;
-}
-
-.switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background-color: var(--border-color);
-    transition: 0.3s;
-    border-radius: 22px;
-}
-
-.slider:before {
-    position: absolute;
-    content: "";
-    height: 16px;
-    width: 16px;
-    left: 3px;
-    bottom: 3px;
-    background-color: white;
-    transition: 0.3s;
-    border-radius: 50%;
-}
-
-input:checked + .slider {
-    background-color: var(--color-launch);
-}
-
-input:checked + .slider:before {
-    transform: translateX(22px);
-}
-
-/* --- Modal Styling --- */
 .modal-overlay {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
@@ -3441,52 +3411,24 @@ input:checked + .slider:before {
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
 }
 
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-}
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.modal-header h3 { margin: 0; font-size: 1.25em; color: var(--text-main); }
+.form-grid { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group label { font-size: 0.8em; font-weight: 700; color: var(--color-launch); text-transform: uppercase; letter-spacing: 0.5px; }
+.form-group input { background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 10px; border-radius: 4px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
-.modal-header h3 {
-    margin: 0;
-    font-size: 1.25em;
-    color: var(--text-main);
-}
-
-.form-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-bottom: 20px;
-}
-
-.form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.form-group label {
-    font-size: 0.8em;
-    font-weight: 700;
-    color: var(--color-launch);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.form-group input {
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
-    color: var(--text-main);
-    padding: 10px;
-    border-radius: 4px;
-}
-
-.modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
+/* Status Dot Indicator Styles */
+.status-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; transition: all 0.3s ease; }
+.status-dot.idle { background-color: #475569; }
+.status-dot.checking { background-color: #eab308; box-shadow: 0 0 8px #eab308; animation: pulse 1.5s infinite; }
+.status-dot.available { background-color: #10b981; box-shadow: 0 0 10px #10b981; }
+.status-dot.unavailable { background-color: #ef4444; }
+@keyframes pulse {
+    0% { opacity: 0.5; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.1); }
+    100% { opacity: 0.5; transform: scale(0.9); }
 }
 ```
 

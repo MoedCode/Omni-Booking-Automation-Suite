@@ -3,7 +3,6 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// استيراد ملفات البوت الأساسية بنظام ES Modules
 import { ChromeWorker } from '../Browsers/chrome.js';
 import SheetHandler from '../FileHandler/SheetsHandler.js';
 
@@ -19,12 +18,15 @@ function createWindow() {
         height: 900,
         backgroundColor: '#0f172a',
         webPreferences: {
-            // ربط ملف الـ CJS الجديد
             preload: path.join(__dirname, 'preload.cjs'),
             nodeIntegration: false,
             contextIsolation: true
         }
     });
+    
+    // 👈 Disable the native OS menu bar (File, Edit, View, Window)
+    mainWindow.setMenu(null);
+    
     mainWindow.loadURL('http://localhost:5173');
 }
 
@@ -37,7 +39,6 @@ app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
 });
 
-// --- File IPC Handlers ---
 ipcMain.handle('select-local-file', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
         properties: ['openFile'],
@@ -64,21 +65,17 @@ ipcMain.handle('fetch-google-sheet', async (event, url) => {
     }
 });
 
-// --- Bot IPC Handlers ---
-/* gui/main.js (Fragment) */
-
 ipcMain.on('launch-bots', async (event, instances) => {
     for (const instance of instances) {
         if (activeWorkers.has(instance.id)) continue;
 
-        // Force strictly boolean parsing for Headless mode
         const isHeadless = instance.headless === true;
 
         const worker = new ChromeWorker({
             headless: isHeadless,
             email: instance.data.account,
             password: instance.data.password,
-            instanceData: instance.data // <-- Pass the full config here
+            instanceData: instance.data 
         });
         
         worker.logStatus = (msg) => {
@@ -88,13 +85,16 @@ ipcMain.on('launch-bots', async (event, instances) => {
             event.reply('bot-status', { id: instance.id, status: `Error: ${msg}` });
         };
 
+        worker.onAppointmentResult = (resultType) => {
+            event.reply('appointment-result', { id: instance.id, result: resultType });
+        };
+
         activeWorkers.set(instance.id, worker);
         worker.launchBrowser();
         
         await new Promise(r => setTimeout(r, 2000));
     }
 });
-console.log(`\n\n\n   Hello From Main.js  ال main بمسي عليكم \n\n\n`);
 
 ipcMain.on('close-bots', (event, ids) => {
     for (const id of ids) {

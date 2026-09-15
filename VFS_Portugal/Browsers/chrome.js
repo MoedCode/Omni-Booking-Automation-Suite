@@ -28,7 +28,6 @@ export class ChromeWorker extends BaseBrowser {
         this.email = email;
         this.password = password;
 
-        // Apply GUI Hot Batch data, falling back to global settings defaults if fields are empty
         this.instanceData = {
             city: instanceData?.city || defaultBatchConfig.city,
             appointmentCategory: instanceData?.appointmentCategory || defaultBatchConfig.appointmentCategory,
@@ -86,7 +85,13 @@ export class ChromeWorker extends BaseBrowser {
                 endDelay: actionsConfig.appointmentDetails.endDelay,
                 dependencies: ['dashboard'],
                 method: async () => {
-                    await this.injectSmartFormFiller(this.instanceData);
+                    const formFilledSuccessfully = await this.injectSmartFormFiller(this.instanceData);
+                    if (formFilledSuccessfully) {
+                        // Hand over immediately to the DOM polling logic
+                        await this.checkAppointmentAvailability();
+                    } else {
+                        this.logWarning("appointmentDetails", "Form filling aborted or failed.");
+                    }
                     this.completedActivities.add('appointmentDetails');
                 }
             }
@@ -115,20 +120,27 @@ export class ChromeWorker extends BaseBrowser {
             await this.page.setBypassCSP(true);
 
             // =====================================================================
-            // Module 1: Continuous Page Title Modifier
+            // Component: Continuous Page Title Modifier
             // =====================================================================
-            // This script is evaluated natively inside the browser on every single page load.
             await this.page.evaluateOnNewDocument((accountEmail) => {
                 const prefix = `[${accountEmail}] `;
                 
-                // Aggressive loop to bypass Angular's internal title router service
-                setInterval(() => {
+                const enforcePageTitle = () => {
                     if (document.title && !document.title.startsWith(prefix)) {
-                        // Strip existing bracketed tags to avoid nested prefix duplication
                         const cleanTitle = document.title.replace(/^\[.*?\]\s*/, '');
                         document.title = prefix + cleanTitle;
                     }
-                }, 500); // 500ms guarantees the title is overridden immediately
+                };
+
+                window.addEventListener('DOMContentLoaded', () => {
+                    enforcePageTitle();
+                    const titleElement = document.querySelector('title');
+                    if (titleElement) {
+                        new MutationObserver(enforcePageTitle).observe(titleElement, { childList: true, characterData: true, subtree: true });
+                    }
+                });
+                
+                setInterval(enforcePageTitle, 1000);
             }, this.email);
 
             this.logStatus("[Worker] Navigating to target portal...");
@@ -159,19 +171,17 @@ export class ChromeWorker extends BaseBrowser {
             detected.push('signIn');
         }
 
-        // Detect Dashboard view based on the presence of the Start New Booking button
         if (await this.isPresent(Selectors.dashboard.startNewBooking)) {
             detected.push('dashboard');
         }
         
-        // Detect Appointment Details view based on the presence of the Angular center dropdown
         if (await this.isPresent(Selectors.appointmentDetails.centerDropdown)) {
             detected.push('appointmentDetails');
         }
 
         detected.sort((a, b) => {
-            const prioA = this.mappedActions[a]?.priority ?? actionsConfig.default.priority;
-            const prioB = this.mappedActions[b]?.priority ?? actionsConfig.default.priority;
+            const prioA = this.mappedActions[a]?.priority ?? 99;
+            const prioB = this.mappedActions[b]?.priority ?? 99;
             return prioA - prioB;
         });
 
@@ -258,7 +268,6 @@ export class ChromeWorker extends BaseBrowser {
         if (this.errors.credential) {
             this.logError("credential", this.errors.credential);
             this.isOrchestratorRunning = false;
-            if (debug?.errors) throw new Error(this.errors.credential);
             return;
         }
 
@@ -294,64 +303,43 @@ export class ChromeWorker extends BaseBrowser {
     }
 
     // =====================================================================
-    // Module 2: Smart Angular DOM Automator
+    // Component: Smart Angular Form Automator
     // =====================================================================
-    /**
-     * Injects an execution block directly into the page context to handle Angular dropdowns.
-     * This relies strictly on element innerText parsing to map the Hot Batch config to the UI options.
-     */
     async injectSmartFormFiller(config) {
-        this.logStatus("[Appointment Details] Injecting smart Angular form logic...");
+        this.logStatus("[Appointment Details] Mapping Target Criteria...");
         
         try {
-            await this.page.evaluate(async (cfg) => {
-                
-                // Utility to pause script execution without blocking the main browser thread
+            return await this.page.evaluate(async (cfg) => {
                 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-                // Helper to pause execution while the VFS Angular spinner overlay is visible
                 const waitForLoader = async () => {
                     let loader = document.querySelector('ngx-ui-loader .ngx-overlay');
-                    // Check if loader exists and is currently rendered on screen
                     while (loader && window.getComputedStyle(loader).display !== 'none' && loader.offsetHeight > 0) {
                         await sleep(500);
                         loader = document.querySelector('ngx-ui-loader .ngx-overlay');
                     }
                 };
 
-                /**
-                 * Interacts with an Angular Material select element by matching internal text.
-                 * @param {string} controlName - The exact 'formcontrolname' attribute of the target dropdown.
-                 * @param {string} targetText - The specific string to search for within the dropdown options.
-                 * @returns {boolean} - Returns true if the option is found and clicked, or if it is already selected.
-                 */
                 const selectDropdownByText = async (controlName, targetText) => {
-                    // Bypass interaction safely if the user did not provide a configuration value
                     if (!targetText || targetText.trim() === '') return true; 
                     
                     const trigger = document.querySelector(`mat-select[formcontrolname="${controlName}"]`);
                     if (!trigger) return false;
 
-                    // 1. Verify if the target value is already the active selection
                     const selectedValueSpan = trigger.querySelector('.mat-mdc-select-value-text');
                     if (selectedValueSpan && selectedValueSpan.innerText.toLowerCase().includes(targetText.toLowerCase())) {
                         return true; 
                     }
 
-                    // Wait for any previous API calls to finish before clicking
                     await waitForLoader();
-
-                    // 2. Dispatch a click event to render the CDK overlay panel containing the options
                     trigger.click();
-                    await sleep(800); // Allow Angular animation to render the DOM elements
+                    await sleep(800); 
 
-                    // 3. Locate the dynamically injected overlay panel
                     const panelId = trigger.getAttribute('aria-controls');
                     const panel = document.getElementById(panelId) || document.querySelector('.mat-mdc-select-panel');
                     
                     if (!panel) return false;
 
-                    // 4. Retrieve all available options and filter them via innerText mapping
                     const options = Array.from(panel.querySelectorAll('mat-option'));
                     const targetOption = options.find(opt => 
                         opt.innerText && opt.innerText.toLowerCase().includes(targetText.toLowerCase())
@@ -360,41 +348,100 @@ export class ChromeWorker extends BaseBrowser {
                     if (targetOption) {
                         targetOption.click();
                         await sleep(500); 
-                        await waitForLoader(); // Ensure the backend sync finishes before proceeding
+                        await waitForLoader(); 
                         return true;
                     } else {
-                        // Click outside to collapse the panel if no matching text is discovered
                         document.body.click(); 
                         await sleep(500);
                         return false;
                     }
                 };
 
-                // Sequential Execution Pipeline: Ensure strict chronological execution of dependent dropdowns
+                // Sequential Execution Pipeline
                 const isCityDone = await selectDropdownByText('centerCode', cfg.city);
                 if (isCityDone) {
                     const isCatDone = await selectDropdownByText('selectedSubvisaCategory', cfg.appointmentCategory);
                     if (isCatDone) {
                         const isSubCatDone = await selectDropdownByText('visaCategoryCode', cfg.subCategory);
-                        
-                        // Proceed to submit the form once all parameters are successfully mapped
-                        if (isSubCatDone) {
-                            const continueBtn = Array.from(document.querySelectorAll('button')).find(b => 
-                                b.innerText && b.innerText.includes('Continue')
-                            );
-                            if (continueBtn && !continueBtn.disabled) {
-                                continueBtn.click();
-                            }
-                        }
+                        return isSubCatDone; 
                     }
                 }
+                return false;
 
             }, config);
 
-            this.logStatus("[Appointment Details] ✅ Form configuration dynamically injected and executed.");
-
         } catch (error) {
             this.logError("appointmentDetails", `Smart injection execution failed: ${error.message}`);
+            return false;
+        }
+    }
+
+    // =====================================================================
+    // Component: Alert & Availability Checker
+    // =====================================================================
+    async checkAppointmentAvailability() {
+        this.logStatus("[Scanner] Awaiting appointment availability result...");
+        
+        try {
+            // Polling the DOM directly in a safe Promise block
+            const result = await this.page.evaluate(() => {
+                return new Promise((resolve) => {
+                    let attempts = 0;
+                    
+                    const interval = setInterval(() => {
+                        attempts++;
+                        if (attempts > 120) { // 60 seconds strict timeout
+                            clearInterval(interval);
+                            resolve({ status: 'timeout', message: 'Evaluation timed out.' });
+                            return;
+                        }
+
+                        // 1. Target the alert natively by checking textContent
+                        const alertBox = document.querySelector('div[role="alert"]');
+                        if (alertBox && alertBox.offsetHeight > 0) {
+                            const text = (alertBox.textContent || alertBox.innerText || '').toLowerCase();
+                            if (text.includes('no appointment') || text.includes('sorry') || text.includes('try again')) {
+                                clearInterval(interval);
+                                resolve({ status: 'unavailable', message: text.trim() });
+                                return;
+                            }
+                        }
+
+                        // 2. Identify progression by checking if Continue button is enabled
+                        const buttons = Array.from(document.querySelectorAll('button'));
+                        const continueBtn = buttons.find(b => (b.textContent || '').includes('Continue'));
+                        if (continueBtn && !continueBtn.disabled && continueBtn.offsetHeight > 0) {
+                            clearInterval(interval);
+                            continueBtn.click(); // Click it to move to next page
+                            resolve({ status: 'available', message: 'Proceeding to Your Details phase.' });
+                            return;
+                        }
+                    }, 500); // 500ms rapid polling
+                });
+            });
+            
+            // Transmit results to the GUI
+            if (result.status === 'unavailable') {
+                this.logStatus(`[Result] 🚫 ${result.message}`);
+                if (typeof this.onAppointmentResult === 'function') {
+                    this.onAppointmentResult('unavailable');
+                }
+            } else if (result.status === 'available') {
+                this.logStatus(`[Result] ✅ Appointments found! ${result.message}`);
+                if (typeof this.onAppointmentResult === 'function') {
+                    this.onAppointmentResult('available');
+                }
+            } else {
+                this.logStatus(`[Result] ⏳ Timeout waiting for availability.`);
+                if (typeof this.onAppointmentResult === 'function') {
+                    this.onAppointmentResult('idle');
+                }
+            }
+        } catch (e) {
+            this.logStatus(`[Result] ⏳ Error reading availability: ${e.message}`);
+            if (typeof this.onAppointmentResult === 'function') {
+                this.onAppointmentResult('idle');
+            }
         }
     }
 
