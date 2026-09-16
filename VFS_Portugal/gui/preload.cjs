@@ -8,9 +8,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     launchBots: (instances) => ipcRenderer.send('launch-bots', instances),
     closeBots: (ids) => ipcRenderer.send('close-bots', ids),
     
-    // Status Listeners
-    onBotStatusUpdate: (callback) => ipcRenderer.on('bot-status', (_event, data) => callback(data)),
+    // 👈 Custom Window Controls
+    windowControl: (action) => ipcRenderer.send('window-control', action),
     
-    // New: Dedicated listener for appointment availability results
+    onBotStatusUpdate: (callback) => ipcRenderer.on('bot-status', (_event, data) => callback(data)),
     onAppointmentResult: (callback) => ipcRenderer.on('appointment-result', (_event, data) => callback(data))
 });

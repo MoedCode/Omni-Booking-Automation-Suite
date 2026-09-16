@@ -267,3 +267,63 @@ input:checked + .slider:before { transform: translateX(22px); }
     box-shadow: 0 0 8px #64748b;
     animation: pulse 1.5s infinite;
 }
+
+/* --- Custom Frameless Titlebar --- */
+.custom-titlebar {
+    width: 100%;
+    height: 40px;
+    background-color: var(--table-header-bg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    -webkit-app-region: drag; /* Makes the top bar draggable like a native window */
+    user-select: none;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.titlebar-logo-area {
+    display: flex;
+    align-items: center;
+    height: 100%;
+}
+
+.titlebar-controls {
+    display: flex;
+    height: 100%;
+    -webkit-app-region: no-drag; /* Makes buttons clickable */
+}
+
+.win-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    width: 46px;
+    height: 100%;
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 0;
+    transition: background-color 0.2s, color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.win-btn:hover {
+    background-color: var(--bg-row-hover);
+    color: var(--text-main);
+}
+
+.win-close:hover {
+    background-color: #ef4444;
+    color: white;
+}
+
+/* Adjust the header panel to not overlap the titlebar */
+.header-panel {
+    background-color: var(--bg-panel);
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}

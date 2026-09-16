@@ -943,24 +943,11 @@ export class ChromeWorker extends BaseBrowser {
                 endDelay: actionsConfig.appointmentDetails.endDelay,
                 dependencies: ['dashboard'],
                 method: async () => {
-                    // 1. Inject and execute the form dropdown mapper
                     const formFilledSuccessfully = await this.injectSmartFormFiller(this.instanceData);
-                    
                     if (formFilledSuccessfully) {
-                        this.logStatus("[Appointment Details] Submitting details...");
-                        
-                        // 2. Click the 'Continue' button natively via Puppeteer (bypasses Angular evaluate quirks)
-                        const btn = await this.findButton(Selectors.appointmentDetails.continueButton);
-                        if (btn) {
-                            // Safely wait for the button to become enabled before clicking
-                            await this.page.waitForFunction(b => !b.disabled, { timeout: 15000 }, btn);
-                            await btn.click();
-                            
-                            // 3. Initiate the alert observer
-                            await this.checkAppointmentAvailability();
-                        } else {
-                            this.logWarning("appointmentDetails", "Continue button not found in the DOM.");
-                        }
+                        await this.checkAppointmentAvailability();
+                    } else {
+                        this.logWarning("appointmentDetails", "Form filling aborted or failed.");
                     }
                     this.completedActivities.add('appointmentDetails');
                 }
@@ -973,14 +960,20 @@ export class ChromeWorker extends BaseBrowser {
         try {
             this.logStatus(`[Worker] Launching browser (Headless: ${this.headless})...`);
 
-            const activeArgs = this.headless 
+            // 👈 FIX: Inject a massive viewport and realistic User-Agent for Headless Mode
+            let activeArgs = this.headless 
                 ? this.browserArgs.filter(arg => arg !== '--start-maximized') 
                 : this.browserArgs;
+
+            if (this.headless) {
+                activeArgs.push('--window-size=1920,1080');
+                activeArgs.push('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            }
 
             this.browser = await puppeteer.launch({
                 headless: this.headless ? 'new' : false, 
                 channel: this.channel ? this.channel : undefined,
-                defaultViewport: null,
+                defaultViewport: this.headless ? { width: 1920, height: 1080 } : null, // Force Desktop UI
                 args: activeArgs
             });
 
@@ -989,12 +982,8 @@ export class ChromeWorker extends BaseBrowser {
 
             await this.page.setBypassCSP(true);
 
-            // =====================================================================
-            // Module 1: Continuous Page Title Modifier
-            // =====================================================================
             await this.page.evaluateOnNewDocument((accountEmail) => {
                 const prefix = `[${accountEmail}] `;
-                
                 const enforcePageTitle = () => {
                     if (document.title && !document.title.startsWith(prefix)) {
                         const cleanTitle = document.title.replace(/^\[.*?\]\s*/, '');
@@ -1009,7 +998,6 @@ export class ChromeWorker extends BaseBrowser {
                         new MutationObserver(enforcePageTitle).observe(titleElement, { childList: true, characterData: true, subtree: true });
                     }
                 });
-                
                 setInterval(enforcePageTitle, 1000);
             }, this.email);
 
@@ -1028,33 +1016,15 @@ export class ChromeWorker extends BaseBrowser {
         if (!this.page) return [];
         const detected = [];
 
-        if (await this.isPresent(Selectors.common.cookieBanner.container)) {
-            detected.push('cookies');
-        }
-
+        if (await this.isPresent(Selectors.common.cookieBanner.container)) detected.push('cookies');
         if (await this.captchaHandler.isPresent()) {
-            const resolved = await this.captchaHandler.isResolved();
-            if (!resolved) detected.push('captcha');
+            if (!(await this.captchaHandler.isResolved())) detected.push('captcha');
         }
+        if (await this.isPresent(Selectors.signIn.email)) detected.push('signIn');
+        if (await this.isPresent(Selectors.dashboard.startNewBooking)) detected.push('dashboard');
+        if (await this.isPresent(Selectors.appointmentDetails.centerDropdown)) detected.push('appointmentDetails');
 
-        if (await this.isPresent(Selectors.signIn.email)) {
-            detected.push('signIn');
-        }
-
-        if (await this.isPresent(Selectors.dashboard.startNewBooking)) {
-            detected.push('dashboard');
-        }
-        
-        if (await this.isPresent(Selectors.appointmentDetails.centerDropdown)) {
-            detected.push('appointmentDetails');
-        }
-
-        detected.sort((a, b) => {
-            const prioA = this.mappedActions[a]?.priority ?? 99;
-            const prioB = this.mappedActions[b]?.priority ?? 99;
-            return prioA - prioB;
-        });
-
+        detected.sort((a, b) => (this.mappedActions[a]?.priority ?? 99) - (this.mappedActions[b]?.priority ?? 99));
         this.currentOrderedDom = [...detected];
         return this.currentOrderedDom;
     }
@@ -1062,13 +1032,10 @@ export class ChromeWorker extends BaseBrowser {
     cordinateActivitysQueue(scannedActions) {
         this.activitysQueue = scannedActions.filter(actionKey => {
             const dependencies = this.mappedActions[actionKey]?.dependencies || [];
-            const allDependenciesMet = dependencies.every(dep => this.completedActivities.has(dep));
-            const now = Date.now();
-            
-            if (!allDependenciesMet) {
-                if (now - this.lastDeferLogTime >= 10000) {
-                    this.logStatus(`[Orchestrator] ⏸️ Deferring [${actionKey}] - Waiting on dependencies: ${dependencies.join(', ')}`);
-                    this.lastDeferLogTime = now;
+            if (!dependencies.every(dep => this.completedActivities.has(dep))) {
+                if (Date.now() - this.lastDeferLogTime >= 10000) {
+                    this.logStatus(`[Orchestrator] ⏸️ Deferring [${actionKey}] - Waiting on dependencies...`);
+                    this.lastDeferLogTime = Date.now();
                 }
                 return false;
             }
@@ -1095,17 +1062,12 @@ export class ChromeWorker extends BaseBrowser {
 
                 if (actionMeta && typeof actionMeta.method === 'function') {
                     if (actionMeta.startDelay > 0) await new Promise(r => setTimeout(r, actionMeta.startDelay));
-                    
                     this.logStatus(`[Orchestrator] Executing action: [${currentActionKey}]`);
                     await actionMeta.method();
-
                     if (actionMeta.endDelay > 0) await new Promise(r => setTimeout(r, actionMeta.endDelay));
                 } else {
                     await new Promise(r => setTimeout(r, 500));
                 }
-
-                await new Promise(r => setTimeout(r, 500));
-
             } catch (error) {
                 this.logError("orchestrator", `Loop Error: ${error.message}`);
                 await new Promise(r => setTimeout(r, 1000));
@@ -1131,14 +1093,8 @@ export class ChromeWorker extends BaseBrowser {
 
     async signIn(email = this.email, password = this.password) {
         if (!this.page) return;
-
-        !email && (this.errors.credential = "Email not provided");
-        !password && (this.errors.credential = "Password not provided");
-
-        if (this.errors.credential) {
-            this.logError("credential", this.errors.credential);
+        if (!email || !password) {
             this.isOrchestratorRunning = false;
-            if (debug?.errors) throw new Error(this.errors.credential);
             return;
         }
 
@@ -1149,8 +1105,7 @@ export class ChromeWorker extends BaseBrowser {
             await this.typeByDescriptor(Selectors.signIn.password, password);
 
             if (await this.captchaHandler.isPresent()) {
-                const tokenReady = await this.captchaHandler.isResolved();
-                if (!tokenReady) {
+                if (!(await this.captchaHandler.isResolved())) {
                     this.logStatus("[Worker] Deferring Sign In submission until Captcha is solved...");
                     return; 
                 }
@@ -1173,11 +1128,8 @@ export class ChromeWorker extends BaseBrowser {
         }
     }
 
-    // =====================================================================
-    // Component: Smart Angular Form Automator
-    // =====================================================================
     async injectSmartFormFiller(config) {
-        this.logStatus("[Appointment Details] Injecting smart Angular form logic...");
+        this.logStatus("[Appointment Details] Mapping Target Criteria...");
         
         try {
             return await this.page.evaluate(async (cfg) => {
@@ -1228,13 +1180,11 @@ export class ChromeWorker extends BaseBrowser {
                     }
                 };
 
-                // Sequential Execution Pipeline
                 const isCityDone = await selectDropdownByText('centerCode', cfg.city);
                 if (isCityDone) {
                     const isCatDone = await selectDropdownByText('selectedSubvisaCategory', cfg.appointmentCategory);
                     if (isCatDone) {
-                        const isSubCatDone = await selectDropdownByText('visaCategoryCode', cfg.subCategory);
-                        return isSubCatDone; // Return true if the entire sequence finished successfully
+                        return await selectDropdownByText('visaCategoryCode', cfg.subCategory);
                     }
                 }
                 return false;
@@ -1247,48 +1197,57 @@ export class ChromeWorker extends BaseBrowser {
         }
     }
 
-    // =====================================================================
-    // Component: Alert & Availability Checker
-    // =====================================================================
     async checkAppointmentAvailability() {
         this.logStatus("[Scanner] Awaiting appointment availability result...");
         
         try {
-            // Polling interval reduced to 500ms for faster alert detection
-            const result = await this.page.waitForFunction(() => {
-                
-                // 1. Target the alert using explicit textContent (bypasses Angular CSS visibility quirks)
-                const alertBox = document.querySelector('div[role="alert"]');
-                if (alertBox) {
-                    const text = (alertBox.textContent || alertBox.innerText || '').toLowerCase();
-                    if (text.includes('no appointment') || text.includes('sorry') || text.includes('try again')) {
-                        return { status: 'unavailable', message: text.trim() };
-                    }
-                }
-                
-                // 2. Identify progression to 'Your Details' phase
-                const activeStep = document.querySelector('li.active .name');
-                if (activeStep && (activeStep.textContent || '').toLowerCase().includes('your details')) {
-                    return { status: 'available', message: 'Proceeding to Your Details phase.' };
-                }
-                
-                return false; 
-            }, { timeout: 25000, polling: 500 });
+            const result = await this.page.evaluate(() => {
+                return new Promise((resolve) => {
+                    let attempts = 0;
+                    
+                    const interval = setInterval(() => {
+                        attempts++;
+                        if (attempts > 120) {
+                            clearInterval(interval);
+                            resolve({ status: 'timeout', message: 'Evaluation timed out.' });
+                            return;
+                        }
+
+                        const alertBox = document.querySelector('div[role="alert"]');
+                        if (alertBox && alertBox.offsetHeight > 0) {
+                            const text = (alertBox.textContent || alertBox.innerText || '').toLowerCase();
+                            if (text.includes('no appointment') || text.includes('sorry') || text.includes('try again')) {
+                                clearInterval(interval);
+                                resolve({ status: 'unavailable', message: text.trim() });
+                                return;
+                            }
+                        }
+
+                        const buttons = Array.from(document.querySelectorAll('button'));
+                        const continueBtn = buttons.find(b => (b.textContent || '').includes('Continue'));
+                        if (continueBtn && !continueBtn.disabled && continueBtn.offsetHeight > 0) {
+                            clearInterval(interval);
+                            continueBtn.click(); 
+                            resolve({ status: 'available', message: 'Proceeding to Your Details phase.' });
+                            return;
+                        }
+                    }, 500); 
+                });
+            });
             
-            // Transmit results to the GUI
             if (result.status === 'unavailable') {
                 this.logStatus(`[Result] 🚫 ${result.message}`);
-                if (typeof this.onAppointmentResult === 'function') {
-                    this.onAppointmentResult('unavailable');
-                }
+                if (typeof this.onAppointmentResult === 'function') this.onAppointmentResult('unavailable');
             } else if (result.status === 'available') {
                 this.logStatus(`[Result] ✅ Appointments found! ${result.message}`);
-                if (typeof this.onAppointmentResult === 'function') {
-                    this.onAppointmentResult('available');
-                }
+                if (typeof this.onAppointmentResult === 'function') this.onAppointmentResult('available');
+            } else {
+                this.logStatus(`[Result] ⏳ Timeout waiting for availability.`);
+                if (typeof this.onAppointmentResult === 'function') this.onAppointmentResult('idle');
             }
         } catch (e) {
-            this.logStatus("[Result] ⏳ Timeout waiting for appointment status. Check logs.");
+            this.logStatus(`[Result] ⏳ Error reading availability: ${e.message}`);
+            if (typeof this.onAppointmentResult === 'function') this.onAppointmentResult('idle');
         }
     }
 
@@ -2395,6 +2354,8 @@ function createWindow() {
         width: 1400,
         height: 900,
         backgroundColor: '#0f172a',
+        title: "Yalla Visa Auto-Booking Suite", // 👈 Set Custom Title
+        autoHideMenuBar: true, // 👈 Hide default menu
         webPreferences: {
             preload: path.join(__dirname, 'preload.cjs'),
             nodeIntegration: false,
@@ -2402,8 +2363,7 @@ function createWindow() {
         }
     });
     
-    // 👈 Disable the native OS menu bar (File, Edit, View, Window)
-    mainWindow.setMenu(null);
+    mainWindow.setMenu(null); // 👈 Permanently kill "File Edit View Window"
     
     mainWindow.loadURL('http://localhost:5173');
 }
@@ -2770,23 +2730,22 @@ import './theme.css';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
-// Custom SVG Logo matching your brand requirements
+// 👈 FIX: Horizontal Layout Logo (Scale height down, stretch width)
 const YallaVisaLogo = () => (
-    <svg viewBox="0 0 450 120" height="50" xmlns="http://www.w3.org/2000/svg">
-        <g transform="translate(10, 10)">
+    <svg viewBox="0 0 380 50" height="40" xmlns="http://www.w3.org/2000/svg">
+        <g transform="translate(0, 0) scale(0.45)">
             <circle cx="50" cy="40" r="35" fill="#0284c7" />
             <path d="M 25 25 C 40 10, 60 10, 75 25 C 65 40, 35 40, 25 25 Z" fill="#bae6fd" opacity="0.3"/>
             <path d="M 15 50 Q 50 80 90 25" fill="none" stroke="#ea580c" strokeWidth="5" strokeLinecap="round"/>
             <path d="M 10 60 Q 55 90 100 35" fill="none" stroke="#f59e0b" strokeWidth="3" strokeLinecap="round"/>
             <path d="M 75 15 L 90 5 L 95 15 L 115 15 L 105 25 L 115 45 L 100 35 L 85 45 L 80 25 Z" fill="#f59e0b"/>
-            
-            <text x="130" y="45" fontFamily="'Segoe UI', Tahoma, sans-serif" fontWeight="900" fontSize="42" fill="#0284c7" letterSpacing="1">
-                YALLA <tspan fill="#ea580c">VISA</tspan>
-            </text>
-            <text x="135" y="70" fontFamily="'Segoe UI', Tahoma, sans-serif" fontWeight="700" fontSize="12" fill="#64748b" letterSpacing="1.5">
-                YOUR WAY TO DISCOVER THE WORLD
-            </text>
         </g>
+        <text x="60" y="28" fontFamily="'Segoe UI', Tahoma, sans-serif" fontWeight="900" fontSize="22" fill="#0284c7" letterSpacing="1">
+            YALLA <tspan fill="#ea580c">VISA</tspan>
+        </text>
+        <text x="62" y="42" fontFamily="'Segoe UI', Tahoma, sans-serif" fontWeight="700" fontSize="8" fill="#64748b" letterSpacing="1.2">
+            YOUR WAY TO DISCOVER THE WORLD
+        </text>
     </svg>
 );
 
@@ -2924,7 +2883,6 @@ export default function App() {
     return (
         <div className={`app-container ${theme}-theme`}>
             
-            {/* 3-Column Flush Header Panel */}
             <header className="header-panel">
                 <div className="header-left">
                     <button className="btn-add" onClick={handleManualAdd}>+ Add Account</button>
@@ -3424,11 +3382,16 @@ input:checked + .slider:before { transform: translateX(22px); }
 .status-dot.idle { background-color: #475569; }
 .status-dot.checking { background-color: #eab308; box-shadow: 0 0 8px #eab308; animation: pulse 1.5s infinite; }
 .status-dot.available { background-color: #10b981; box-shadow: 0 0 10px #10b981; }
-.status-dot.unavailable { background-color: #ef4444; }
+/* .status-dot.unavailable { background-color: #ef4444; }
 @keyframes pulse {
     0% { opacity: 0.5; transform: scale(0.9); }
     50% { opacity: 1; transform: scale(1.1); }
     100% { opacity: 0.5; transform: scale(0.9); }
+} */
+.status-dot.unavailable {
+    background-color: #64748b; /* Gray color */
+    box-shadow: 0 0 8px #64748b;
+    animation: pulse 1.5s infinite;
 }
 ```
 

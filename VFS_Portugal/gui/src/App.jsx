@@ -4,23 +4,22 @@ import './theme.css';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
-// Custom SVG Logo matching your brand requirements
+// 👈 FIX: Horizontal Layout Logo (Scale height down, stretch width)
 const YallaVisaLogo = () => (
-    <svg viewBox="0 0 450 120" height="50" xmlns="http://www.w3.org/2000/svg">
-        <g transform="translate(10, 10)">
+    <svg viewBox="0 0 380 50" height="40" xmlns="http://www.w3.org/2000/svg">
+        <g transform="translate(0, 0) scale(0.45)">
             <circle cx="50" cy="40" r="35" fill="#0284c7" />
             <path d="M 25 25 C 40 10, 60 10, 75 25 C 65 40, 35 40, 25 25 Z" fill="#bae6fd" opacity="0.3"/>
             <path d="M 15 50 Q 50 80 90 25" fill="none" stroke="#ea580c" strokeWidth="5" strokeLinecap="round"/>
             <path d="M 10 60 Q 55 90 100 35" fill="none" stroke="#f59e0b" strokeWidth="3" strokeLinecap="round"/>
             <path d="M 75 15 L 90 5 L 95 15 L 115 15 L 105 25 L 115 45 L 100 35 L 85 45 L 80 25 Z" fill="#f59e0b"/>
-            
-            <text x="130" y="45" fontFamily="'Segoe UI', Tahoma, sans-serif" fontWeight="900" fontSize="42" fill="#0284c7" letterSpacing="1">
-                YALLA <tspan fill="#ea580c">VISA</tspan>
-            </text>
-            <text x="135" y="70" fontFamily="'Segoe UI', Tahoma, sans-serif" fontWeight="700" fontSize="12" fill="#64748b" letterSpacing="1.5">
-                YOUR WAY TO DISCOVER THE WORLD
-            </text>
         </g>
+        <text x="60" y="28" fontFamily="'Segoe UI', Tahoma, sans-serif" fontWeight="900" fontSize="22" fill="#0284c7" letterSpacing="1">
+            YALLA <tspan fill="#ea580c">VISA</tspan>
+        </text>
+        <text x="62" y="42" fontFamily="'Segoe UI', Tahoma, sans-serif" fontWeight="700" fontSize="8" fill="#64748b" letterSpacing="1.2">
+            YOUR WAY TO DISCOVER THE WORLD
+        </text>
     </svg>
 );
 
@@ -158,7 +157,6 @@ export default function App() {
     return (
         <div className={`app-container ${theme}-theme`}>
             
-            {/* 3-Column Flush Header Panel */}
             <header className="header-panel">
                 <div className="header-left">
                     <button className="btn-add" onClick={handleManualAdd}>+ Add Account</button>
