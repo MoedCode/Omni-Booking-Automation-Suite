@@ -8,9 +8,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     launchBots: (instances) => ipcRenderer.send('launch-bots', instances),
     closeBots: (ids) => ipcRenderer.send('close-bots', ids),
     
-    // 👈 Custom Window Controls
     windowControl: (action) => ipcRenderer.send('window-control', action),
     
+    onWindowMaximizeChange: (callback) => ipcRenderer.on('window-maximized', (_event, isMaximized) => callback(isMaximized)),
     onBotStatusUpdate: (callback) => ipcRenderer.on('bot-status', (_event, data) => callback(data)),
     onAppointmentResult: (callback) => ipcRenderer.on('appointment-result', (_event, data) => callback(data))
 });

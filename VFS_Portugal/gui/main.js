@@ -16,10 +16,10 @@ function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1400,
         height: 900,
-        backgroundColor: '#0f172a',
+        backgroundColor: '#0f172a', // Solid background fixes the Windows lagging/freezing bug
         title: "Yalla Visa Auto-Booking Suite",
-        frame: false, // Removes the default Windows border and titlebar completely
-        titleBarStyle: 'hidden', // Required for custom titlebar dragging
+        frame: false, 
+        titleBarStyle: 'hidden', 
         webPreferences: {
             preload: path.join(__dirname, 'preload.cjs'),
             nodeIntegration: false,
@@ -27,6 +27,10 @@ function createWindow() {
         }
     });
     
+    // Broadcast maximization state to React for the dynamic titlebar icon
+    mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized', true));
+    mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-maximized', false));
+
     mainWindow.loadURL('http://localhost:5173');
 }
 
@@ -41,25 +45,25 @@ app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
 });
 
-// --- Custom Window Controls (For Frameless Titlebar) ---
+// Custom Titlebar Controls
 ipcMain.on('window-control', (event, action) => {
     if (!mainWindow) return;
     if (action === 'minimize') mainWindow.minimize();
     if (action === 'maximize') {
         mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
     }
-    if (action === 'close') mainWindow.close();
+    if (action === 'close') {
+        mainWindow.close();
+    }
 });
 
-// --- File Handling IPC ---
+// File Handling
 ipcMain.handle('select-local-file', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
         properties: ['openFile'],
         filters: [{ name: 'Spreadsheets', extensions: ['xlsx', 'csv'] }]
     });
-    
     if (canceled || filePaths.length === 0) return null;
-    
     try {
         const handler = new SheetHandler();
         const result = handler.loadFromExcel(filePaths[0]);
@@ -80,7 +84,7 @@ ipcMain.handle('fetch-google-sheet', async (event, url) => {
     }
 });
 
-// --- Bot Management IPC ---
+// Bot Management
 ipcMain.on('launch-bots', async (event, instances) => {
     for (const instance of instances) {
         if (activeWorkers.has(instance.id)) continue;
@@ -91,26 +95,16 @@ ipcMain.on('launch-bots', async (event, instances) => {
             headless: isHeadless,
             email: instance.data.account,
             password: instance.data.password,
-            instanceData: instance.data // Forward complete data payload to the worker
+            instanceData: instance.data 
         });
         
-        // Listeners for UI logs and status updates
-        worker.logStatus = (msg) => {
-            event.reply('bot-status', { id: instance.id, status: msg });
-        };
-        worker.logError = (key, msg) => {
-            event.reply('bot-status', { id: instance.id, status: `Error: ${msg}` });
-        };
-
-        // Listener for Appointment Availability Polling
-        worker.onAppointmentResult = (resultType) => {
-            event.reply('appointment-result', { id: instance.id, result: resultType });
-        };
+        worker.logStatus = (msg) => event.reply('bot-status', { id: instance.id, status: msg });
+        worker.logError = (key, msg) => event.reply('bot-status', { id: instance.id, status: `Error: ${msg}` });
+        worker.onAppointmentResult = (resultType) => event.reply('appointment-result', { id: instance.id, result: resultType });
 
         activeWorkers.set(instance.id, worker);
         worker.launchBrowser();
         
-        // 2-second delay to stagger browser instances gracefully
         await new Promise(r => setTimeout(r, 2000));
     }
 });

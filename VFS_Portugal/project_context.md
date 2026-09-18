@@ -958,22 +958,23 @@ export class ChromeWorker extends BaseBrowser {
 
     async launchBrowser() {
         try {
-            this.logStatus(`[Worker] Launching browser (Headless: ${this.headless})...`);
+            this.logStatus(`[Worker] Launching browser (Invisible Mode: ${this.headless})...`);
 
-            // 👈 FIX: Inject a massive viewport and realistic User-Agent for Headless Mode
-            let activeArgs = this.headless 
-                ? this.browserArgs.filter(arg => arg !== '--start-maximized') 
-                : this.browserArgs;
+            let activeArgs = this.browserArgs.filter(arg => arg !== '--start-maximized');
 
             if (this.headless) {
-                activeArgs.push('--window-size=1920,1080');
-                activeArgs.push('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+                // 👈 FIX: Cloudflare Turnstile blocks true headless mode. 
+                // We run headed, but throw the window off-screen to simulate headless invisibly.
+                activeArgs.push('--window-position=-32000,-32000'); // Move window way off screen
+                activeArgs.push('--window-size=1920,1080'); // Force desktop viewport
+            } else {
+                activeArgs.push('--start-maximized'); // Bring back maximization for visible debugging
             }
 
             this.browser = await puppeteer.launch({
-                headless: this.headless ? 'new' : false, 
+                headless: false, // ALWAYS false to bypass Cloudflare Turnstile
                 channel: this.channel ? this.channel : undefined,
-                defaultViewport: this.headless ? { width: 1920, height: 1080 } : null, // Force Desktop UI
+                defaultViewport: null, 
                 args: activeArgs
             });
 
@@ -982,8 +983,12 @@ export class ChromeWorker extends BaseBrowser {
 
             await this.page.setBypassCSP(true);
 
+            // =====================================================================
+            // Module 1: Continuous Page Title Modifier
+            // =====================================================================
             await this.page.evaluateOnNewDocument((accountEmail) => {
                 const prefix = `[${accountEmail}] `;
+                
                 const enforcePageTitle = () => {
                     if (document.title && !document.title.startsWith(prefix)) {
                         const cleanTitle = document.title.replace(/^\[.*?\]\s*/, '');
@@ -998,6 +1003,7 @@ export class ChromeWorker extends BaseBrowser {
                         new MutationObserver(enforcePageTitle).observe(titleElement, { childList: true, characterData: true, subtree: true });
                     }
                 });
+                
                 setInterval(enforcePageTitle, 1000);
             }, this.email);
 
@@ -2335,7 +2341,7 @@ export default defineConfig([
 ```
 ## *main.js*
 ```javascript
-/* gui/main.js */
+/* Omni-Booking-Automation-Suite/VFS_Portugal/gui/main.js */
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -2353,9 +2359,10 @@ function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1400,
         height: 900,
-        backgroundColor: '#0f172a',
-        title: "Yalla Visa Auto-Booking Suite", // 👈 Set Custom Title
-        autoHideMenuBar: true, // 👈 Hide default menu
+        backgroundColor: '#0f172a', // Solid background fixes the Windows lagging/freezing bug
+        title: "Yalla Visa Auto-Booking Suite",
+        frame: false, 
+        titleBarStyle: 'hidden', 
         webPreferences: {
             preload: path.join(__dirname, 'preload.cjs'),
             nodeIntegration: false,
@@ -2363,20 +2370,37 @@ function createWindow() {
         }
     });
     
-    mainWindow.setMenu(null); // 👈 Permanently kill "File Edit View Window"
-    
+    // Broadcast maximization state to React for the dynamic titlebar icon
+    mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized', true));
+    mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-maximized', false));
+
     mainWindow.loadURL('http://localhost:5173');
 }
 
 app.whenReady().then(() => {
     createWindow();
-    app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+    app.on('activate', () => { 
+        if (BrowserWindow.getAllWindows().length === 0) createWindow(); 
+    });
 });
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
 });
 
+// Custom Titlebar Controls
+ipcMain.on('window-control', (event, action) => {
+    if (!mainWindow) return;
+    if (action === 'minimize') mainWindow.minimize();
+    if (action === 'maximize') {
+        mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
+    }
+    if (action === 'close') {
+        mainWindow.close();
+    }
+});
+
+// File Handling
 ipcMain.handle('select-local-file', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
         properties: ['openFile'],
@@ -2403,6 +2427,7 @@ ipcMain.handle('fetch-google-sheet', async (event, url) => {
     }
 });
 
+// Bot Management
 ipcMain.on('launch-bots', async (event, instances) => {
     for (const instance of instances) {
         if (activeWorkers.has(instance.id)) continue;
@@ -2416,16 +2441,9 @@ ipcMain.on('launch-bots', async (event, instances) => {
             instanceData: instance.data 
         });
         
-        worker.logStatus = (msg) => {
-            event.reply('bot-status', { id: instance.id, status: msg });
-        };
-        worker.logError = (key, msg) => {
-            event.reply('bot-status', { id: instance.id, status: `Error: ${msg}` });
-        };
-
-        worker.onAppointmentResult = (resultType) => {
-            event.reply('appointment-result', { id: instance.id, result: resultType });
-        };
+        worker.logStatus = (msg) => event.reply('bot-status', { id: instance.id, status: msg });
+        worker.logError = (key, msg) => event.reply('bot-status', { id: instance.id, status: `Error: ${msg}` });
+        worker.onAppointmentResult = (resultType) => event.reply('appointment-result', { id: instance.id, result: resultType });
 
         activeWorkers.set(instance.id, worker);
         worker.launchBrowser();
@@ -2495,10 +2513,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     launchBots: (instances) => ipcRenderer.send('launch-bots', instances),
     closeBots: (ids) => ipcRenderer.send('close-bots', ids),
     
-    // Status Listeners
-    onBotStatusUpdate: (callback) => ipcRenderer.on('bot-status', (_event, data) => callback(data)),
+    windowControl: (action) => ipcRenderer.send('window-control', action),
     
-    // New: Dedicated listener for appointment availability results
+    onWindowMaximizeChange: (callback) => ipcRenderer.on('window-maximized', (_event, isMaximized) => callback(isMaximized)),
+    onBotStatusUpdate: (callback) => ipcRenderer.on('bot-status', (_event, data) => callback(data)),
     onAppointmentResult: (callback) => ipcRenderer.on('appointment-result', (_event, data) => callback(data))
 });
 ```
@@ -2730,7 +2748,6 @@ import './theme.css';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
-// 👈 FIX: Horizontal Layout Logo (Scale height down, stretch width)
 const YallaVisaLogo = () => (
     <svg viewBox="0 0 380 50" height="40" xmlns="http://www.w3.org/2000/svg">
         <g transform="translate(0, 0) scale(0.45)">
@@ -2752,9 +2769,9 @@ const YallaVisaLogo = () => (
 export default function App() {
     const [instances, setInstances] = useState([]);
     const [sheetUrl, setSheetUrl] = useState('');
-    
     const [defaultHeadless, setDefaultHeadless] = useState(true);
     const [theme, setTheme] = useState('dark');
+    const [isMaximized, setIsMaximized] = useState(false);
 
     const [globalDefaults, setGlobalDefaults] = useState({
         country: 'Egypt',
@@ -2762,85 +2779,135 @@ export default function App() {
         appointmentCategory: 'Short Term Visa',
         subCategory: 'Tourism'
     });
+    
     const [showDefaultsModal, setShowDefaultsModal] = useState(false);
-
     const [editingId, setEditingId] = useState(null);
     const [editForm, setEditForm] = useState(null);
+    const [deleteConfirm, setDeleteConfirm] = useState(null); 
+    const [pendingImport, setPendingImport] = useState(null); 
+    const [appCloseWarning, setAppCloseWarning] = useState(null); 
 
     useEffect(() => {
         if (window.electronAPI) {
             window.electronAPI.onBotStatusUpdate(({ id, status }) => {
-                setInstances(prev => prev.map(inst => 
-                    inst.id === id ? { ...inst, status: status } : inst
-                ));
+                setInstances(prev => prev.map(inst => inst.id === id ? { ...inst, status: status } : inst));
             });
-
             window.electronAPI.onAppointmentResult(({ id, result }) => {
-                setInstances(prev => prev.map(inst => 
-                    inst.id === id ? { ...inst, aptStatus: result } : inst
-                ));
+                setInstances(prev => prev.map(inst => inst.id === id ? { ...inst, aptStatus: result } : inst));
             });
+            if (window.electronAPI.onWindowMaximizeChange) {
+                window.electronAPI.onWindowMaximizeChange((state) => setIsMaximized(state));
+            }
         }
     }, []);
 
     const toggleTheme = () => setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
 
-    const handleLocalFile = async () => {
-        const data = await window.electronAPI.selectLocalFile();
-        if (data && !data.error) {
-            const newInstances = data.map(item => ({
+    const handleWindowAction = (action) => {
+        if (window.electronAPI && window.electronAPI.windowControl) {
+            window.electronAPI.windowControl(action);
+        }
+    };
+
+    const requestAppClose = () => {
+        const runningBots = instances.filter(i => i.status !== 'Idle' && i.status !== 'Closed' && !i.status.toLowerCase().includes('error'));
+        if (runningBots.length > 0) {
+            const headlessCount = runningBots.filter(i => i.headless).length;
+            const visibleCount = runningBots.filter(i => !i.headless).length;
+            setAppCloseWarning({ headless: headlessCount, visible: visibleCount });
+        } else {
+            handleWindowAction('close');
+        }
+    };
+
+    const processImport = (data) => {
+        const existingAccounts = new Set(instances.map(i => i.data.account));
+        let duplicates = 0;
+        let newAccounts = 0;
+
+        const parsedData = data.map(item => {
+            if (existingAccounts.has(item.account)) duplicates++;
+            else newAccounts++;
+
+            return {
                 id: generateId(),
                 data: { ...globalDefaults, ...item },
                 headless: defaultHeadless,
                 status: 'Idle',
                 aptStatus: 'idle', 
                 selected: false
-            }));
-            setInstances(prev => [...prev, ...newInstances]);
-        } else if (data?.error) alert(data.error);
+            };
+        });
+
+        if (instances.length > 0 && duplicates > 0) {
+            setPendingImport({ total: data.length, duplicates, newAccounts, parsedData });
+        } else {
+            setInstances(prev => [...prev, ...parsedData]);
+        }
+    };
+
+    const handleLocalFile = async () => {
+        const data = await window.electronAPI.selectLocalFile();
+        if (data && !data.error) processImport(data);
+        else if (data?.error) alert(data.error);
     };
 
     const handleGoogleSheet = async () => {
         const data = await window.electronAPI.fetchGoogleSheet(sheetUrl);
         if (data && !data.error) {
-            const newInstances = data.map(item => ({
-                id: generateId(),
-                data: { ...globalDefaults, ...item },
-                headless: defaultHeadless,
-                status: 'Idle',
-                aptStatus: 'idle',
-                selected: false
-            }));
-            setInstances(prev => [...prev, ...newInstances]);
+            processImport(data);
             setSheetUrl('');
         }
     };
 
+    const resolveImport = (strategy) => {
+        if (!pendingImport) return;
+        let finalInstances = [...instances];
+        const imported = pendingImport.parsedData;
+
+        if (strategy === 'ignore') {
+            const existingAccounts = new Set(instances.map(i => i.data.account));
+            const uniqueNew = imported.filter(i => !existingAccounts.has(i.data.account));
+            finalInstances = [...finalInstances, ...uniqueNew];
+        } else if (strategy === 'replace') {
+            const newAccountsMap = new Map(imported.map(i => [i.data.account, i]));
+            finalInstances = finalInstances.filter(i => !newAccountsMap.has(i.data.account));
+            finalInstances = [...finalInstances, ...imported];
+        } else if (strategy === 'all') {
+            finalInstances = [...finalInstances, ...imported];
+        }
+
+        setInstances(finalInstances);
+        setPendingImport(null);
+    };
+
     const handleManualAdd = () => {
         setEditingId('NEW');
-        setEditForm({
-            account: '',
-            password: '',
-            ...globalDefaults,
-            headless: defaultHeadless
-        });
+        setEditForm({ account: '', password: '', ...globalDefaults, headless: defaultHeadless });
     };
 
     const toggleSelect = (id) => setInstances(prev => prev.map(inst => inst.id === id ? { ...inst, selected: !inst.selected } : inst));
     const toggleSelectAll = (e) => setInstances(prev => prev.map(inst => ({ ...inst, selected: e.target.checked })));
 
+    const fastToggleHeadless = (id, e) => {
+        e.stopPropagation();
+        setInstances(prev => prev.map(inst => inst.id === id ? { ...inst, headless: !inst.headless } : inst));
+    };
+
     const launchBots = (ids) => {
         const toLaunch = instances.filter(i => ids.includes(i.id));
         window.electronAPI.launchBots(toLaunch);
-        setInstances(prev => prev.map(inst => 
-            ids.includes(inst.id) ? { ...inst, status: 'Launching...', aptStatus: 'checking' } : inst
-        ));
+        setInstances(prev => prev.map(inst => ids.includes(inst.id) ? { ...inst, status: 'Launching...', aptStatus: 'checking' } : inst));
     };
 
     const closeBots = (ids) => window.electronAPI.closeBots(ids);
-    const deleteBots = (ids) => {
-        closeBots(ids);
-        setInstances(prev => prev.filter(inst => !ids.includes(inst.id)));
+    const confirmDelete = (ids) => setDeleteConfirm(ids);
+    const executeDelete = () => {
+        if (deleteConfirm) {
+            closeBots(deleteConfirm);
+            setInstances(prev => prev.filter(inst => !deleteConfirm.includes(inst.id)));
+            setDeleteConfirm(null);
+        }
     };
 
     const selectedIds = instances.filter(i => i.selected).map(i => i.id);
@@ -2855,25 +2922,11 @@ export default function App() {
         const { headless, ...dataFields } = editForm;
 
         if (editingId === 'NEW') {
-            setInstances(prev => [...prev, {
-                id: generateId(),
-                data: dataFields,
-                headless: headless,
-                status: 'Idle',
-                aptStatus: 'idle',
-                selected: false
-            }]);
+            setInstances(prev => [...prev, { id: generateId(), data: dataFields, headless, status: 'Idle', aptStatus: 'idle', selected: false }]);
         } else {
-            setInstances(prev => prev.map(inst => 
-                inst.id === editingId ? { ...inst, data: dataFields, headless: headless } : inst
-            ));
+            setInstances(prev => prev.map(inst => inst.id === editingId ? { ...inst, data: dataFields, headless } : inst));
         }
         setEditingId(null);
-    };
-
-    const cancelEdit = () => {
-        setEditingId(null);
-        setEditForm(null);
     };
 
     const copyInstanceData = (data) => {
@@ -2883,13 +2936,38 @@ export default function App() {
     return (
         <div className={`app-container ${theme}-theme`}>
             
+            {/* Custom Linux Style Draggable Titlebar */}
+            <div className="custom-titlebar">
+                <div className="titlebar-controls">
+                    <button className="win-btn win-min linux-btn" onClick={() => handleWindowAction('minimize')} title="Minimize Window">
+                        <svg width="10" height="10" viewBox="0 0 12 12"><path d="M2 6h8v1H2z" fill="currentColor"/></svg>
+                    </button>
+                    
+                    <button className="win-btn win-max linux-btn" onClick={() => handleWindowAction('maximize')} title="Maximize/Restore Window">
+                        {isMaximized ? (
+                            <svg width="10" height="10" viewBox="0 0 11 11">
+                                <path d="M2.5 2.5h5v5h-5z" fill="none" stroke="currentColor" strokeWidth="1.5"/>
+                                <path d="M4 1.5h5v5" fill="none" stroke="currentColor" strokeWidth="1.5"/>
+                            </svg>
+                        ) : (
+                            <svg width="10" height="10" viewBox="0 0 11 11">
+                                <path d="M1.5 1.5h8v8h-8z" fill="none" stroke="currentColor" strokeWidth="1.5"/>
+                            </svg>
+                        )}
+                    </button>
+
+                    <button className="win-btn win-close linux-btn" onClick={requestAppClose} title="Close Application">
+                        <svg width="10" height="10" viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                    </button>
+                </div>
+            </div>
+
             <header className="header-panel">
                 <div className="header-left">
-                    <button className="btn-add" onClick={handleManualAdd}>+ Add Account</button>
-                    <button className="btn-outline" onClick={handleLocalFile}>📁 Browse Files...</button>
+                    <button className="btn-outline btn-compact" onClick={handleLocalFile} title="Browse your computer to upload a local Excel or CSV file.">Browse</button>
                     <div className="sheet-fetcher">
-                        <input type="text" placeholder="Google Sheet URL" value={sheetUrl} onChange={e => setSheetUrl(e.target.value)} />
-                        <button className="btn-outline" onClick={handleGoogleSheet}>Fetch Cloud Sheet</button>
+                        <input type="text" placeholder="Google Sheet URL" value={sheetUrl} onChange={e => setSheetUrl(e.target.value)} className="url-bar" />
+                        <button className="btn-outline btn-compact" onClick={handleGoogleSheet} title="Fetch account configurations directly from a published Google Sheet.">Fetch</button>
                     </div>
                 </div>
 
@@ -2897,26 +2975,31 @@ export default function App() {
                     <YallaVisaLogo />
                 </div>
 
-                <div className="header-right">
-                    <button className="btn-outline" onClick={() => setShowDefaultsModal(true)}>⚙️ Defaults Config</button>
-                    <div className="toggle-wrapper" title="Default headless setting for new instances">
-                        <span className="toggle-title">Default Headless</span>
-                        <label className="switch">
-                            <input type="checkbox" checked={defaultHeadless} onChange={e => setDefaultHeadless(e.target.checked)} />
-                            <span className="slider"></span>
-                        </label>
-                    </div>
-                    <button className="btn-outline theme-toggle-btn" onClick={toggleTheme}>
-                        {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
-                    </button>
-                </div>
+                <div className="header-right"></div>
             </header>
 
             <div className="inner-workspace">
-                <div className="bulk-actions">
-                    <button className="btn-launch" disabled={selectedIds.length === 0} onClick={() => launchBots(selectedIds)}>Launch Selected</button>
-                    <button className="btn-close" disabled={selectedIds.length === 0} onClick={() => closeBots(selectedIds)}>Close Selected</button>
-                    <button className="btn-delete" disabled={selectedIds.length === 0} onClick={() => deleteBots(selectedIds)}>Delete Selected</button>
+                <div className="toolbar">
+                    <div className="toolbar-left">
+                        <button className="btn-launch" disabled={selectedIds.length === 0} onClick={() => launchBots(selectedIds)}>Launch</button>
+                        <button className="btn-close" disabled={selectedIds.length === 0} onClick={() => closeBots(selectedIds)}>Close</button>
+                        <button className="btn-delete" disabled={selectedIds.length === 0} onClick={() => confirmDelete(selectedIds)}>Delete</button>
+                    </div>
+                    
+                    <div className="toolbar-right">
+                        <button className="btn-add" onClick={handleManualAdd}>+ Add Account</button>
+                        <button className="btn-outline" onClick={() => setShowDefaultsModal(true)}>⚙️ Defaults</button>
+                        <div className="toggle-wrapper" title="Default headless setting for new instances">
+                            <span className="toggle-title">Default Headless</span>
+                            <label className="switch">
+                                <input type="checkbox" checked={defaultHeadless} onChange={e => setDefaultHeadless(e.target.checked)} />
+                                <span className="slider"></span>
+                            </label>
+                        </div>
+                        <button className="btn-outline theme-toggle-btn" onClick={toggleTheme}>
+                            {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+                        </button>
+                    </div>
                 </div>
 
                 <div className="table-container">
@@ -2940,9 +3023,7 @@ export default function App() {
                                 <tr key={inst.id} onDoubleClick={() => startEdit(inst)} className={inst.selected ? 'selected-row' : ''}>
                                     <td><input type="checkbox" checked={inst.selected} onChange={() => toggleSelect(inst.id)} /></td>
                                     <td>{index + 1}</td>
-                                    <td>
-                                        <div className={`status-dot ${inst.aptStatus}`} title={`Status: ${inst.aptStatus}`}></div>
-                                    </td>
+                                    <td><div className={`status-dot ${inst.aptStatus}`} title={`Status: ${inst.aptStatus}`}></div></td>
                                     <td>
                                         <div className="flex-row-copy">
                                             <span>{inst.data.account}</span>
@@ -2953,8 +3034,12 @@ export default function App() {
                                     <td>{inst.data.city || '-'}</td>
                                     <td>{inst.data.appointmentCategory || '-'}</td>
                                     <td>
-                                        <span className={`badge ${inst.headless ? 'badge-headless' : 'badge-headed'}`}>
-                                            {inst.headless ? 'Headless' : 'Headed'}
+                                        <span 
+                                            className={`badge cursor-pointer ${inst.headless ? 'badge-headless' : 'badge-visible'}`}
+                                            onClick={(e) => fastToggleHeadless(inst.id, e)}
+                                            title="Click to instantly toggle execution mode"
+                                        >
+                                            {inst.headless ? 'Headless' : 'Visible'}
                                         </span>
                                     </td>
                                     <td>
@@ -2966,7 +3051,7 @@ export default function App() {
                                     <td className="action-cells">
                                         <button className="btn-sm btn-launch" onClick={(e) => { e.stopPropagation(); launchBots([inst.id]); }}>Launch</button>
                                         <button className="btn-sm btn-close" onClick={(e) => { e.stopPropagation(); closeBots([inst.id]); }}>Close</button>
-                                        <button className="btn-sm btn-delete" onClick={(e) => { e.stopPropagation(); deleteBots([inst.id]); }}>Delete</button>
+                                        <button className="btn-sm btn-delete" onClick={(e) => { e.stopPropagation(); confirmDelete([inst.id]); }}>Delete</button>
                                     </td>
                                 </tr>
                             ))}
@@ -2975,42 +3060,102 @@ export default function App() {
                 </div>
             </div>
 
-            {/* Global Defaults Modal */}
-            {showDefaultsModal && (
-                <div className="modal-overlay" onClick={() => setShowDefaultsModal(false)}>
-                    <div className="modal-content" onClick={e => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h3>Global Defaults Config</h3>
-                        </div>
-                        <div className="form-grid">
-                            <div className="form-group">
-                                <label>Default Country</label>
-                                <input type="text" value={globalDefaults.country} onChange={e => setGlobalDefaults({...globalDefaults, country: e.target.value})} />
-                            </div>
-                            <div className="form-group">
-                                <label>Default City</label>
-                                <input type="text" value={globalDefaults.city} onChange={e => setGlobalDefaults({...globalDefaults, city: e.target.value})} />
-                            </div>
-                            <div className="form-group">
-                                <label>Default Appointment Category</label>
-                                <input type="text" value={globalDefaults.appointmentCategory} onChange={e => setGlobalDefaults({...globalDefaults, appointmentCategory: e.target.value})} />
-                            </div>
-                            <div className="form-group">
-                                <label>Default Sub Category</label>
-                                <input type="text" value={globalDefaults.subCategory} onChange={e => setGlobalDefaults({...globalDefaults, subCategory: e.target.value})} />
-                            </div>
-                        </div>
+            {/* Application Close Warning */}
+            {appCloseWarning && (
+                <div className="modal-overlay">
+                    <div className="modal-content danger-modal relative">
+                        <button className="modal-close-x" onClick={() => setAppCloseWarning(null)}>✕</button>
+                        <h3>⚠️ Running Sessions Detected</h3>
+                        <p style={{marginTop: '10px', marginBottom: '20px', lineHeight: '1.5'}}>
+                            Are you sure you want to close the application? All active processes will be immediately terminated:
+                            <br/><br/>
+                            • <strong>{appCloseWarning.headless}</strong> instance(s) running in Headless mode.<br/>
+                            • <strong>{appCloseWarning.visible}</strong> instance(s) running in Visible mode.
+                        </p>
                         <div className="modal-actions">
-                            <button className="btn-launch" onClick={() => setShowDefaultsModal(false)}>Done</button>
+                            <button className="btn-outline" onClick={() => setAppCloseWarning(null)}>Cancel</button>
+                            <button className="btn-delete" onClick={() => handleWindowAction('close')}>Yes, Close App</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Edit / Add Instance Modal */}
+            {/* Record Delete Confirmation */}
+            {deleteConfirm && (
+                <div className="modal-overlay">
+                    <div className={`modal-content relative ${deleteConfirm.length > 1 ? 'danger-modal' : ''}`}>
+                        <button className="modal-close-x" onClick={() => setDeleteConfirm(null)}>✕</button>
+                        <h3>{deleteConfirm.length > 1 ? '⚠️ Bulk Delete Warning' : 'Confirm Deletion'}</h3>
+                        <p style={{marginTop: '10px', marginBottom: '20px', lineHeight: '1.5'}}>
+                            Are you sure you want to delete <strong>{deleteConfirm.length}</strong> selected instance(s)? 
+                            This will also close any active browsers associated with them.
+                        </p>
+                        <div className="modal-actions">
+                            <button className="btn-outline" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+                            <button className="btn-delete" onClick={executeDelete}>Yes, Delete</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Smart Import Conflict Resolution */}
+            {pendingImport && (
+                <div className="modal-overlay">
+                    <div className="modal-content relative">
+                        <button className="modal-close-x" title="Cancel Import" onClick={() => setPendingImport(null)}>✕</button>
+                        <h3>File Import Confirmation</h3>
+                        
+                        <div className="conflict-stats">
+                            <ul>
+                                <li><strong>{pendingImport.total}</strong> total accounts detected in the file.</li>
+                                {pendingImport.duplicates > 0 && <li><strong>{pendingImport.duplicates}</strong> redundant account(s) already exist in your table.</li>}
+                                <li><strong>{pendingImport.newAccounts}</strong> brand new account(s) detected.</li>
+                            </ul>
+                        </div>
+
+                        {pendingImport.duplicates > 0 ? (
+                            <div className="modal-actions-col">
+                                <button className="btn-launch" title="Only adds the new accounts and ignores the ones that are already in the table." onClick={() => resolveImport('ignore')}>
+                                    Ignore Duplicates
+                                </button>
+                                <button className="btn-close" title="Overwrites the existing matching accounts with the new data from the file." onClick={() => resolveImport('replace')}>
+                                    Replace Duplicates
+                                </button>
+                                <button className="btn-outline" title="Adds everything from the file, even if it creates duplicate entries in the table." onClick={() => resolveImport('all')}>
+                                    Add All Unconditionally
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="modal-actions">
+                                <button className="btn-launch" title="Adds all the new accounts to your workspace." onClick={() => resolveImport('all')}>Confirm Import</button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Defaults Modal */}
+            {showDefaultsModal && (
+                <div className="modal-overlay" onClick={() => setShowDefaultsModal(false)}>
+                    <div className="modal-content relative" onClick={e => e.stopPropagation()}>
+                        <button className="modal-close-x" onClick={() => setShowDefaultsModal(false)}>✕</button>
+                        <div className="modal-header"><h3>Global Defaults Config</h3></div>
+                        <div className="form-grid">
+                            <div className="form-group"><label>Default Country</label><input type="text" value={globalDefaults.country} onChange={e => setGlobalDefaults({...globalDefaults, country: e.target.value})} /></div>
+                            <div className="form-group"><label>Default City</label><input type="text" value={globalDefaults.city} onChange={e => setGlobalDefaults({...globalDefaults, city: e.target.value})} /></div>
+                            <div className="form-group"><label>Default Appointment Category</label><input type="text" value={globalDefaults.appointmentCategory} onChange={e => setGlobalDefaults({...globalDefaults, appointmentCategory: e.target.value})} /></div>
+                            <div className="form-group"><label>Default Sub Category</label><input type="text" value={globalDefaults.subCategory} onChange={e => setGlobalDefaults({...globalDefaults, subCategory: e.target.value})} /></div>
+                        </div>
+                        <div className="modal-actions"><button className="btn-launch" onClick={() => setShowDefaultsModal(false)}>Done</button></div>
+                    </div>
+                </div>
+            )}
+
+            {/* Editor Modal */}
             {editingId && (
                 <div className="modal-overlay" onClick={cancelEdit}>
-                    <div className="modal-content" onClick={e => e.stopPropagation()}>
+                    <div className="modal-content relative" onClick={e => e.stopPropagation()}>
+                        <button className="modal-close-x" onClick={cancelEdit}>✕</button>
                         <div className="modal-header">
                             <h3>{editingId === 'NEW' ? 'Hot Batch New' : `${editForm.account || 'Account'} Hot Batch`}</h3>
                             <div className="toggle-wrapper">
@@ -3022,33 +3167,14 @@ export default function App() {
                             </div>
                         </div>
                         <div className="form-grid">
-                            <div className="form-group">
-                                <label>Account Email</label>
-                                <input type="text" value={editForm.account} onChange={e => setEditForm({...editForm, account: e.target.value})} />
-                            </div>
-                            <div className="form-group">
-                                <label>Password</label>
-                                <input type="text" value={editForm.password} onChange={e => setEditForm({...editForm, password: e.target.value})} />
-                            </div>
-                            <div className="form-group">
-                                <label>Country</label>
-                                <input type="text" value={editForm.country} onChange={e => setEditForm({...editForm, country: e.target.value})} />
-                            </div>
-                            <div className="form-group">
-                                <label>City</label>
-                                <input type="text" value={editForm.city} onChange={e => setEditForm({...editForm, city: e.target.value})} />
-                            </div>
-                            <div className="form-group">
-                                <label>Appointment Category</label>
-                                <input type="text" value={editForm.appointmentCategory} onChange={e => setEditForm({...editForm, appointmentCategory: e.target.value})} />
-                            </div>
-                            <div className="form-group">
-                                <label>Sub Category</label>
-                                <input type="text" value={editForm.subCategory} onChange={e => setEditForm({...editForm, subCategory: e.target.value})} />
-                            </div>
+                            <div className="form-group"><label>Account Email</label><input type="text" value={editForm.account} onChange={e => setEditForm({...editForm, account: e.target.value})} /></div>
+                            <div className="form-group"><label>Password</label><input type="text" value={editForm.password} onChange={e => setEditForm({...editForm, password: e.target.value})} /></div>
+                            <div className="form-group"><label>Country</label><input type="text" value={editForm.country} onChange={e => setEditForm({...editForm, country: e.target.value})} /></div>
+                            <div className="form-group"><label>City</label><input type="text" value={editForm.city} onChange={e => setEditForm({...editForm, city: e.target.value})} /></div>
+                            <div className="form-group"><label>Appointment Category</label><input type="text" value={editForm.appointmentCategory} onChange={e => setEditForm({...editForm, appointmentCategory: e.target.value})} /></div>
+                            <div className="form-group"><label>Sub Category</label><input type="text" value={editForm.subCategory} onChange={e => setEditForm({...editForm, subCategory: e.target.value})} /></div>
                         </div>
                         <div className="modal-actions">
-                            <button className="btn-outline" onClick={cancelEdit}>Cancel</button>
                             <button className="btn-launch" onClick={saveEdit}>Save Changes</button>
                         </div>
                     </div>
@@ -3127,16 +3253,16 @@ createRoot(document.getElementById('root')).render(
 /* gui/src/theme.css */
 
 .dark-theme {
-    --bg-main: #0f172a;
+    --bg-main: #0f172a; 
     --bg-panel: #1e293b;
     --bg-row-hover: #334155;
     --bg-selected: #1e3a5f;
-    --text-main: #e2e8f0;
+    --text-main: #ffffff; /* Proper white for dark mode */
     --text-muted: #94a3b8;
-    --border-color: #334155;
+    --border-color: rgba(51, 65, 85, 0.5);
     --table-header-bg: #0b1120;
     --input-bg: #0f172a;
-    --modal-overlay: rgba(0, 0, 0, 0.75);
+    --modal-overlay: rgba(0, 0, 0, 0.65);
     --color-launch: #0ea5e9;
     --color-close: #f59e0b;
     --color-delete: #ef4444;
@@ -3150,7 +3276,7 @@ createRoot(document.getElementById('root')).render(
     --bg-selected: #e0f2fe;
     --text-main: #0f172a;
     --text-muted: #64748b;
-    --border-color: #cbd5e1;
+    --border-color: rgba(203, 213, 225, 0.6);
     --table-header-bg: #e2e8f0;
     --input-bg: #f8fafc;
     --modal-overlay: rgba(15, 23, 42, 0.5);
@@ -3165,20 +3291,63 @@ body {
     padding: 0;
     font-family: 'Segoe UI', Tahoma, sans-serif;
     background-color: var(--bg-main);
-    color: var(--text-main);
 }
 
-/* 👈 Completely stripped padding from the main container */
 .app-container {
     display: flex;
     flex-direction: column;
     height: 100vh;
     box-sizing: border-box;
     background-color: var(--bg-main);
+    color: var(--text-main);
     transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-/* 👈 Edge-to-edge 3-column header layout */
+/* --- Windows Controls --- */
+.custom-titlebar {
+    width: 100%;
+    height: 38px;
+    background-color: transparent;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    -webkit-app-region: drag;
+    user-select: none;
+}
+
+.titlebar-controls {
+    display: flex;
+    align-items: center;
+    padding-right: 20px; /* Space from the right edge */
+    gap: 12px;           /* Space between buttons */
+    height: 100%;
+    -webkit-app-region: no-drag;
+}
+
+.linux-btn {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    color: transparent; /* SVG transparent by default */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: 0.2s ease;
+    padding: 0;
+    box-shadow: none !important;
+}
+
+.linux-btn svg { transition: 0.2s ease; }
+.titlebar-controls:hover .linux-btn { color: rgba(0, 0, 0, 0.6); }
+
+/* Circle colors for Min, Max, Close */
+.win-min { background-color: #ffbd2e; }
+.win-max { background-color: #27c93f; }
+.win-close { background-color: #ff5f56; }
+
+/* --- Header Panel --- */
 .header-panel {
     background-color: var(--bg-panel);
     padding: 12px 20px;
@@ -3194,10 +3363,37 @@ body {
     gap: 15px;
     flex: 1;
 }
-.header-right { justify-content: flex-end; }
+
 .header-center { flex: 0 1 auto; display: flex; justify-content: center; }
 
-/* Workspace padding reinstated internally so the table isn't touching the window edges */
+.sheet-fetcher {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.url-bar {
+    width: 250px; 
+    height: 26px;
+    padding: 0 12px;
+    font-size: 13px;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    border-radius: 4px;
+    transition: border-color 0.2s;
+}
+.url-bar:focus { outline: none; border-color: var(--color-launch); }
+
+.btn-compact {
+    height: 28px;
+    padding: 0 14px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+}
+
+/* --- Workspace & Toolbar --- */
 .inner-workspace {
     padding: 20px;
     flex: 1;
@@ -3206,52 +3402,65 @@ body {
     overflow: hidden;
 }
 
-.sheet-fetcher {
+.toolbar {
     display: flex;
-    gap: 5px;
-    flex: 1;
-    max-width: 300px;
-}
-
-.sheet-fetcher input {
-    flex: 1;
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
-    color: var(--text-main);
-    padding: 8px 12px;
-    border-radius: 4px;
-}
-
-.bulk-actions {
-    display: flex;
-    gap: 10px;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 15px;
 }
 
-button {
-    border: none;
+.toolbar-left, .toolbar-right { display: flex; gap: 12px; align-items: center; }
+
+/* Hover-Only Borderless Buttons */
+button:not(.win-btn):not(.modal-close-x) {
+    background-color: transparent;
+    border: 1px solid transparent;
     border-radius: 4px;
     padding: 8px 16px;
     cursor: pointer;
     font-weight: 600;
-    color: white;
-    transition: opacity 0.2s, background-color 0.2s;
+    transition: all 0.2s ease;
+    box-shadow: none;
 }
-button:hover:not(:disabled) { opacity: 0.85; }
 button:disabled { opacity: 0.35; cursor: not-allowed; }
 
-.btn-add { background-color: var(--color-add); }
-.btn-launch { background-color: var(--color-launch); }
-.btn-close { background-color: var(--color-close); }
-.btn-delete { background-color: var(--color-delete); }
-.btn-outline { 
-    background-color: transparent; 
-    border: 1px solid var(--border-color); 
-    color: var(--text-main); 
-}
-.theme-toggle-btn { min-width: 85px; }
-.btn-sm { padding: 4px 10px; font-size: 0.85em; border-radius: 3px; }
+/* Default text colors based on context */
+.btn-launch { color: var(--color-launch); }
+.btn-close { color: var(--color-close); }
+.btn-delete { color: var(--color-delete); }
+.btn-add { color: var(--color-add); }
+.btn-outline { color: var(--text-main); }
 
+/* Hover triggers background and shadow */
+.btn-launch:hover:not(:disabled) { 
+    background-color: var(--color-launch); 
+    color: white; 
+    box-shadow: 0 4px 10px rgba(14, 165, 233, 0.3); 
+}
+.btn-close:hover:not(:disabled) { 
+    background-color: var(--color-close); 
+    color: white; 
+    box-shadow: 0 4px 10px rgba(245, 158, 11, 0.3); 
+}
+.btn-delete:hover:not(:disabled) { 
+    background-color: var(--color-delete); 
+    color: white; 
+    box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3); 
+}
+.btn-add:hover:not(:disabled) { 
+    background-color: var(--color-add); 
+    color: white; 
+    box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3); 
+}
+.btn-outline:hover:not(:disabled) { 
+    background-color: var(--bg-row-hover); 
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15); 
+}
+
+.theme-toggle-btn { min-width: 85px; }
+.btn-sm { padding: 4px 10px; font-size: 0.85em; border-radius: 4px; }
+
+/* --- Table Styles --- */
 .table-container {
     flex: 1;
     background-color: var(--bg-panel);
@@ -3292,7 +3501,7 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
     position: sticky;
     right: 0;
     background-color: var(--bg-panel);
-    border-left: 2px solid var(--border-color);
+    border-left: 1px solid var(--border-color);
     z-index: 2;
 }
 
@@ -3318,6 +3527,7 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
     filter: grayscale(100%);
     opacity: 0.4;
     transition: all 0.2s;
+    box-shadow: none !important;
 }
 .copy-btn:hover { filter: grayscale(0%); opacity: 1; transform: scale(1.1); }
 
@@ -3338,7 +3548,9 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
     font-weight: 600;
 }
 .badge-headless { background-color: rgba(14, 165, 233, 0.15); color: var(--color-launch); border: 1px solid var(--color-launch); }
-.badge-headed { background-color: rgba(245, 158, 11, 0.15); color: var(--color-close); border: 1px solid var(--color-close); }
+.badge-visible { background-color: rgba(245, 158, 11, 0.15); color: var(--color-close); border: 1px solid var(--color-close); }
+.cursor-pointer { cursor: pointer; transition: 0.2s; }
+.cursor-pointer:hover { opacity: 0.7; }
 
 .toggle-wrapper { display: flex; align-items: center; gap: 10px; }
 .toggle-title { font-size: 0.85em; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
@@ -3350,10 +3562,12 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 input:checked + .slider { background-color: var(--color-launch); }
 input:checked + .slider:before { transform: translateX(22px); }
 
+/* --- Modals & Popups --- */
 .modal-overlay {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
     background: var(--modal-overlay);
+    backdrop-filter: blur(2px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -3364,34 +3578,69 @@ input:checked + .slider:before { transform: translateX(22px); }
     background: var(--bg-panel);
     padding: 24px;
     border-radius: 8px;
-    width: 430px;
+    width: 450px;
     border: 1px solid var(--border-color);
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
 }
+
+.modal-content.relative { position: relative; }
+
+.modal-close-x {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 20px;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    border: none;
+    box-shadow: none !important;
+}
+.modal-close-x:hover { color: var(--color-delete) !important; background: transparent !important; }
+
+.danger-modal {
+    border: 2px solid var(--color-delete) !important;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.25) !important;
+}
+.danger-modal h3 { color: var(--color-delete) !important; }
+
+.conflict-stats {
+    background: rgba(0, 0, 0, 0.15);
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+.conflict-stats ul { margin: 8px 0 0 20px; padding: 0; line-height: 1.6; }
 
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .modal-header h3 { margin: 0; font-size: 1.25em; color: var(--text-main); }
 .form-grid { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
 .form-group { display: flex; flex-direction: column; gap: 4px; }
 .form-group label { font-size: 0.8em; font-weight: 700; color: var(--color-launch); text-transform: uppercase; letter-spacing: 0.5px; }
-.form-group input { background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 10px; border-radius: 4px; }
+.form-group input { background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 10px; border-radius: 4px; transition: border-color 0.2s;}
+.form-group input:focus { outline: none; border-color: var(--color-launch); }
+
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.modal-actions-col { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
 
 /* Status Dot Indicator Styles */
 .status-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; transition: all 0.3s ease; }
 .status-dot.idle { background-color: #475569; }
 .status-dot.checking { background-color: #eab308; box-shadow: 0 0 8px #eab308; animation: pulse 1.5s infinite; }
 .status-dot.available { background-color: #10b981; box-shadow: 0 0 10px #10b981; }
-/* .status-dot.unavailable { background-color: #ef4444; }
+
+.status-dot.unavailable {
+    background-color: #64748b; 
+    box-shadow: 0 0 8px #64748b;
+    animation: pulse 1.5s infinite;
+}
+
 @keyframes pulse {
     0% { opacity: 0.5; transform: scale(0.9); }
     50% { opacity: 1; transform: scale(1.1); }
     100% { opacity: 0.5; transform: scale(0.9); }
-} */
-.status-dot.unavailable {
-    background-color: #64748b; /* Gray color */
-    box-shadow: 0 0 8px #64748b;
-    animation: pulse 1.5s infinite;
 }
 ```
 

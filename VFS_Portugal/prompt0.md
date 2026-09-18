@@ -48,3 +48,6 @@ body
 ```
 
 ![alt text](image.png)
+
+How would you like to handle accounts that already exist?
+

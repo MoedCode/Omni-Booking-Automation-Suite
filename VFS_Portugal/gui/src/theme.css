@@ -1,16 +1,16 @@
 /* gui/src/theme.css */
 
 .dark-theme {
-    --bg-main: #0f172a;
+    --bg-main: #0f172a; 
     --bg-panel: #1e293b;
     --bg-row-hover: #334155;
     --bg-selected: #1e3a5f;
-    --text-main: #e2e8f0;
+    --text-main: #ffffff; /* Proper white for dark mode */
     --text-muted: #94a3b8;
-    --border-color: #334155;
+    --border-color: rgba(51, 65, 85, 0.5);
     --table-header-bg: #0b1120;
     --input-bg: #0f172a;
-    --modal-overlay: rgba(0, 0, 0, 0.75);
+    --modal-overlay: rgba(0, 0, 0, 0.65);
     --color-launch: #0ea5e9;
     --color-close: #f59e0b;
     --color-delete: #ef4444;
@@ -24,7 +24,7 @@
     --bg-selected: #e0f2fe;
     --text-main: #0f172a;
     --text-muted: #64748b;
-    --border-color: #cbd5e1;
+    --border-color: rgba(203, 213, 225, 0.6);
     --table-header-bg: #e2e8f0;
     --input-bg: #f8fafc;
     --modal-overlay: rgba(15, 23, 42, 0.5);
@@ -39,20 +39,63 @@ body {
     padding: 0;
     font-family: 'Segoe UI', Tahoma, sans-serif;
     background-color: var(--bg-main);
-    color: var(--text-main);
 }
 
-/* 👈 Completely stripped padding from the main container */
 .app-container {
     display: flex;
     flex-direction: column;
     height: 100vh;
     box-sizing: border-box;
     background-color: var(--bg-main);
+    color: var(--text-main);
     transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-/* 👈 Edge-to-edge 3-column header layout */
+/* --- Windows Controls --- */
+.custom-titlebar {
+    width: 100%;
+    height: 38px;
+    background-color: transparent;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    -webkit-app-region: drag;
+    user-select: none;
+}
+
+.titlebar-controls {
+    display: flex;
+    align-items: center;
+    padding-right: 20px; /* Space from the right edge */
+    gap: 12px;           /* Space between buttons */
+    height: 100%;
+    -webkit-app-region: no-drag;
+}
+
+.linux-btn {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    color: transparent; /* SVG transparent by default */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: 0.2s ease;
+    padding: 0;
+    box-shadow: none !important;
+}
+
+.linux-btn svg { transition: 0.2s ease; }
+.titlebar-controls:hover .linux-btn { color: rgba(0, 0, 0, 0.6); }
+
+/* Circle colors for Min, Max, Close */
+.win-min { background-color: #ffbd2e; }
+.win-max { background-color: #27c93f; }
+.win-close { background-color: #ff5f56; }
+
+/* --- Header Panel --- */
 .header-panel {
     background-color: var(--bg-panel);
     padding: 12px 20px;
@@ -68,10 +111,37 @@ body {
     gap: 15px;
     flex: 1;
 }
-.header-right { justify-content: flex-end; }
+
 .header-center { flex: 0 1 auto; display: flex; justify-content: center; }
 
-/* Workspace padding reinstated internally so the table isn't touching the window edges */
+.sheet-fetcher {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.url-bar {
+    width: 250px; 
+    height: 26px;
+    padding: 0 12px;
+    font-size: 13px;
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    border-radius: 4px;
+    transition: border-color 0.2s;
+}
+.url-bar:focus { outline: none; border-color: var(--color-launch); }
+
+.btn-compact {
+    height: 28px;
+    padding: 0 14px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+}
+
+/* --- Workspace & Toolbar --- */
 .inner-workspace {
     padding: 20px;
     flex: 1;
@@ -80,52 +150,65 @@ body {
     overflow: hidden;
 }
 
-.sheet-fetcher {
+.toolbar {
     display: flex;
-    gap: 5px;
-    flex: 1;
-    max-width: 300px;
-}
-
-.sheet-fetcher input {
-    flex: 1;
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
-    color: var(--text-main);
-    padding: 8px 12px;
-    border-radius: 4px;
-}
-
-.bulk-actions {
-    display: flex;
-    gap: 10px;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 15px;
 }
 
-button {
-    border: none;
+.toolbar-left, .toolbar-right { display: flex; gap: 12px; align-items: center; }
+
+/* Hover-Only Borderless Buttons */
+button:not(.win-btn):not(.modal-close-x) {
+    background-color: transparent;
+    border: 1px solid transparent;
     border-radius: 4px;
     padding: 8px 16px;
     cursor: pointer;
     font-weight: 600;
-    color: white;
-    transition: opacity 0.2s, background-color 0.2s;
+    transition: all 0.2s ease;
+    box-shadow: none;
 }
-button:hover:not(:disabled) { opacity: 0.85; }
 button:disabled { opacity: 0.35; cursor: not-allowed; }
 
-.btn-add { background-color: var(--color-add); }
-.btn-launch { background-color: var(--color-launch); }
-.btn-close { background-color: var(--color-close); }
-.btn-delete { background-color: var(--color-delete); }
-.btn-outline { 
-    background-color: transparent; 
-    border: 1px solid var(--border-color); 
-    color: var(--text-main); 
-}
-.theme-toggle-btn { min-width: 85px; }
-.btn-sm { padding: 4px 10px; font-size: 0.85em; border-radius: 3px; }
+/* Default text colors based on context */
+.btn-launch { color: var(--color-launch); }
+.btn-close { color: var(--color-close); }
+.btn-delete { color: var(--color-delete); }
+.btn-add { color: var(--color-add); }
+.btn-outline { color: var(--text-main); }
 
+/* Hover triggers background and shadow */
+.btn-launch:hover:not(:disabled) { 
+    background-color: var(--color-launch); 
+    color: white; 
+    box-shadow: 0 4px 10px rgba(14, 165, 233, 0.3); 
+}
+.btn-close:hover:not(:disabled) { 
+    background-color: var(--color-close); 
+    color: white; 
+    box-shadow: 0 4px 10px rgba(245, 158, 11, 0.3); 
+}
+.btn-delete:hover:not(:disabled) { 
+    background-color: var(--color-delete); 
+    color: white; 
+    box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3); 
+}
+.btn-add:hover:not(:disabled) { 
+    background-color: var(--color-add); 
+    color: white; 
+    box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3); 
+}
+.btn-outline:hover:not(:disabled) { 
+    background-color: var(--bg-row-hover); 
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15); 
+}
+
+.theme-toggle-btn { min-width: 85px; }
+.btn-sm { padding: 4px 10px; font-size: 0.85em; border-radius: 4px; }
+
+/* --- Table Styles --- */
 .table-container {
     flex: 1;
     background-color: var(--bg-panel);
@@ -166,7 +249,7 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
     position: sticky;
     right: 0;
     background-color: var(--bg-panel);
-    border-left: 2px solid var(--border-color);
+    border-left: 1px solid var(--border-color);
     z-index: 2;
 }
 
@@ -192,6 +275,7 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
     filter: grayscale(100%);
     opacity: 0.4;
     transition: all 0.2s;
+    box-shadow: none !important;
 }
 .copy-btn:hover { filter: grayscale(0%); opacity: 1; transform: scale(1.1); }
 
@@ -212,7 +296,9 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
     font-weight: 600;
 }
 .badge-headless { background-color: rgba(14, 165, 233, 0.15); color: var(--color-launch); border: 1px solid var(--color-launch); }
-.badge-headed { background-color: rgba(245, 158, 11, 0.15); color: var(--color-close); border: 1px solid var(--color-close); }
+.badge-visible { background-color: rgba(245, 158, 11, 0.15); color: var(--color-close); border: 1px solid var(--color-close); }
+.cursor-pointer { cursor: pointer; transition: 0.2s; }
+.cursor-pointer:hover { opacity: 0.7; }
 
 .toggle-wrapper { display: flex; align-items: center; gap: 10px; }
 .toggle-title { font-size: 0.85em; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
@@ -224,10 +310,12 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 input:checked + .slider { background-color: var(--color-launch); }
 input:checked + .slider:before { transform: translateX(22px); }
 
+/* --- Modals & Popups --- */
 .modal-overlay {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
     background: var(--modal-overlay);
+    backdrop-filter: blur(2px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -238,92 +326,67 @@ input:checked + .slider:before { transform: translateX(22px); }
     background: var(--bg-panel);
     padding: 24px;
     border-radius: 8px;
-    width: 430px;
+    width: 450px;
     border: 1px solid var(--border-color);
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
 }
+
+.modal-content.relative { position: relative; }
+
+.modal-close-x {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 20px;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    border: none;
+    box-shadow: none !important;
+}
+.modal-close-x:hover { color: var(--color-delete) !important; background: transparent !important; }
+
+.danger-modal {
+    border: 2px solid var(--color-delete) !important;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.25) !important;
+}
+.danger-modal h3 { color: var(--color-delete) !important; }
+
+.conflict-stats {
+    background: rgba(0, 0, 0, 0.15);
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+.conflict-stats ul { margin: 8px 0 0 20px; padding: 0; line-height: 1.6; }
 
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .modal-header h3 { margin: 0; font-size: 1.25em; color: var(--text-main); }
 .form-grid { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
 .form-group { display: flex; flex-direction: column; gap: 4px; }
 .form-group label { font-size: 0.8em; font-weight: 700; color: var(--color-launch); text-transform: uppercase; letter-spacing: 0.5px; }
-.form-group input { background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 10px; border-radius: 4px; }
+.form-group input { background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 10px; border-radius: 4px; transition: border-color 0.2s;}
+.form-group input:focus { outline: none; border-color: var(--color-launch); }
+
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.modal-actions-col { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
 
 /* Status Dot Indicator Styles */
 .status-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; transition: all 0.3s ease; }
 .status-dot.idle { background-color: #475569; }
 .status-dot.checking { background-color: #eab308; box-shadow: 0 0 8px #eab308; animation: pulse 1.5s infinite; }
 .status-dot.available { background-color: #10b981; box-shadow: 0 0 10px #10b981; }
-/* .status-dot.unavailable { background-color: #ef4444; }
-@keyframes pulse {
-    0% { opacity: 0.5; transform: scale(0.9); }
-    50% { opacity: 1; transform: scale(1.1); }
-    100% { opacity: 0.5; transform: scale(0.9); }
-} */
+
 .status-dot.unavailable {
-    background-color: #64748b; /* Gray color */
+    background-color: #64748b; 
     box-shadow: 0 0 8px #64748b;
     animation: pulse 1.5s infinite;
 }
 
-/* --- Custom Frameless Titlebar --- */
-.custom-titlebar {
-    width: 100%;
-    height: 40px;
-    background-color: var(--table-header-bg);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    -webkit-app-region: drag; /* Makes the top bar draggable like a native window */
-    user-select: none;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.titlebar-logo-area {
-    display: flex;
-    align-items: center;
-    height: 100%;
-}
-
-.titlebar-controls {
-    display: flex;
-    height: 100%;
-    -webkit-app-region: no-drag; /* Makes buttons clickable */
-}
-
-.win-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    width: 46px;
-    height: 100%;
-    font-size: 14px;
-    cursor: pointer;
-    border-radius: 0;
-    transition: background-color 0.2s, color 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.win-btn:hover {
-    background-color: var(--bg-row-hover);
-    color: var(--text-main);
-}
-
-.win-close:hover {
-    background-color: #ef4444;
-    color: white;
-}
-
-/* Adjust the header panel to not overlap the titlebar */
-.header-panel {
-    background-color: var(--bg-panel);
-    padding: 12px 20px;
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+@keyframes pulse {
+    0% { opacity: 0.5; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.1); }
+    100% { opacity: 0.5; transform: scale(0.9); }
 }
