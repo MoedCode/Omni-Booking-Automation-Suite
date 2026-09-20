@@ -5,7 +5,7 @@
     --bg-panel: #1e293b;
     --bg-row-hover: #334155;
     --bg-selected: #1e3a5f;
-    --text-main: #ffffff; /* Proper white for dark mode */
+    --text-main: #ffffff; 
     --text-muted: #94a3b8;
     --border-color: rgba(51, 65, 85, 0.5);
     --table-header-bg: #0b1120;
@@ -66,8 +66,8 @@ body {
 .titlebar-controls {
     display: flex;
     align-items: center;
-    padding-right: 20px; /* Space from the right edge */
-    gap: 12px;           /* Space between buttons */
+    padding-right: 20px; 
+    gap: 12px;           
     height: 100%;
     -webkit-app-region: no-drag;
 }
@@ -78,7 +78,7 @@ body {
     border-radius: 50%;
     border: none;
     cursor: pointer;
-    color: transparent; /* SVG transparent by default */
+    color: transparent; 
     display: flex;
     align-items: center;
     justify-content: center;
@@ -90,7 +90,6 @@ body {
 .linux-btn svg { transition: 0.2s ease; }
 .titlebar-controls:hover .linux-btn { color: rgba(0, 0, 0, 0.6); }
 
-/* Circle colors for Min, Max, Close */
 .win-min { background-color: #ffbd2e; }
 .win-max { background-color: #27c93f; }
 .win-close { background-color: #ff5f56; }
@@ -159,7 +158,6 @@ body {
 
 .toolbar-left, .toolbar-right { display: flex; gap: 12px; align-items: center; }
 
-/* Hover-Only Borderless Buttons */
 button:not(.win-btn):not(.modal-close-x) {
     background-color: transparent;
     border: 1px solid transparent;
@@ -172,14 +170,12 @@ button:not(.win-btn):not(.modal-close-x) {
 }
 button:disabled { opacity: 0.35; cursor: not-allowed; }
 
-/* Default text colors based on context */
 .btn-launch { color: var(--color-launch); }
 .btn-close { color: var(--color-close); }
 .btn-delete { color: var(--color-delete); }
 .btn-add { color: var(--color-add); }
 .btn-outline { color: var(--text-main); }
 
-/* Hover triggers background and shadow */
 .btn-launch:hover:not(:disabled) { 
     background-color: var(--color-launch); 
     color: white; 
@@ -389,4 +385,16 @@ input:checked + .slider:before { transform: translateX(22px); }
     0% { opacity: 0.5; transform: scale(0.9); }
     50% { opacity: 1; transform: scale(1.1); }
     100% { opacity: 0.5; transform: scale(0.9); }
+}
+
+/* Invalid Input Shake Animation */
+.input-error-shake {
+    border-color: var(--color-delete) !important;
+    animation: shakeError 0.5s ease-in-out;
+}
+
+@keyframes shakeError {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-4px); }
+    40%, 80% { transform: translateX(4px); }
 }

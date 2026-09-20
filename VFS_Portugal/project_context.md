@@ -1480,11 +1480,6 @@ const settings = require('../Config/Settings');
 const { allKeys } = require('../Config/Settings');
 
 class SheetHandler {
-    /**
-     * Creates an instance of SheetHandler.
-     * @param {Object} keysConfig - Object containing mandatoryKeys, allowedKeys, and keyConv
-     * @param {string} defaultFilePath - Default path to the spreadsheet
-     */
     constructor(keysConfig = settings.allKeys, defaultFilePath = settings.FILE_PATH) {
         this.allKeysConfig = keysConfig || {};
         this.mandatoryKeys = new Set(this.allKeysConfig.mandatoryKeys || []);
@@ -1497,44 +1492,24 @@ class SheetHandler {
         this.allValidKeys = new Set([...this.mandatoryKeys, ...this.allowedKeys]);
     }
 
-    /**
-     * Centralized File Path Handler.
-     * Validates and resolves the file path. All file-loading methods must use this.
-     * @param {string} customPath - Optional path provided at runtime
-     * @returns {string} - A verified, existing file path
-     */
     resolveFilePath(customPath) {
         const targetPath = customPath || this.defaultFilePath;
-
-        if (!targetPath) {
-            throw new Error("[File Error] No file path provided and no default path is set.");
-        }
-
-        if (!fs.existsSync(targetPath)) {
-            throw new Error(`[File Error] File does not exist at path: ${targetPath}`);
-        }
-
+        if (!targetPath) throw new Error("[File Error] No file path provided and no default path is set.");
+        if (!fs.existsSync(targetPath)) throw new Error(`[File Error] File does not exist at path: ${targetPath}`);
         return targetPath;
     }
 
-    /**
-     * Standardizes Excel header variations (spaces, dashes, underscores, caps) 
-     * and maps them to standard keys using `keyConv` and fuzzy matching.
-     */
     _normalizeRowKeys(rawRow) {
         const normalizedRow = {};
-
         for (let [rawKey, value] of Object.entries(rawRow)) {
             rawKey = rawKey.trim();
             let finalKey = rawKey;
 
-            // 1. Direct match with allowed keys
             if (this.allValidKeys.has(rawKey)) {
                 normalizedRow[rawKey] = value;
                 continue;
             }
 
-            // 2. Map via keyConv aliases
             let aliasMatched = false;
             for (const [standardKey, aliases] of Object.entries(this.keyConv)) {
                 const lowerAliases = aliases.map(a => a.toLowerCase());
@@ -1545,11 +1520,8 @@ class SheetHandler {
                 }
             }
 
-            // 3. Fallback: Fuzzy matching (handles spaces, hyphens, underscores, capitalization automatically)
-            // e.g., "Appointment_Category" -> "appointmentcategory" -> matches "appointmentCategory"
             if (!aliasMatched) {
                 const fuzzyRawKey = rawKey.replace(/[-_ ]/g, "").toLowerCase();
-                
                 for (const validKey of this.allValidKeys) {
                     const fuzzyValidKey = validKey.replace(/[-_ ]/g, "").toLowerCase();
                     if (fuzzyRawKey === fuzzyValidKey) {
@@ -1558,18 +1530,11 @@ class SheetHandler {
                     }
                 }
             }
-
-            // Save the value under the standardized key
             normalizedRow[finalKey] = value;
         }
-
         return normalizedRow;
     }
 
-    /**
-     * Safely validates and parses the dataset.
-     * @returns {Object} A structured result dictionary
-     */
     sanitizeParsing(rawRows) {
         const warnings = [];
         const validData = [];
@@ -1579,21 +1544,15 @@ class SheetHandler {
             return this._createResult(false, [], 'The source file/sheet contains no data rows.', warnings, 0, 0, 0);
         }
 
-        // Apply Key Conversion and Normalization
         const normalizedRows = rawRows.map(row => this._normalizeRowKeys(row));
-        // console.log(`=> \n`, normalizedRows, "\n");
-        // 1. File-Level Validation
+
         if (this.hasMandatory) {
             const fileHeaders = new Set();
-            normalizedRows.forEach((row) => {
-                Object.keys(row).forEach((k) => fileHeaders.add(k));
-            });   
+            normalizedRows.forEach((row) => { Object.keys(row).forEach((k) => fileHeaders.add(k)); });   
 
             const missingMandatoryColumns = [];
             for (const mandatoryKey of this.mandatoryKeys) {
-                if (!fileHeaders.has(mandatoryKey)) {
-                    missingMandatoryColumns.push(mandatoryKey);
-                }
+                if (!fileHeaders.has(mandatoryKey)) missingMandatoryColumns.push(mandatoryKey);
             }
 
             if (missingMandatoryColumns.length > 0) {
@@ -1602,17 +1561,14 @@ class SheetHandler {
             }
         }
 
-        // 2. Row-Level Validation
         normalizedRows.forEach((row, index) => {
             const rowNumber = index + 2; 
             let isRowValid = true;
 
-            // Check A: Mandatory values validation
             if (this.hasMandatory) {
                 for (const mandatoryKey of this.mandatoryKeys) {
                     const val = row[mandatoryKey];
                     const isEmpty = val === undefined || val === null || (typeof val === 'string' && val.trim() === '');
-
                     if (isEmpty) {
                         warnings.push(`[Row ${rowNumber}] Ignored: Missing mandatory value for key "${mandatoryKey}".`);
                         isRowValid = false;
@@ -1621,16 +1577,11 @@ class SheetHandler {
                 }
             }
 
-            if (!isRowValid) {
-                ignoredRowsCount++;
-                return;
-            }
+            if (!isRowValid) { ignoredRowsCount++; return; }
 
-            // Check B: Allowed / Lookup keys validation
             if (this.hasAllowed) {
                 for (const [key, val] of Object.entries(row)) {
                     const hasValue = val !== undefined && val !== null && (typeof val === 'string' ? val.trim() !== '' : true);
-
                     if (hasValue && !this.allValidKeys.has(key)) {
                         warnings.push(`[Row ${rowNumber}] Ignored: Contains unauthorized/unrecognized column key "${key}".`);
                         isRowValid = false;
@@ -1639,12 +1590,8 @@ class SheetHandler {
                 }
             }
 
-            if (!isRowValid) {
-                ignoredRowsCount++;
-                return;
-            }
+            if (!isRowValid) { ignoredRowsCount++; return; }
 
-            // Sanitize mapped record
             const cleanRecord = {};
             const keysToKeep = this.hasAllowed ? this.allValidKeys : Object.keys(row);
 
@@ -1656,57 +1603,79 @@ class SheetHandler {
                     cleanRecord[key] = '';
                 }
             }
-
             validData.push(cleanRecord);
         });
 
         return this._createResult(true, validData, null, warnings, normalizedRows.length, validData.length, ignoredRowsCount);
     }
 
-    /**
-     * Loads and parses records from an Excel file.
-     * @param {string} customPath - Optional. Overrides the default FILE_PATH.
-     * @param {string} sheetName - Optional specific sheet name to read.
-     */
     loadFromExcel(customPath, sheetName) {
         try {
-            // Safely resolve the file path using the centralized method
             const validPath = this.resolveFilePath(customPath);
-
             const workbook = XLSX.readFile(validPath);
             const targetSheetName = sheetName || workbook.SheetNames[0];
             const sheet = workbook.Sheets[targetSheetName];
 
-            if (!sheet) {
-                return this._createErrorResult(`Sheet "${targetSheetName}" was not found in the Excel workbook.`);
-            }
+            if (!sheet) return this._createErrorResult(`Sheet "${targetSheetName}" was not found in the Excel workbook.`);
 
             const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
             return this.sanitizeParsing(rawRows);
-
         } catch (error) {
             return this._createErrorResult(`Failed to load Excel file: ${error.message}`);
         }
     }
 
-    /**
-     * Loads and parses records from a CSV file.
-     * @param {string} customPath - Optional. Overrides the default FILE_PATH.
-     */
     loadFromCsv(customPath) {
         try {
-            // Safely resolve the file path using the centralized method
             const validPath = this.resolveFilePath(customPath);
-            
             const workbook = XLSX.readFile(validPath, { type: 'file' });
             const firstSheetName = workbook.SheetNames[0];
             const sheet = workbook.Sheets[firstSheetName];
 
             const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
             return this.sanitizeParsing(rawRows);
-
         } catch (error) {
             return this._createErrorResult(`Failed to load CSV file: ${error.message}`);
+        }
+    }
+
+    /**
+     * Fetches and parses a public Google Sheet as CSV.
+     * @param {string} url - The full Google Sheets URL
+     */
+    async loadFromGSheet(url) {
+        try {
+            if (!url || url.trim() === '') throw new Error("No URL provided.");
+
+            const sheetIdMatch = url.match(/\/d\/(.*?)(\/|$)/);
+            if (!sheetIdMatch || !sheetIdMatch[1]) {
+                throw new Error("Invalid Google Sheets URL format. Could not locate the Sheet ID.");
+            }
+            
+            const sheetId = sheetIdMatch[1];
+            const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+            
+            const response = await fetch(exportUrl);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status} - Ensure the Google Sheet is set to 'Anyone with the link can view'.`);
+            }
+            
+            const csvText = await response.text();
+            
+            // If the response is HTML (like a Google sign-in page), it's a private sheet
+            if (csvText.trim().toLowerCase().startsWith('<!doctype html>') || csvText.trim().toLowerCase().startsWith('<html')) {
+                throw new Error("Access Denied. The Google Sheet is private. Change sharing settings to 'Anyone with the link'.");
+            }
+
+            const workbook = XLSX.read(csvText, { type: 'string' });
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+
+            const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+            return this.sanitizeParsing(rawRows);
+
+        } catch (error) {
+            return this._createErrorResult(`Cannot import Error: ${error.message}`);
         }
     }
 
@@ -1736,6 +1705,7 @@ if (require.main === module) {
             console.log(`[Test] Attempting to read Excel file from path: "${handler.defaultFilePath}"`);
             
             const result = handler.loadFromExcel();
+
 
             console.log("\n--- Parsing Execution Results ---");
             console.log(`Success Status : ${result.success}`);
@@ -2359,7 +2329,7 @@ function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1400,
         height: 900,
-        backgroundColor: '#0f172a', // Solid background fixes the Windows lagging/freezing bug
+        backgroundColor: '#0f172a',
         title: "Yalla Visa Auto-Booking Suite",
         frame: false, 
         titleBarStyle: 'hidden', 
@@ -2370,7 +2340,6 @@ function createWindow() {
         }
     });
     
-    // Broadcast maximization state to React for the dynamic titlebar icon
     mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized', true));
     mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-maximized', false));
 
@@ -2389,6 +2358,7 @@ app.on('window-all-closed', () => {
 });
 
 // Custom Titlebar Controls
+ipcMain.removeAllListeners('window-control');
 ipcMain.on('window-control', (event, action) => {
     if (!mainWindow) return;
     if (action === 'minimize') mainWindow.minimize();
@@ -2400,7 +2370,8 @@ ipcMain.on('window-control', (event, action) => {
     }
 });
 
-// File Handling
+// File Handling (Local)
+ipcMain.removeHandler('select-local-file');
 ipcMain.handle('select-local-file', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
         properties: ['openFile'],
@@ -2413,21 +2384,29 @@ ipcMain.handle('select-local-file', async () => {
         if (result.success) return result.data;
         throw new Error(result.error);
     } catch (error) {
-        return { error: error.message };
+        return { error: `Cannot import Error: ${error.message}` };
     }
 });
 
+// File Handling (Google Sheet)
+ipcMain.removeHandler('fetch-google-sheet');
 ipcMain.handle('fetch-google-sheet', async (event, url) => {
     try {
-        const sheetIdMatch = url.match(/\/d\/(.*?)(\/|$)/);
-        if (!sheetIdMatch) throw new Error("Invalid Google Sheets URL");
-        return [{ account: "fetched@sheet.com", password: "pwd", country: "Portugal", city: "Cairo" }];
+        const handler = new SheetHandler();
+        const result = await handler.loadFromGSheet(url);
+        
+        if (result.success) {
+            return result.data;
+        } else {
+            return { error: result.error };
+        }
     } catch (error) {
-        return { error: error.message };
+        return { error: `Cannot import Error: ${error.message}` };
     }
 });
 
 // Bot Management
+ipcMain.removeAllListeners('launch-bots');
 ipcMain.on('launch-bots', async (event, instances) => {
     for (const instance of instances) {
         if (activeWorkers.has(instance.id)) continue;
@@ -2452,6 +2431,7 @@ ipcMain.on('launch-bots', async (event, instances) => {
     }
 });
 
+ipcMain.removeAllListeners('close-bots');
 ipcMain.on('close-bots', (event, ids) => {
     for (const id of ids) {
         const worker = activeWorkers.get(id);
@@ -2786,6 +2766,8 @@ export default function App() {
     const [deleteConfirm, setDeleteConfirm] = useState(null); 
     const [pendingImport, setPendingImport] = useState(null); 
     const [appCloseWarning, setAppCloseWarning] = useState(null); 
+    // Added central error state for custom themed alerts
+    const [errorMessage, setErrorMessage] = useState(null);
 
     useEffect(() => {
         if (window.electronAPI) {
@@ -2811,13 +2793,15 @@ export default function App() {
 
     const requestAppClose = () => {
         const runningBots = instances.filter(i => i.status !== 'Idle' && i.status !== 'Closed' && !i.status.toLowerCase().includes('error'));
-        if (runningBots.length > 0) {
-            const headlessCount = runningBots.filter(i => i.headless).length;
-            const visibleCount = runningBots.filter(i => !i.headless).length;
-            setAppCloseWarning({ headless: headlessCount, visible: visibleCount });
-        } else {
-            handleWindowAction('close');
-        }
+        const headlessCount = runningBots.filter(i => i.headless).length;
+        const visibleCount = runningBots.filter(i => !i.headless).length;
+        
+        setAppCloseWarning({ 
+            headless: headlessCount, 
+            visible: visibleCount,
+            totalRunning: runningBots.length,
+            totalAccounts: instances.length
+        });
     };
 
     const processImport = (data) => {
@@ -2848,15 +2832,26 @@ export default function App() {
 
     const handleLocalFile = async () => {
         const data = await window.electronAPI.selectLocalFile();
-        if (data && !data.error) processImport(data);
-        else if (data?.error) alert(data.error);
+        if (data && !data.error) {
+            processImport(data);
+        } else if (data?.error) {
+            // Replaced alert() with our themed error modal
+            setErrorMessage(data.error);
+        }
     };
 
     const handleGoogleSheet = async () => {
+        // Validation check uses custom modal instead of native alert
+        if (!sheetUrl) return setErrorMessage("Please enter a valid Google Sheets URL.");
+        
         const data = await window.electronAPI.fetchGoogleSheet(sheetUrl);
+        
         if (data && !data.error) {
             processImport(data);
             setSheetUrl('');
+        } else if (data?.error) {
+            // Replaced alert() with our themed error modal
+            setErrorMessage(data.error); 
         }
     };
 
@@ -2916,9 +2911,15 @@ export default function App() {
         setEditingId(inst.id);
         setEditForm({ ...inst.data, headless: inst.headless ?? true });
     };
+
+    const cancelEdit = () => {
+        setEditingId(null);
+        setEditForm(null);
+    };
     
     const saveEdit = () => {
-        if (!editForm.account) return alert("Account email is required");
+        if (!editForm.account) return setErrorMessage("Account email is required.");
+        
         const { headless, ...dataFields } = editForm;
 
         if (editingId === 'NEW') {
@@ -3060,17 +3061,33 @@ export default function App() {
                 </div>
             </div>
 
+            {/* Custom Error Modal (Replaces Native alert) */}
+            {errorMessage && (
+                <div className="modal-overlay" onClick={() => setErrorMessage(null)}>
+                    <div className="modal-content danger-modal relative" onClick={e => e.stopPropagation()}>
+                        <button className="modal-close-x" onClick={() => setErrorMessage(null)}>✕</button>
+                        <h3>⚠️ Error</h3>
+                        <p style={{marginTop: '10px', marginBottom: '20px', lineHeight: '1.5', wordBreak: 'break-word'}}>
+                            {errorMessage}
+                        </p>
+                        <div className="modal-actions">
+                            <button className="btn-outline" onClick={() => setErrorMessage(null)}>OK</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Application Close Warning */}
             {appCloseWarning && (
                 <div className="modal-overlay">
                     <div className="modal-content danger-modal relative">
                         <button className="modal-close-x" onClick={() => setAppCloseWarning(null)}>✕</button>
-                        <h3>⚠️ Running Sessions Detected</h3>
+                        <h3>⚠️ Confirm Exit</h3>
                         <p style={{marginTop: '10px', marginBottom: '20px', lineHeight: '1.5'}}>
-                            Are you sure you want to close the application? All active processes will be immediately terminated:
+                            Are you sure you want to close the application? All active processes will be immediately terminated.
                             <br/><br/>
-                            • <strong>{appCloseWarning.headless}</strong> instance(s) running in Headless mode.<br/>
-                            • <strong>{appCloseWarning.visible}</strong> instance(s) running in Visible mode.
+                            • <strong>{appCloseWarning.totalRunning}</strong> active instance(s) running ({appCloseWarning.headless} Headless, {appCloseWarning.visible} Visible).<br/>
+                            • <strong>{appCloseWarning.totalAccounts}</strong> total account(s) will be cleared from this session.
                         </p>
                         <div className="modal-actions">
                             <button className="btn-outline" onClick={() => setAppCloseWarning(null)}>Cancel</button>
@@ -3158,7 +3175,7 @@ export default function App() {
                         <button className="modal-close-x" onClick={cancelEdit}>✕</button>
                         <div className="modal-header">
                             <h3>{editingId === 'NEW' ? 'Hot Batch New' : `${editForm.account || 'Account'} Hot Batch`}</h3>
-                            <div className="toggle-wrapper">
+                            <div className="toggle-wrapper" style={{ marginRight: '35px' }}>
                                 <span className="toggle-title">Headless</span>
                                 <label className="switch">
                                     <input type="checkbox" checked={editForm.headless} onChange={e => setEditForm({...editForm, headless: e.target.checked})} />

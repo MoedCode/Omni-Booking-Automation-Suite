@@ -28,6 +28,9 @@ export default function App() {
     const [defaultHeadless, setDefaultHeadless] = useState(true);
     const [theme, setTheme] = useState('dark');
     const [isMaximized, setIsMaximized] = useState(false);
+    
+    // UI state for flashing URL bar
+    const [isUrlInvalid, setIsUrlInvalid] = useState(false);
 
     const [globalDefaults, setGlobalDefaults] = useState({
         country: 'Egypt',
@@ -42,6 +45,7 @@ export default function App() {
     const [deleteConfirm, setDeleteConfirm] = useState(null); 
     const [pendingImport, setPendingImport] = useState(null); 
     const [appCloseWarning, setAppCloseWarning] = useState(null); 
+    const [errorMessage, setErrorMessage] = useState(null);
 
     useEffect(() => {
         if (window.electronAPI) {
@@ -70,7 +74,6 @@ export default function App() {
         const headlessCount = runningBots.filter(i => i.headless).length;
         const visibleCount = runningBots.filter(i => !i.headless).length;
         
-        // Always trigger the warning popup when attempting to close
         setAppCloseWarning({ 
             headless: headlessCount, 
             visible: visibleCount,
@@ -107,15 +110,28 @@ export default function App() {
 
     const handleLocalFile = async () => {
         const data = await window.electronAPI.selectLocalFile();
-        if (data && !data.error) processImport(data);
-        else if (data?.error) alert(data.error);
+        if (data && !data.error) {
+            processImport(data);
+        } else if (data?.error) {
+            setErrorMessage(data.error);
+        }
     };
 
     const handleGoogleSheet = async () => {
+        // Stop execution and trigger CSS shake if input is empty or only spaces
+        if (!sheetUrl || sheetUrl.trim() === '') {
+            setIsUrlInvalid(true);
+            setTimeout(() => setIsUrlInvalid(false), 500);
+            return; 
+        }
+        
         const data = await window.electronAPI.fetchGoogleSheet(sheetUrl);
+        
         if (data && !data.error) {
             processImport(data);
             setSheetUrl('');
+        } else if (data?.error) {
+            setErrorMessage(data.error); 
         }
     };
 
@@ -182,7 +198,8 @@ export default function App() {
     };
     
     const saveEdit = () => {
-        if (!editForm.account) return alert("Account email is required");
+        if (!editForm.account) return setErrorMessage("Account email is required.");
+        
         const { headless, ...dataFields } = editForm;
 
         if (editingId === 'NEW') {
@@ -230,7 +247,14 @@ export default function App() {
                 <div className="header-left">
                     <button className="btn-outline btn-compact" onClick={handleLocalFile} title="Browse your computer to upload a local Excel or CSV file.">Browse</button>
                     <div className="sheet-fetcher">
-                        <input type="text" placeholder="Google Sheet URL" value={sheetUrl} onChange={e => setSheetUrl(e.target.value)} className="url-bar" />
+                        {/* URL input mapped to the isUrlInvalid state to trigger the CSS shake animation */}
+                        <input 
+                            type="text" 
+                            placeholder="Google Sheet URL" 
+                            value={sheetUrl} 
+                            onChange={e => setSheetUrl(e.target.value)} 
+                            className={`url-bar ${isUrlInvalid ? 'input-error-shake' : ''}`} 
+                        />
                         <button className="btn-outline btn-compact" onClick={handleGoogleSheet} title="Fetch account configurations directly from a published Google Sheet.">Fetch</button>
                     </div>
                 </div>
@@ -323,6 +347,22 @@ export default function App() {
                     </table>
                 </div>
             </div>
+
+            {/* Custom Error Modal (Replaces Native alert) */}
+            {errorMessage && (
+                <div className="modal-overlay" onClick={() => setErrorMessage(null)}>
+                    <div className="modal-content danger-modal relative" onClick={e => e.stopPropagation()}>
+                        <button className="modal-close-x" onClick={() => setErrorMessage(null)}>✕</button>
+                        <h3>⚠️ Error</h3>
+                        <p style={{marginTop: '10px', marginBottom: '20px', lineHeight: '1.5', wordBreak: 'break-word'}}>
+                            {errorMessage}
+                        </p>
+                        <div className="modal-actions">
+                            <button className="btn-outline" onClick={() => setErrorMessage(null)}>OK</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Application Close Warning */}
             {appCloseWarning && (
@@ -422,7 +462,6 @@ export default function App() {
                         <button className="modal-close-x" onClick={cancelEdit}>✕</button>
                         <div className="modal-header">
                             <h3>{editingId === 'NEW' ? 'Hot Batch New' : `${editForm.account || 'Account'} Hot Batch`}</h3>
-                            {/* Added marginRight to separate the switch from the absolute close 'x' button */}
                             <div className="toggle-wrapper" style={{ marginRight: '35px' }}>
                                 <span className="toggle-title">Headless</span>
                                 <label className="switch">
