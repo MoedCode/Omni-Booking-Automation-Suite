@@ -95,14 +95,24 @@ const allKeys = {
         "country", 
         "city", 
         "appointmentCategory",
-        "subCategory"
+        "subCategory",
+        "mode",
+        "attempts",
+        "attemptDelay",
+        "switches",
+        "switchDelay"
     ],
     keyConv: {
         password: ["passwords", "pass", "pwd"], 
         account: ["accounts", "email", "username"],
         appointmentCategory: ["appointment category", "appointment_category", "appointment-category"],
         city: ["cites"],
-        country: ["country's"]
+        country: ["country's"],
+        mode: ["headless", "visible", "execution mode", "execution_mode"],
+        attempts: ["number of attempts", "retries", "attempt"],
+        attemptDelay: ["attempt delay", "delay", "time between", "time between each attempt"],
+        switches: ["switch", "switches", "number of switch", "sub category switch"],
+        switchDelay: ["switch delay"]
     }
 };
 
@@ -111,7 +121,11 @@ const defaultBatchConfig = {
     country: "Egypt",
     city: "Alexandria",
     appointmentCategory: "Short Term Visa",
-    subCategory: "Tourism"
+    subCategory: "Tourism",
+    attempts: 1,
+    attemptDelay: "00/00/05/00", // Default 5 minutes (dd/hh/mm/ss)
+    switches: 1,
+    switchDelay: 3000
 };
 
 const terminationCmds = ["exit", "\\q", "q"];
@@ -891,6 +905,14 @@ export class ChromeWorker extends BaseBrowser {
             appointmentCategory: instanceData?.appointmentCategory || defaultBatchConfig.appointmentCategory,
             subCategory: instanceData?.subCategory || defaultBatchConfig.subCategory
         };
+        
+        // Loop State & Constraints
+        this.currentAttempt = 1;
+        this.maxAttempts = parseInt(instanceData?.attempts) || defaultBatchConfig.attempts;
+        this.attemptDelayStr = instanceData?.attemptDelay || defaultBatchConfig.attemptDelay;
+        
+        this.switches = parseInt(instanceData?.switches) || defaultBatchConfig.switches;
+        this.switchDelay = parseInt(instanceData?.switchDelay) || defaultBatchConfig.switchDelay;
 
         this.isOrchestratorRunning = false;
         this.captchaHandler = new CaptchaHandler(this);
@@ -943,17 +965,113 @@ export class ChromeWorker extends BaseBrowser {
                 endDelay: actionsConfig.appointmentDetails.endDelay,
                 dependencies: ['dashboard'],
                 method: async () => {
-                    const formFilledSuccessfully = await this.injectSmartFormFiller(this.instanceData);
-                    if (formFilledSuccessfully) {
-                        await this.checkAppointmentAvailability();
-                    } else {
-                        this.logWarning("appointmentDetails", "Form filling aborted or failed.");
+                    let isAvailable = false;
+                    let currentSwitch = 0;
+                    const maxSwitches = this.switches;
+
+                    // Execute sub-category switching loop
+                    while (currentSwitch < maxSwitches) {
+                        currentSwitch++;
+                        this.logStatus(`[Switch ${currentSwitch}/${maxSwitches}] Checking target criteria...`);
+
+                        const formFilled = await this.injectSmartFormFiller(this.instanceData);
+                        if (!formFilled) {
+                            this.logWarning("appointmentDetails", "Form filling aborted or failed.");
+                            break;
+                        }
+
+                        const status = await this.checkAppointmentAvailability();
+                        if (status === 'available') {
+                            isAvailable = true;
+                            break; // Stop switching immediately
+                        }
+
+                        // If NOT available and we have more switches requested
+                        if (currentSwitch < maxSwitches) {
+                            this.logStatus(`[Switch] Waiting ${this.switchDelay}ms before randomly changing sub-category...`);
+                            await new Promise(r => setTimeout(r, this.switchDelay));
+                            
+                            // Select a random alternate sub-category to reset Angular state
+                            await this.page.evaluate(async (cfg) => {
+                                const sleep = ms => new Promise(res => setTimeout(res, ms));
+                                const trigger = document.querySelector(`mat-select[formcontrolname="visaCategoryCode"]`);
+                                if (trigger) {
+                                    trigger.click();
+                                    await sleep(800);
+                                    const panelId = trigger.getAttribute('aria-controls');
+                                    const panel = document.getElementById(panelId) || document.querySelector('.mat-mdc-select-panel');
+                                    if (panel) {
+                                        const options = Array.from(panel.querySelectorAll('mat-option'));
+                                        const otherOpts = options.filter(opt => opt.innerText && !opt.innerText.toLowerCase().includes(cfg.subCategory.toLowerCase()));
+                                        if (otherOpts.length > 0) {
+                                            otherOpts[Math.floor(Math.random() * otherOpts.length)].click();
+                                            await sleep(800);
+                                            let loader = document.querySelector('ngx-ui-loader .ngx-overlay');
+                                            while (loader && window.getComputedStyle(loader).display !== 'none' && loader.offsetHeight > 0) {
+                                                await sleep(500);
+                                                loader = document.querySelector('ngx-ui-loader .ngx-overlay');
+                                            }
+                                        } else {
+                                            document.body.click();
+                                            await sleep(500);
+                                        }
+                                    }
+                                }
+                            }, this.instanceData);
+                            
+                            this.logStatus(`[Switch] Waiting ${this.switchDelay}ms before returning to target...`);
+                            await new Promise(r => setTimeout(r, this.switchDelay));
+                        }
                     }
-                    this.completedActivities.add('appointmentDetails');
+
+                    if (isAvailable) {
+                        this.completedActivities.add('appointmentDetails');
+                        return; // Found it! Let the bot halt for human action.
+                    }
+
+                    // No appointment found after all switches.
+                    // Random 1 to 2 second human delay before signing out
+                    const humanDelay = Math.floor(Math.random() * 1000) + 1000;
+                    this.logStatus(`[No Appointment] Waiting ${humanDelay}ms to mimic human before signout...`);
+                    await new Promise(r => setTimeout(r, humanDelay));
+
+                    await this.performSignOut();
+
+                    // Check full Attempts loop
+                    if (this.currentAttempt < this.maxAttempts) {
+                        this.currentAttempt++;
+                        const parsedDelay = this.parseAttemptDelay(this.attemptDelayStr);
+                        
+                        this.logStatus(`[Attempt Complete] Waiting ${parsedDelay}ms before next attempt...`);
+                        await new Promise(r => setTimeout(r, parsedDelay));
+
+                        this.logStatus(`[Attempt ${this.currentAttempt}/${this.maxAttempts}] Navigating to Login...`);
+                        
+                        // Delete phase completions so the orchestrator runs them again
+                        this.completedActivities.delete('signIn');
+                        this.completedActivities.delete('dashboard');
+                        
+                        await this.page.goto(this.targetUrl, { waitUntil: 'domcontentloaded' });
+                    } else {
+                        this.logStatus(`[Finished] Max attempts (${this.maxAttempts}) reached. Closing window.`);
+                        this.terminate();
+                    }
                 }
             }
         };
         this.currentOrderedDom = [];
+    }
+
+    parseAttemptDelay(delayStr) {
+        if (!delayStr) return 0;
+        // Standardizes dd/hh/mm/ss. Reverses array so index: 0=secs, 1=mins, 2=hrs, 3=days
+        const parts = String(delayStr).split(/[\/\-:]/).map(n => parseInt(n) || 0).reverse();
+        let ms = 0;
+        if (parts[0]) ms += parts[0] * 1000; // seconds
+        if (parts[1]) ms += parts[1] * 60000; // minutes
+        if (parts[2]) ms += parts[2] * 3600000; // hours
+        if (parts[3]) ms += parts[3] * 86400000; // days
+        return ms;
     }
 
     async launchBrowser() {
@@ -963,16 +1081,14 @@ export class ChromeWorker extends BaseBrowser {
             let activeArgs = this.browserArgs.filter(arg => arg !== '--start-maximized');
 
             if (this.headless) {
-                // 👈 FIX: Cloudflare Turnstile blocks true headless mode. 
-                // We run headed, but throw the window off-screen to simulate headless invisibly.
-                activeArgs.push('--window-position=-32000,-32000'); // Move window way off screen
-                activeArgs.push('--window-size=1920,1080'); // Force desktop viewport
+                activeArgs.push('--window-position=-32000,-32000'); 
+                activeArgs.push('--window-size=1920,1080'); 
             } else {
-                activeArgs.push('--start-maximized'); // Bring back maximization for visible debugging
+                activeArgs.push('--start-maximized'); 
             }
 
             this.browser = await puppeteer.launch({
-                headless: false, // ALWAYS false to bypass Cloudflare Turnstile
+                headless: false, 
                 channel: this.channel ? this.channel : undefined,
                 defaultViewport: null, 
                 args: activeArgs
@@ -983,9 +1099,6 @@ export class ChromeWorker extends BaseBrowser {
 
             await this.page.setBypassCSP(true);
 
-            // =====================================================================
-            // Module 1: Continuous Page Title Modifier
-            // =====================================================================
             await this.page.evaluateOnNewDocument((accountEmail) => {
                 const prefix = `[${accountEmail}] `;
                 
@@ -1134,6 +1247,28 @@ export class ChromeWorker extends BaseBrowser {
         }
     }
 
+    // Direct Native SignOut Method
+    async performSignOut() {
+        try {
+            this.logStatus("[SignOut] Executing secure sign out...");
+            await this.page.evaluate(() => {
+                const navDropdown = document.querySelector('#navbarDropdown');
+                if (navDropdown) navDropdown.click();
+            });
+            await new Promise(r => setTimeout(r, 800));
+            
+            await this.page.evaluate(() => {
+                const links = Array.from(document.querySelectorAll('a'));
+                const signout = links.find(l => l.innerText.includes('Sign Out') || l.innerText.includes('Logout'));
+                if (signout) signout.click();
+            });
+            await new Promise(r => setTimeout(r, 2000));
+            this.logStatus("[SignOut] ✅ Signed out successfully.");
+        } catch (e) {
+            this.logWarning("signout", "Could not cleanly sign out: " + e.message);
+        }
+    }
+
     async injectSmartFormFiller(config) {
         this.logStatus("[Appointment Details] Mapping Target Criteria...");
         
@@ -1244,16 +1379,20 @@ export class ChromeWorker extends BaseBrowser {
             if (result.status === 'unavailable') {
                 this.logStatus(`[Result] 🚫 ${result.message}`);
                 if (typeof this.onAppointmentResult === 'function') this.onAppointmentResult('unavailable');
+                return 'unavailable';
             } else if (result.status === 'available') {
                 this.logStatus(`[Result] ✅ Appointments found! ${result.message}`);
                 if (typeof this.onAppointmentResult === 'function') this.onAppointmentResult('available');
+                return 'available';
             } else {
                 this.logStatus(`[Result] ⏳ Timeout waiting for availability.`);
                 if (typeof this.onAppointmentResult === 'function') this.onAppointmentResult('idle');
+                return 'timeout';
             }
         } catch (e) {
             this.logStatus(`[Result] ⏳ Error reading availability: ${e.message}`);
             if (typeof this.onAppointmentResult === 'function') this.onAppointmentResult('idle');
+            return 'error';
         }
     }
 
@@ -1541,7 +1680,7 @@ class SheetHandler {
         let ignoredRowsCount = 0;
 
         if (!rawRows || rawRows.length === 0) {
-            return this._createResult(false, [], 'The source file/sheet contains no data rows.', warnings, 0, 0, 0);
+            return this._createErrorResult('The source file/sheet contains no data rows.');
         }
 
         const normalizedRows = rawRows.map(row => this._normalizeRowKeys(row));
@@ -1557,7 +1696,7 @@ class SheetHandler {
 
             if (missingMandatoryColumns.length > 0) {
                 const errorMsg = `[File-Level Error] File rejected. Missing mandatory column(s): [${missingMandatoryColumns.join(', ')}]`;
-                return this._createResult(false, [], errorMsg, [errorMsg], normalizedRows.length, 0, normalizedRows.length);
+                return this._createErrorResult(errorMsg);
             }
         }
 
@@ -1606,6 +1745,16 @@ class SheetHandler {
             validData.push(cleanRecord);
         });
 
+        // 👈 NEW FIX: If rows were processed but ALL were invalid, throw a GUI error instead of silently succeeding.
+        if (validData.length === 0 && rawRows.length > 0) {
+            let errorMsg = "The document was fetched, but NO valid accounts could be imported.";
+            if (warnings.length > 0) {
+                errorMsg += `\n\nReasons for rejection:\n${warnings.slice(0, 4).join('\n')}`;
+                if (warnings.length > 4) errorMsg += `\n...and ${warnings.length - 4} more issues.`;
+            }
+            return this._createErrorResult(errorMsg);
+        }
+
         return this._createResult(true, validData, null, warnings, normalizedRows.length, validData.length, ignoredRowsCount);
     }
 
@@ -1639,32 +1788,35 @@ class SheetHandler {
         }
     }
 
-    /**
-     * Fetches and parses a public Google Sheet as CSV.
-     * @param {string} url - The full Google Sheets URL
-     */
     async loadFromGSheet(url) {
         try {
             if (!url || url.trim() === '') throw new Error("No URL provided.");
 
-            const sheetIdMatch = url.match(/\/d\/(.*?)(\/|$)/);
-            if (!sheetIdMatch || !sheetIdMatch[1]) {
-                throw new Error("Invalid Google Sheets URL format. Could not locate the Sheet ID.");
+            const sheetRegex = /^https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9-_]+)(?:\/.*)?$/;
+            const match = url.trim().match(sheetRegex);
+            
+            if (!match || !match[1]) {
+                throw new Error("Invalid Google Sheets URL format. Please ensure you are pasting a valid Google Docs URL.");
             }
             
-            const sheetId = sheetIdMatch[1];
+            const sheetId = match[1];
             const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
             
-            const response = await fetch(exportUrl);
+            let response;
+            try {
+                response = await fetch(exportUrl);
+            } catch (networkError) {
+                throw new Error(`Google connection failed: ${networkError.message}`);
+            }
+
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status} - Ensure the Google Sheet is set to 'Anyone with the link can view'.`);
+                throw new Error(`Google responded with HTTP ${response.status}: ${response.statusText}. Please verify the link is correct and publicly shared.`);
             }
             
             const csvText = await response.text();
             
-            // If the response is HTML (like a Google sign-in page), it's a private sheet
             if (csvText.trim().toLowerCase().startsWith('<!doctype html>') || csvText.trim().toLowerCase().startsWith('<html')) {
-                throw new Error("Access Denied. The Google Sheet is private. Change sharing settings to 'Anyone with the link'.");
+                throw new Error("Access Denied by Google. The sheet is private. Please change sharing settings to 'Anyone with the link'.");
             }
 
             const workbook = XLSX.read(csvText, { type: 'string' });
@@ -1689,7 +1841,6 @@ class SheetHandler {
 }
 
 module.exports = SheetHandler;
-
 // ==========================================
 // Test Block (Executed when run directly)
 // ==========================================
@@ -1697,15 +1848,13 @@ if (require.main === module) {
     (async () => {
         console.log("[Test Execution Started] Initializing SheetHandler...");
         
-        // Instantiate using default settings and file path from Settings.js
-        
         const handler = new SheetHandler();
 
         try {
-            console.log(`[Test] Attempting to read Excel file from path: "${handler.defaultFilePath}"`);
+            console.log(`[Test] Attempting to fetch from Google Sheets...`);
             
-            const result = handler.loadFromExcel();
-
+            // 👈 FIX: Added 'await' to resolve the Promise before logging
+            const result = await handler.loadFromGSheet("https://docs.google.com/spreadsheets/d/1XHDo01rUng0pKCFXxkMtzklZUwY5bt6bkCw3bcRkRBo/edit?usp=sharing");
 
             console.log("\n--- Parsing Execution Results ---");
             console.log(`Success Status : ${result.success}`);
@@ -2752,12 +2901,18 @@ export default function App() {
     const [defaultHeadless, setDefaultHeadless] = useState(true);
     const [theme, setTheme] = useState('dark');
     const [isMaximized, setIsMaximized] = useState(false);
+    
+    const [isUrlInvalid, setIsUrlInvalid] = useState(false);
 
     const [globalDefaults, setGlobalDefaults] = useState({
         country: 'Egypt',
         city: 'Alexandria',
         appointmentCategory: 'Short Term Visa',
-        subCategory: 'Tourism'
+        subCategory: 'Tourism',
+        attempts: 1,
+        attemptDelay: '00/00/05/00',
+        switches: 1,
+        switchDelay: 3000
     });
     
     const [showDefaultsModal, setShowDefaultsModal] = useState(false);
@@ -2766,7 +2921,6 @@ export default function App() {
     const [deleteConfirm, setDeleteConfirm] = useState(null); 
     const [pendingImport, setPendingImport] = useState(null); 
     const [appCloseWarning, setAppCloseWarning] = useState(null); 
-    // Added central error state for custom themed alerts
     const [errorMessage, setErrorMessage] = useState(null);
 
     useEffect(() => {
@@ -2813,10 +2967,18 @@ export default function App() {
             if (existingAccounts.has(item.account)) duplicates++;
             else newAccounts++;
 
+            // Evaluate Headless Mode via file overriding defaults
+            let isHeadless = defaultHeadless;
+            if (item.mode) {
+                const modeStr = item.mode.toString().toLowerCase().trim();
+                if (modeStr === 'headless') isHeadless = true;
+                else if (modeStr === 'visible') isHeadless = false;
+            }
+
             return {
                 id: generateId(),
                 data: { ...globalDefaults, ...item },
-                headless: defaultHeadless,
+                headless: isHeadless,
                 status: 'Idle',
                 aptStatus: 'idle', 
                 selected: false
@@ -2835,14 +2997,16 @@ export default function App() {
         if (data && !data.error) {
             processImport(data);
         } else if (data?.error) {
-            // Replaced alert() with our themed error modal
             setErrorMessage(data.error);
         }
     };
 
     const handleGoogleSheet = async () => {
-        // Validation check uses custom modal instead of native alert
-        if (!sheetUrl) return setErrorMessage("Please enter a valid Google Sheets URL.");
+        if (!sheetUrl || sheetUrl.trim() === '') {
+            setIsUrlInvalid(true);
+            setTimeout(() => setIsUrlInvalid(false), 500);
+            return; 
+        }
         
         const data = await window.electronAPI.fetchGoogleSheet(sheetUrl);
         
@@ -2850,7 +3014,6 @@ export default function App() {
             processImport(data);
             setSheetUrl('');
         } else if (data?.error) {
-            // Replaced alert() with our themed error modal
             setErrorMessage(data.error); 
         }
     };
@@ -2967,7 +3130,13 @@ export default function App() {
                 <div className="header-left">
                     <button className="btn-outline btn-compact" onClick={handleLocalFile} title="Browse your computer to upload a local Excel or CSV file.">Browse</button>
                     <div className="sheet-fetcher">
-                        <input type="text" placeholder="Google Sheet URL" value={sheetUrl} onChange={e => setSheetUrl(e.target.value)} className="url-bar" />
+                        <input 
+                            type="text" 
+                            placeholder="Google Sheet URL" 
+                            value={sheetUrl} 
+                            onChange={e => setSheetUrl(e.target.value)} 
+                            className={`url-bar ${isUrlInvalid ? 'input-error-shake' : ''}`} 
+                        />
                         <button className="btn-outline btn-compact" onClick={handleGoogleSheet} title="Fetch account configurations directly from a published Google Sheet.">Fetch</button>
                     </div>
                 </div>
@@ -3067,7 +3236,7 @@ export default function App() {
                     <div className="modal-content danger-modal relative" onClick={e => e.stopPropagation()}>
                         <button className="modal-close-x" onClick={() => setErrorMessage(null)}>✕</button>
                         <h3>⚠️ Error</h3>
-                        <p style={{marginTop: '10px', marginBottom: '20px', lineHeight: '1.5', wordBreak: 'break-word'}}>
+                        <p style={{marginTop: '10px', marginBottom: '20px', lineHeight: '1.5', wordBreak: 'break-word', whiteSpace: 'pre-wrap'}}>
                             {errorMessage}
                         </p>
                         <div className="modal-actions">
@@ -3157,13 +3326,18 @@ export default function App() {
                     <div className="modal-content relative" onClick={e => e.stopPropagation()}>
                         <button className="modal-close-x" onClick={() => setShowDefaultsModal(false)}>✕</button>
                         <div className="modal-header"><h3>Global Defaults Config</h3></div>
-                        <div className="form-grid">
+                        <div className="form-grid" style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '5px' }}>
+                            <div className="form-group"><label>Attempts per account</label><input type="number" min="1" value={globalDefaults.attempts} onChange={e => setGlobalDefaults({...globalDefaults, attempts: e.target.value})} /></div>
+                            <div className="form-group"><label>Attempt Delay (dd/hh/mm/ss)</label><input type="text" placeholder="00/00/05/00" value={globalDefaults.attemptDelay} onChange={e => setGlobalDefaults({...globalDefaults, attemptDelay: e.target.value})} /></div>
+                            <div className="form-group"><label>Category Switches (Internal)</label><input type="number" min="1" value={globalDefaults.switches} onChange={e => setGlobalDefaults({...globalDefaults, switches: e.target.value})} /></div>
+                            <div className="form-group"><label>Switch Delay (ms)</label><input type="number" min="500" step="500" value={globalDefaults.switchDelay} onChange={e => setGlobalDefaults({...globalDefaults, switchDelay: e.target.value})} /></div>
+                            <hr style={{ borderColor: 'var(--border-color)', margin: '10px 0', opacity: 0.5 }} />
                             <div className="form-group"><label>Default Country</label><input type="text" value={globalDefaults.country} onChange={e => setGlobalDefaults({...globalDefaults, country: e.target.value})} /></div>
                             <div className="form-group"><label>Default City</label><input type="text" value={globalDefaults.city} onChange={e => setGlobalDefaults({...globalDefaults, city: e.target.value})} /></div>
                             <div className="form-group"><label>Default Appointment Category</label><input type="text" value={globalDefaults.appointmentCategory} onChange={e => setGlobalDefaults({...globalDefaults, appointmentCategory: e.target.value})} /></div>
                             <div className="form-group"><label>Default Sub Category</label><input type="text" value={globalDefaults.subCategory} onChange={e => setGlobalDefaults({...globalDefaults, subCategory: e.target.value})} /></div>
                         </div>
-                        <div className="modal-actions"><button className="btn-launch" onClick={() => setShowDefaultsModal(false)}>Done</button></div>
+                        <div className="modal-actions" style={{ marginTop: '15px' }}><button className="btn-launch" onClick={() => setShowDefaultsModal(false)}>Done</button></div>
                     </div>
                 </div>
             )}
@@ -3183,15 +3357,20 @@ export default function App() {
                                 </label>
                             </div>
                         </div>
-                        <div className="form-grid">
+                        <div className="form-grid" style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '5px' }}>
                             <div className="form-group"><label>Account Email</label><input type="text" value={editForm.account} onChange={e => setEditForm({...editForm, account: e.target.value})} /></div>
                             <div className="form-group"><label>Password</label><input type="text" value={editForm.password} onChange={e => setEditForm({...editForm, password: e.target.value})} /></div>
+                            <div className="form-group"><label>Attempts</label><input type="number" min="1" value={editForm.attempts || 1} onChange={e => setEditForm({...editForm, attempts: e.target.value})} /></div>
+                            <div className="form-group"><label>Attempt Delay (dd/hh/mm/ss)</label><input type="text" placeholder="00/00/05/00" value={editForm.attemptDelay || ''} onChange={e => setEditForm({...editForm, attemptDelay: e.target.value})} /></div>
+                            <div className="form-group"><label>Category Switches (Internal)</label><input type="number" min="1" value={editForm.switches || 1} onChange={e => setEditForm({...editForm, switches: e.target.value})} /></div>
+                            <div className="form-group"><label>Switch Delay (ms)</label><input type="number" min="500" step="500" value={editForm.switchDelay || 3000} onChange={e => setEditForm({...editForm, switchDelay: e.target.value})} /></div>
+                            <hr style={{ borderColor: 'var(--border-color)', margin: '10px 0', opacity: 0.5 }} />
                             <div className="form-group"><label>Country</label><input type="text" value={editForm.country} onChange={e => setEditForm({...editForm, country: e.target.value})} /></div>
                             <div className="form-group"><label>City</label><input type="text" value={editForm.city} onChange={e => setEditForm({...editForm, city: e.target.value})} /></div>
                             <div className="form-group"><label>Appointment Category</label><input type="text" value={editForm.appointmentCategory} onChange={e => setEditForm({...editForm, appointmentCategory: e.target.value})} /></div>
                             <div className="form-group"><label>Sub Category</label><input type="text" value={editForm.subCategory} onChange={e => setEditForm({...editForm, subCategory: e.target.value})} /></div>
                         </div>
-                        <div className="modal-actions">
+                        <div className="modal-actions" style={{ marginTop: '15px' }}>
                             <button className="btn-launch" onClick={saveEdit}>Save Changes</button>
                         </div>
                     </div>
@@ -3274,7 +3453,7 @@ createRoot(document.getElementById('root')).render(
     --bg-panel: #1e293b;
     --bg-row-hover: #334155;
     --bg-selected: #1e3a5f;
-    --text-main: #ffffff; /* Proper white for dark mode */
+    --text-main: #ffffff; 
     --text-muted: #94a3b8;
     --border-color: rgba(51, 65, 85, 0.5);
     --table-header-bg: #0b1120;
@@ -3335,8 +3514,8 @@ body {
 .titlebar-controls {
     display: flex;
     align-items: center;
-    padding-right: 20px; /* Space from the right edge */
-    gap: 12px;           /* Space between buttons */
+    padding-right: 20px; 
+    gap: 12px;           
     height: 100%;
     -webkit-app-region: no-drag;
 }
@@ -3347,7 +3526,7 @@ body {
     border-radius: 50%;
     border: none;
     cursor: pointer;
-    color: transparent; /* SVG transparent by default */
+    color: transparent; 
     display: flex;
     align-items: center;
     justify-content: center;
@@ -3359,7 +3538,6 @@ body {
 .linux-btn svg { transition: 0.2s ease; }
 .titlebar-controls:hover .linux-btn { color: rgba(0, 0, 0, 0.6); }
 
-/* Circle colors for Min, Max, Close */
 .win-min { background-color: #ffbd2e; }
 .win-max { background-color: #27c93f; }
 .win-close { background-color: #ff5f56; }
@@ -3428,7 +3606,6 @@ body {
 
 .toolbar-left, .toolbar-right { display: flex; gap: 12px; align-items: center; }
 
-/* Hover-Only Borderless Buttons */
 button:not(.win-btn):not(.modal-close-x) {
     background-color: transparent;
     border: 1px solid transparent;
@@ -3441,14 +3618,12 @@ button:not(.win-btn):not(.modal-close-x) {
 }
 button:disabled { opacity: 0.35; cursor: not-allowed; }
 
-/* Default text colors based on context */
 .btn-launch { color: var(--color-launch); }
 .btn-close { color: var(--color-close); }
 .btn-delete { color: var(--color-delete); }
 .btn-add { color: var(--color-add); }
 .btn-outline { color: var(--text-main); }
 
-/* Hover triggers background and shadow */
 .btn-launch:hover:not(:disabled) { 
     background-color: var(--color-launch); 
     color: white; 
@@ -3658,6 +3833,18 @@ input:checked + .slider:before { transform: translateX(22px); }
     0% { opacity: 0.5; transform: scale(0.9); }
     50% { opacity: 1; transform: scale(1.1); }
     100% { opacity: 0.5; transform: scale(0.9); }
+}
+
+/* Invalid Input Shake Animation */
+.input-error-shake {
+    border-color: var(--color-delete) !important;
+    animation: shakeError 0.5s ease-in-out;
+}
+
+@keyframes shakeError {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-4px); }
+    40%, 80% { transform: translateX(4px); }
 }
 ```
 

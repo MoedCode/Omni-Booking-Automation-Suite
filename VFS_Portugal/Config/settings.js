@@ -11,14 +11,24 @@ const allKeys = {
         "country", 
         "city", 
         "appointmentCategory",
-        "subCategory"
+        "subCategory",
+        "mode",
+        "attempts",
+        "attemptDelay",
+        "switches",
+        "switchDelay"
     ],
     keyConv: {
         password: ["passwords", "pass", "pwd"], 
         account: ["accounts", "email", "username"],
         appointmentCategory: ["appointment category", "appointment_category", "appointment-category"],
         city: ["cites"],
-        country: ["country's"]
+        country: ["country's"],
+        mode: ["headless", "visible", "execution mode", "execution_mode"],
+        attempts: ["number of attempts", "retries", "attempt"],
+        attemptDelay: ["attempt delay", "delay", "time between", "time between each attempt"],
+        switches: ["switch", "switches", "number of switch", "sub category switch"],
+        switchDelay: ["switch delay"]
     }
 };
 
@@ -27,7 +37,11 @@ const defaultBatchConfig = {
     country: "Egypt",
     city: "Alexandria",
     appointmentCategory: "Short Term Visa",
-    subCategory: "Tourism"
+    subCategory: "Tourism",
+    attempts: 1,
+    attemptDelay: "00/00/05/00", // Default 5 minutes (dd/hh/mm/ss)
+    switches: 1,
+    switchDelay: 3000
 };
 
 const terminationCmds = ["exit", "\\q", "q"];

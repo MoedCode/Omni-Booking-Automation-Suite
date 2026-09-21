@@ -4,6 +4,17 @@ import './theme.css';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
+// Time parsing helpers to convert DD/HH/MM/SS string to object and vice-versa
+const parseDelayStr = (str) => {
+    const parts = (str || "00/00/05/00").split(/[\/\-:]/).map(n => parseInt(n, 10) || 0);
+    return { d: parts[0] || 0, h: parts[1] || 0, m: parts[2] || 0, s: parts[3] || 0 };
+};
+
+const formatDelayStr = ({ d, h, m, s }) => {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(d)}/${pad(h)}/${pad(m)}/${pad(s)}`;
+};
+
 const YallaVisaLogo = () => (
     <svg viewBox="0 0 380 50" height="40" xmlns="http://www.w3.org/2000/svg">
         <g transform="translate(0, 0) scale(0.45)">
@@ -29,14 +40,17 @@ export default function App() {
     const [theme, setTheme] = useState('dark');
     const [isMaximized, setIsMaximized] = useState(false);
     
-    // UI state for flashing URL bar
     const [isUrlInvalid, setIsUrlInvalid] = useState(false);
 
     const [globalDefaults, setGlobalDefaults] = useState({
         country: 'Egypt',
         city: 'Alexandria',
         appointmentCategory: 'Short Term Visa',
-        subCategory: 'Tourism'
+        subCategory: 'Tourism',
+        attempts: 1,
+        attemptDelay: '00/00/05/00',
+        switches: 1,
+        switchDelay: 3000
     });
     
     const [showDefaultsModal, setShowDefaultsModal] = useState(false);
@@ -91,10 +105,17 @@ export default function App() {
             if (existingAccounts.has(item.account)) duplicates++;
             else newAccounts++;
 
+            let isHeadless = defaultHeadless;
+            if (item.mode) {
+                const modeStr = item.mode.toString().toLowerCase().trim();
+                if (modeStr === 'headless') isHeadless = true;
+                else if (modeStr === 'visible') isHeadless = false;
+            }
+
             return {
                 id: generateId(),
                 data: { ...globalDefaults, ...item },
-                headless: defaultHeadless,
+                headless: isHeadless,
                 status: 'Idle',
                 aptStatus: 'idle', 
                 selected: false
@@ -118,7 +139,6 @@ export default function App() {
     };
 
     const handleGoogleSheet = async () => {
-        // Stop execution and trigger CSS shake if input is empty or only spaces
         if (!sheetUrl || sheetUrl.trim() === '') {
             setIsUrlInvalid(true);
             setTimeout(() => setIsUrlInvalid(false), 500);
@@ -217,7 +237,6 @@ export default function App() {
     return (
         <div className={`app-container ${theme}-theme`}>
             
-            {/* Custom Linux Style Draggable Titlebar */}
             <div className="custom-titlebar">
                 <div className="titlebar-controls">
                     <button className="win-btn win-min linux-btn" onClick={() => handleWindowAction('minimize')} title="Minimize Window">
@@ -247,7 +266,6 @@ export default function App() {
                 <div className="header-left">
                     <button className="btn-outline btn-compact" onClick={handleLocalFile} title="Browse your computer to upload a local Excel or CSV file.">Browse</button>
                     <div className="sheet-fetcher">
-                        {/* URL input mapped to the isUrlInvalid state to trigger the CSS shake animation */}
                         <input 
                             type="text" 
                             placeholder="Google Sheet URL" 
@@ -348,13 +366,13 @@ export default function App() {
                 </div>
             </div>
 
-            {/* Custom Error Modal (Replaces Native alert) */}
+            {/* Custom Error Modal */}
             {errorMessage && (
                 <div className="modal-overlay" onClick={() => setErrorMessage(null)}>
                     <div className="modal-content danger-modal relative" onClick={e => e.stopPropagation()}>
                         <button className="modal-close-x" onClick={() => setErrorMessage(null)}>✕</button>
                         <h3>⚠️ Error</h3>
-                        <p style={{marginTop: '10px', marginBottom: '20px', lineHeight: '1.5', wordBreak: 'break-word'}}>
+                        <p style={{marginTop: '10px', marginBottom: '20px', lineHeight: '1.5', wordBreak: 'break-word', whiteSpace: 'pre-wrap'}}>
                             {errorMessage}
                         </p>
                         <div className="modal-actions">
@@ -444,13 +462,38 @@ export default function App() {
                     <div className="modal-content relative" onClick={e => e.stopPropagation()}>
                         <button className="modal-close-x" onClick={() => setShowDefaultsModal(false)}>✕</button>
                         <div className="modal-header"><h3>Global Defaults Config</h3></div>
-                        <div className="form-grid">
+                        <div className="form-grid" style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '5px' }}>
+                            <div className="form-group"><label>Attempts per account</label><input type="number" min="1" value={globalDefaults.attempts} onChange={e => setGlobalDefaults({...globalDefaults, attempts: e.target.value})} /></div>
+                            
+                            {/* Structured Time Input for Defaults */}
+                            {(() => {
+                                const delayObj = parseDelayStr(globalDefaults.attemptDelay);
+                                const handleDelayChange = (field, val) => {
+                                    const newObj = { ...delayObj, [field]: parseInt(val) || 0 };
+                                    setGlobalDefaults({ ...globalDefaults, attemptDelay: formatDelayStr(newObj) });
+                                };
+                                return (
+                                    <div className="form-group">
+                                        <label>Time Between Attempts</label>
+                                        <div className="delay-inputs">
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.d} onChange={e => handleDelayChange('d', e.target.value)} /><label>Days</label></div>
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.h} onChange={e => handleDelayChange('h', e.target.value)} /><label>Hours</label></div>
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.m} onChange={e => handleDelayChange('m', e.target.value)} /><label>Mins</label></div>
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.s} onChange={e => handleDelayChange('s', e.target.value)} /><label>Secs</label></div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                            
+                            <div className="form-group"><label>Category Switches (Internal)</label><input type="number" min="1" value={globalDefaults.switches} onChange={e => setGlobalDefaults({...globalDefaults, switches: e.target.value})} /></div>
+                            <div className="form-group"><label>Switch Delay (ms)</label><input type="number" min="500" step="500" value={globalDefaults.switchDelay} onChange={e => setGlobalDefaults({...globalDefaults, switchDelay: e.target.value})} /></div>
+                            <hr style={{ borderColor: 'var(--border-color)', margin: '10px 0', opacity: 0.5 }} />
                             <div className="form-group"><label>Default Country</label><input type="text" value={globalDefaults.country} onChange={e => setGlobalDefaults({...globalDefaults, country: e.target.value})} /></div>
                             <div className="form-group"><label>Default City</label><input type="text" value={globalDefaults.city} onChange={e => setGlobalDefaults({...globalDefaults, city: e.target.value})} /></div>
                             <div className="form-group"><label>Default Appointment Category</label><input type="text" value={globalDefaults.appointmentCategory} onChange={e => setGlobalDefaults({...globalDefaults, appointmentCategory: e.target.value})} /></div>
                             <div className="form-group"><label>Default Sub Category</label><input type="text" value={globalDefaults.subCategory} onChange={e => setGlobalDefaults({...globalDefaults, subCategory: e.target.value})} /></div>
                         </div>
-                        <div className="modal-actions"><button className="btn-launch" onClick={() => setShowDefaultsModal(false)}>Done</button></div>
+                        <div className="modal-actions" style={{ marginTop: '15px' }}><button className="btn-launch" onClick={() => setShowDefaultsModal(false)}>Done</button></div>
                     </div>
                 </div>
             )}
@@ -470,15 +513,40 @@ export default function App() {
                                 </label>
                             </div>
                         </div>
-                        <div className="form-grid">
+                        <div className="form-grid" style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '5px' }}>
                             <div className="form-group"><label>Account Email</label><input type="text" value={editForm.account} onChange={e => setEditForm({...editForm, account: e.target.value})} /></div>
                             <div className="form-group"><label>Password</label><input type="text" value={editForm.password} onChange={e => setEditForm({...editForm, password: e.target.value})} /></div>
+                            <div className="form-group"><label>Attempts</label><input type="number" min="1" value={editForm.attempts || 1} onChange={e => setEditForm({...editForm, attempts: e.target.value})} /></div>
+                            
+                            {/* Structured Time Input for Editor */}
+                            {(() => {
+                                const delayObj = parseDelayStr(editForm.attemptDelay);
+                                const handleDelayChange = (field, val) => {
+                                    const newObj = { ...delayObj, [field]: parseInt(val) || 0 };
+                                    setEditForm({ ...editForm, attemptDelay: formatDelayStr(newObj) });
+                                };
+                                return (
+                                    <div className="form-group">
+                                        <label>Time Between Attempts</label>
+                                        <div className="delay-inputs">
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.d} onChange={e => handleDelayChange('d', e.target.value)} /><label>Days</label></div>
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.h} onChange={e => handleDelayChange('h', e.target.value)} /><label>Hours</label></div>
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.m} onChange={e => handleDelayChange('m', e.target.value)} /><label>Mins</label></div>
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.s} onChange={e => handleDelayChange('s', e.target.value)} /><label>Secs</label></div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            <div className="form-group"><label>Category Switches (Internal)</label><input type="number" min="1" value={editForm.switches || 1} onChange={e => setEditForm({...editForm, switches: e.target.value})} /></div>
+                            <div className="form-group"><label>Switch Delay (ms)</label><input type="number" min="500" step="500" value={editForm.switchDelay || 3000} onChange={e => setEditForm({...editForm, switchDelay: e.target.value})} /></div>
+                            <hr style={{ borderColor: 'var(--border-color)', margin: '10px 0', opacity: 0.5 }} />
                             <div className="form-group"><label>Country</label><input type="text" value={editForm.country} onChange={e => setEditForm({...editForm, country: e.target.value})} /></div>
                             <div className="form-group"><label>City</label><input type="text" value={editForm.city} onChange={e => setEditForm({...editForm, city: e.target.value})} /></div>
                             <div className="form-group"><label>Appointment Category</label><input type="text" value={editForm.appointmentCategory} onChange={e => setEditForm({...editForm, appointmentCategory: e.target.value})} /></div>
                             <div className="form-group"><label>Sub Category</label><input type="text" value={editForm.subCategory} onChange={e => setEditForm({...editForm, subCategory: e.target.value})} /></div>
                         </div>
-                        <div className="modal-actions">
+                        <div className="modal-actions" style={{ marginTop: '15px' }}>
                             <button className="btn-launch" onClick={saveEdit}>Save Changes</button>
                         </div>
                     </div>

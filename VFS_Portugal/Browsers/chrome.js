@@ -33,6 +33,14 @@ export class ChromeWorker extends BaseBrowser {
             appointmentCategory: instanceData?.appointmentCategory || defaultBatchConfig.appointmentCategory,
             subCategory: instanceData?.subCategory || defaultBatchConfig.subCategory
         };
+        
+        // Loop State & Constraints
+        this.currentAttempt = 1;
+        this.maxAttempts = parseInt(instanceData?.attempts) || defaultBatchConfig.attempts;
+        this.attemptDelayStr = instanceData?.attemptDelay || defaultBatchConfig.attemptDelay;
+        
+        this.switches = parseInt(instanceData?.switches) || defaultBatchConfig.switches;
+        this.switchDelay = parseInt(instanceData?.switchDelay) || defaultBatchConfig.switchDelay;
 
         this.isOrchestratorRunning = false;
         this.captchaHandler = new CaptchaHandler(this);
@@ -85,17 +93,113 @@ export class ChromeWorker extends BaseBrowser {
                 endDelay: actionsConfig.appointmentDetails.endDelay,
                 dependencies: ['dashboard'],
                 method: async () => {
-                    const formFilledSuccessfully = await this.injectSmartFormFiller(this.instanceData);
-                    if (formFilledSuccessfully) {
-                        await this.checkAppointmentAvailability();
-                    } else {
-                        this.logWarning("appointmentDetails", "Form filling aborted or failed.");
+                    let isAvailable = false;
+                    let currentSwitch = 0;
+                    const maxSwitches = this.switches;
+
+                    // Execute sub-category switching loop
+                    while (currentSwitch < maxSwitches) {
+                        currentSwitch++;
+                        this.logStatus(`[Switch ${currentSwitch}/${maxSwitches}] Checking target criteria...`);
+
+                        const formFilled = await this.injectSmartFormFiller(this.instanceData);
+                        if (!formFilled) {
+                            this.logWarning("appointmentDetails", "Form filling aborted or failed.");
+                            break;
+                        }
+
+                        const status = await this.checkAppointmentAvailability();
+                        if (status === 'available') {
+                            isAvailable = true;
+                            break; // Stop switching immediately
+                        }
+
+                        // If NOT available and we have more switches requested
+                        if (currentSwitch < maxSwitches) {
+                            this.logStatus(`[Switch] Waiting ${this.switchDelay}ms before randomly changing sub-category...`);
+                            await new Promise(r => setTimeout(r, this.switchDelay));
+                            
+                            // Select a random alternate sub-category to reset Angular state
+                            await this.page.evaluate(async (cfg) => {
+                                const sleep = ms => new Promise(res => setTimeout(res, ms));
+                                const trigger = document.querySelector(`mat-select[formcontrolname="visaCategoryCode"]`);
+                                if (trigger) {
+                                    trigger.click();
+                                    await sleep(800);
+                                    const panelId = trigger.getAttribute('aria-controls');
+                                    const panel = document.getElementById(panelId) || document.querySelector('.mat-mdc-select-panel');
+                                    if (panel) {
+                                        const options = Array.from(panel.querySelectorAll('mat-option'));
+                                        const otherOpts = options.filter(opt => opt.innerText && !opt.innerText.toLowerCase().includes(cfg.subCategory.toLowerCase()));
+                                        if (otherOpts.length > 0) {
+                                            otherOpts[Math.floor(Math.random() * otherOpts.length)].click();
+                                            await sleep(800);
+                                            let loader = document.querySelector('ngx-ui-loader .ngx-overlay');
+                                            while (loader && window.getComputedStyle(loader).display !== 'none' && loader.offsetHeight > 0) {
+                                                await sleep(500);
+                                                loader = document.querySelector('ngx-ui-loader .ngx-overlay');
+                                            }
+                                        } else {
+                                            document.body.click();
+                                            await sleep(500);
+                                        }
+                                    }
+                                }
+                            }, this.instanceData);
+                            
+                            this.logStatus(`[Switch] Waiting ${this.switchDelay}ms before returning to target...`);
+                            await new Promise(r => setTimeout(r, this.switchDelay));
+                        }
                     }
-                    this.completedActivities.add('appointmentDetails');
+
+                    if (isAvailable) {
+                        this.completedActivities.add('appointmentDetails');
+                        return; // Found it! Let the bot halt for human action.
+                    }
+
+                    // No appointment found after all switches.
+                    // Random 1 to 2 second human delay before signing out
+                    const humanDelay = Math.floor(Math.random() * 1000) + 1000;
+                    this.logStatus(`[No Appointment] Waiting ${humanDelay}ms to mimic human before signout...`);
+                    await new Promise(r => setTimeout(r, humanDelay));
+
+                    await this.performSignOut();
+
+                    // Check full Attempts loop
+                    if (this.currentAttempt < this.maxAttempts) {
+                        this.currentAttempt++;
+                        const parsedDelay = this.parseAttemptDelay(this.attemptDelayStr);
+                        
+                        this.logStatus(`[Attempt Complete] Waiting ${parsedDelay}ms before next attempt...`);
+                        await new Promise(r => setTimeout(r, parsedDelay));
+
+                        this.logStatus(`[Attempt ${this.currentAttempt}/${this.maxAttempts}] Navigating to Login...`);
+                        
+                        // Delete phase completions so the orchestrator runs them again
+                        this.completedActivities.delete('signIn');
+                        this.completedActivities.delete('dashboard');
+                        
+                        await this.page.goto(this.targetUrl, { waitUntil: 'domcontentloaded' });
+                    } else {
+                        this.logStatus(`[Finished] Max attempts (${this.maxAttempts}) reached. Closing window.`);
+                        this.terminate();
+                    }
                 }
             }
         };
         this.currentOrderedDom = [];
+    }
+
+    parseAttemptDelay(delayStr) {
+        if (!delayStr) return 0;
+        // Standardizes dd/hh/mm/ss. Reverses array so index: 0=secs, 1=mins, 2=hrs, 3=days
+        const parts = String(delayStr).split(/[\/\-:]/).map(n => parseInt(n) || 0).reverse();
+        let ms = 0;
+        if (parts[0]) ms += parts[0] * 1000; // seconds
+        if (parts[1]) ms += parts[1] * 60000; // minutes
+        if (parts[2]) ms += parts[2] * 3600000; // hours
+        if (parts[3]) ms += parts[3] * 86400000; // days
+        return ms;
     }
 
     async launchBrowser() {
@@ -105,16 +209,14 @@ export class ChromeWorker extends BaseBrowser {
             let activeArgs = this.browserArgs.filter(arg => arg !== '--start-maximized');
 
             if (this.headless) {
-                // 👈 FIX: Cloudflare Turnstile blocks true headless mode. 
-                // We run headed, but throw the window off-screen to simulate headless invisibly.
-                activeArgs.push('--window-position=-32000,-32000'); // Move window way off screen
-                activeArgs.push('--window-size=1920,1080'); // Force desktop viewport
+                activeArgs.push('--window-position=-32000,-32000'); 
+                activeArgs.push('--window-size=1920,1080'); 
             } else {
-                activeArgs.push('--start-maximized'); // Bring back maximization for visible debugging
+                activeArgs.push('--start-maximized'); 
             }
 
             this.browser = await puppeteer.launch({
-                headless: false, // ALWAYS false to bypass Cloudflare Turnstile
+                headless: false, 
                 channel: this.channel ? this.channel : undefined,
                 defaultViewport: null, 
                 args: activeArgs
@@ -125,9 +227,6 @@ export class ChromeWorker extends BaseBrowser {
 
             await this.page.setBypassCSP(true);
 
-            // =====================================================================
-            // Module 1: Continuous Page Title Modifier
-            // =====================================================================
             await this.page.evaluateOnNewDocument((accountEmail) => {
                 const prefix = `[${accountEmail}] `;
                 
@@ -276,6 +375,28 @@ export class ChromeWorker extends BaseBrowser {
         }
     }
 
+    // Direct Native SignOut Method
+    async performSignOut() {
+        try {
+            this.logStatus("[SignOut] Executing secure sign out...");
+            await this.page.evaluate(() => {
+                const navDropdown = document.querySelector('#navbarDropdown');
+                if (navDropdown) navDropdown.click();
+            });
+            await new Promise(r => setTimeout(r, 800));
+            
+            await this.page.evaluate(() => {
+                const links = Array.from(document.querySelectorAll('a'));
+                const signout = links.find(l => l.innerText.includes('Sign Out') || l.innerText.includes('Logout'));
+                if (signout) signout.click();
+            });
+            await new Promise(r => setTimeout(r, 2000));
+            this.logStatus("[SignOut] ✅ Signed out successfully.");
+        } catch (e) {
+            this.logWarning("signout", "Could not cleanly sign out: " + e.message);
+        }
+    }
+
     async injectSmartFormFiller(config) {
         this.logStatus("[Appointment Details] Mapping Target Criteria...");
         
@@ -386,16 +507,20 @@ export class ChromeWorker extends BaseBrowser {
             if (result.status === 'unavailable') {
                 this.logStatus(`[Result] 🚫 ${result.message}`);
                 if (typeof this.onAppointmentResult === 'function') this.onAppointmentResult('unavailable');
+                return 'unavailable';
             } else if (result.status === 'available') {
                 this.logStatus(`[Result] ✅ Appointments found! ${result.message}`);
                 if (typeof this.onAppointmentResult === 'function') this.onAppointmentResult('available');
+                return 'available';
             } else {
                 this.logStatus(`[Result] ⏳ Timeout waiting for availability.`);
                 if (typeof this.onAppointmentResult === 'function') this.onAppointmentResult('idle');
+                return 'timeout';
             }
         } catch (e) {
             this.logStatus(`[Result] ⏳ Error reading availability: ${e.message}`);
             if (typeof this.onAppointmentResult === 'function') this.onAppointmentResult('idle');
+            return 'error';
         }
     }
 

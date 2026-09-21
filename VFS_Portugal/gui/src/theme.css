@@ -398,3 +398,32 @@ input:checked + .slider:before { transform: translateX(22px); }
     20%, 60% { transform: translateX(-4px); }
     40%, 80% { transform: translateX(4px); }
 }
+
+/* Multi-block Time Editor Styles */
+.delay-inputs {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+}
+
+.delay-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.delay-field label {
+    font-size: 0.65em !important;
+    color: var(--text-muted) !important;
+    text-align: center;
+    letter-spacing: 1px;
+}
+
+.delay-field input {
+    width: 100%;
+    text-align: center;
+    box-sizing: border-box;
+    padding: 8px 4px !important;
+}
