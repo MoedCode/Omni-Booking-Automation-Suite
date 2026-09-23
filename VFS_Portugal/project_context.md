@@ -100,7 +100,9 @@ const allKeys = {
         "attempts",
         "attemptDelay",
         "switches",
-        "switchDelay"
+        "switchDelay",
+        "autoClose",
+        "attemptSeparator"
     ],
     keyConv: {
         password: ["passwords", "pass", "pwd"], 
@@ -112,7 +114,9 @@ const allKeys = {
         attempts: ["number of attempts", "retries", "attempt"],
         attemptDelay: ["attempt delay", "delay", "time between", "time between each attempt"],
         switches: ["switch", "switches", "number of switch", "sub category switch"],
-        switchDelay: ["switch delay"]
+        switchDelay: ["switch delay"],
+        autoClose: ["auto close", "autoclose", "close after"],
+        attemptSeparator: ["separator", "attempt separator", "between attempts"]
     }
 };
 
@@ -125,7 +129,9 @@ const defaultBatchConfig = {
     attempts: 1,
     attemptDelay: "00/00/05/00", // Default 5 minutes (dd/hh/mm/ss)
     switches: 1,
-    switchDelay: 3000
+    switchDelay: 3000,
+    autoClose: true,
+    attemptSeparator: "Sign Out"
 };
 
 const terminationCmds = ["exit", "\\q", "q"];
@@ -914,6 +920,10 @@ export class ChromeWorker extends BaseBrowser {
         this.switches = parseInt(instanceData?.switches) || defaultBatchConfig.switches;
         this.switchDelay = parseInt(instanceData?.switchDelay) || defaultBatchConfig.switchDelay;
 
+        // New End/Separator settings
+        this.autoClose = instanceData?.autoClose ?? defaultBatchConfig.autoClose;
+        this.attemptSeparator = instanceData?.attemptSeparator || defaultBatchConfig.attemptSeparator;
+
         this.isOrchestratorRunning = false;
         this.captchaHandler = new CaptchaHandler(this);
         this.lastDeferLogTime = 0;
@@ -1026,16 +1036,22 @@ export class ChromeWorker extends BaseBrowser {
 
                     if (isAvailable) {
                         this.completedActivities.add('appointmentDetails');
-                        return; // Found it! Let the bot halt for human action.
+                        this.logStatus(`[Success] 🚨 TARGET AVAILABLE! Bringing browser window on-screen...`);
+                        
+                        // Dynamically pull the browser onto the screen if it was running headlessly
+                        if (this.headless) {
+                            await this.bringWindowOnScreen();
+                        }
+
+                        this.isOrchestratorRunning = false; // Freeze bot, wait for user
+                        return; 
                     }
 
                     // No appointment found after all switches.
                     // Random 1 to 2 second human delay before signing out
                     const humanDelay = Math.floor(Math.random() * 1000) + 1000;
-                    this.logStatus(`[No Appointment] Waiting ${humanDelay}ms to mimic human before signout...`);
+                    this.logStatus(`[No Appointment] Mimicking human wait for ${humanDelay}ms...`);
                     await new Promise(r => setTimeout(r, humanDelay));
-
-                    await this.performSignOut();
 
                     // Check full Attempts loop
                     if (this.currentAttempt < this.maxAttempts) {
@@ -1045,21 +1061,85 @@ export class ChromeWorker extends BaseBrowser {
                         this.logStatus(`[Attempt Complete] Waiting ${parsedDelay}ms before next attempt...`);
                         await new Promise(r => setTimeout(r, parsedDelay));
 
-                        this.logStatus(`[Attempt ${this.currentAttempt}/${this.maxAttempts}] Navigating to Login...`);
-                        
-                        // Delete phase completions so the orchestrator runs them again
+                        // Execute Separator Behavior
+                        const sep = (this.attemptSeparator || '').toLowerCase();
                         this.completedActivities.delete('signIn');
                         this.completedActivities.delete('dashboard');
-                        
-                        await this.page.goto(this.targetUrl, { waitUntil: 'domcontentloaded' });
+
+                        if (sep.includes('refresh')) {
+                            this.logStatus(`[Attempt ${this.currentAttempt}/${this.maxAttempts}] Refreshing page...`);
+                            await this.page.reload({ waitUntil: 'domcontentloaded' });
+                        } else if (sep.includes('close')) {
+                            if (sep.includes('sign out') || sep.includes('signout')) {
+                                await this.performSignOut();
+                            }
+                            this.logStatus(`[Attempt ${this.currentAttempt}/${this.maxAttempts}] Restarting browser engine...`);
+                            this.isOrchestratorRunning = false; 
+                            await this.closeBrowser();
+                            
+                            // Start new browser asynchronously and safely drop this thread
+                            this.launchBrowser().catch(e => this.logError('restart', e.message));
+                            return; 
+                        } else {
+                            // Default: Sign Out & Re-navigate
+                            await this.performSignOut();
+                            this.logStatus(`[Attempt ${this.currentAttempt}/${this.maxAttempts}] Navigating to Login...`);
+                            await this.page.goto(this.targetUrl, { waitUntil: 'domcontentloaded' });
+                        }
                     } else {
-                        this.logStatus(`[Finished] Max attempts (${this.maxAttempts}) reached. Closing window.`);
-                        this.terminate();
+                        // Max attempts reached
+                        if (this.autoClose) {
+                            this.logStatus(`[Finished] Max attempts reached. Auto-closing browser.`);
+                            await this.performSignOut();
+                            this.terminate();
+                        } else {
+                            this.logStatus(`[Finished] Max attempts reached. Auto-close disabled. Session parked.`);
+                            this.isOrchestratorRunning = false; 
+                        }
                     }
                 }
             }
         };
         this.currentOrderedDom = [];
+    }
+
+    /**
+     * Resizes and moves the simulated headless browser to the center of the active monitor.
+     * Uses explicit coordinates to break Windows OS off-screen positional locks.
+     */
+    async bringWindowOnScreen() {
+        if (!this.page || !this.browser) return;
+        try {
+            const session = await this.page.target().createCDPSession();
+            const { windowId } = await session.send('Browser.getWindowForTarget');
+            
+            // 1. Move to primary monitor bounds BEFORE maximizing
+            // Windows OS completely ignores coordinate updates if the window is min/maxed
+            await session.send('Browser.setWindowBounds', {
+                windowId,
+                bounds: { 
+                    left: 50, 
+                    top: 50, 
+                    width: 1200, 
+                    height: 800, 
+                    windowState: 'normal' 
+                }
+            });
+            
+            await new Promise(r => setTimeout(r, 400));
+            
+            // 2. Force maximize to snap it cleanly to the screen
+            await session.send('Browser.setWindowBounds', {
+                windowId,
+                bounds: { windowState: 'maximized' }
+            });
+
+            await this.page.bringToFront();
+            this.headless = false; // Sync internal state
+            this.logStatus("[Display] 🖥️ Brought browser window on-screen.");
+        } catch (e) {
+            this.logWarning("display", "Could not bring window on-screen: " + e.message);
+        }
     }
 
     parseAttemptDelay(delayStr) {
@@ -1247,7 +1327,6 @@ export class ChromeWorker extends BaseBrowser {
         }
     }
 
-    // Direct Native SignOut Method
     async performSignOut() {
         try {
             this.logStatus("[SignOut] Executing secure sign out...");
@@ -1357,16 +1436,31 @@ export class ChromeWorker extends BaseBrowser {
                         const alertBox = document.querySelector('div[role="alert"]');
                         if (alertBox && alertBox.offsetHeight > 0) {
                             const text = (alertBox.textContent || alertBox.innerText || '').toLowerCase();
+                            
+                            // Check explicit negative phrases
                             if (text.includes('no appointment') || text.includes('sorry') || text.includes('try again')) {
                                 clearInterval(interval);
                                 resolve({ status: 'unavailable', message: text.trim() });
                                 return;
                             }
+                            
+                            // Explicit check for known positive string from VFS
+                            if (text.includes('earliest available slot')) {
+                                const buttons = Array.from(document.querySelectorAll('button'));
+                                const continueBtn = buttons.find(b => (b.textContent || '').includes('Continue'));
+                                if (continueBtn && !continueBtn.disabled && continueBtn.offsetHeight > 0) {
+                                    clearInterval(interval);
+                                    continueBtn.click();
+                                    resolve({ status: 'available', message: text.trim() });
+                                    return;
+                                }
+                            }
                         }
 
+                        // Fallback: If no alert box is found but the Continue button is active
                         const buttons = Array.from(document.querySelectorAll('button'));
                         const continueBtn = buttons.find(b => (b.textContent || '').includes('Continue'));
-                        if (continueBtn && !continueBtn.disabled && continueBtn.offsetHeight > 0) {
+                        if (continueBtn && !continueBtn.disabled && continueBtn.offsetHeight > 0 && !document.querySelector('ngx-ui-loader .ngx-overlay')) {
                             clearInterval(interval);
                             continueBtn.click(); 
                             resolve({ status: 'available', message: 'Proceeding to Your Details phase.' });
@@ -1376,6 +1470,7 @@ export class ChromeWorker extends BaseBrowser {
                 });
             });
             
+            // Return status manually string mapped so the upper loop handles logic seamlessly
             if (result.status === 'unavailable') {
                 this.logStatus(`[Result] 🚫 ${result.message}`);
                 if (typeof this.onAppointmentResult === 'function') this.onAppointmentResult('unavailable');
@@ -1745,7 +1840,6 @@ class SheetHandler {
             validData.push(cleanRecord);
         });
 
-        // 👈 NEW FIX: If rows were processed but ALL were invalid, throw a GUI error instead of silently succeeding.
         if (validData.length === 0 && rawRows.length > 0) {
             let errorMsg = "The document was fetched, but NO valid accounts could be imported.";
             if (warnings.length > 0) {
@@ -1828,6 +1922,18 @@ class SheetHandler {
 
         } catch (error) {
             return this._createErrorResult(`Cannot import Error: ${error.message}`);
+        }
+    }
+
+    exportData(data, filePath) {
+        try {
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Accounts");
+            XLSX.writeFile(wb, filePath);
+            return { success: true };
+        } catch (error) {
+            return this._createErrorResult(`Failed to export file: ${error.message}`);
         }
     }
 
@@ -2519,7 +2625,7 @@ ipcMain.on('window-control', (event, action) => {
     }
 });
 
-// File Handling (Local)
+// File Handling (Import Local)
 ipcMain.removeHandler('select-local-file');
 ipcMain.handle('select-local-file', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
@@ -2534,6 +2640,30 @@ ipcMain.handle('select-local-file', async () => {
         throw new Error(result.error);
     } catch (error) {
         return { error: `Cannot import Error: ${error.message}` };
+    }
+});
+
+// File Handling (Export Local)
+ipcMain.removeHandler('export-data');
+ipcMain.handle('export-data', async (event, data) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+        title: 'Export Accounts',
+        defaultPath: 'VFS_Accounts_Export.xlsx',
+        filters: [
+            { name: 'Excel Workbook', extensions: ['xlsx'] },
+            { name: 'CSV File', extensions: ['csv'] }
+        ]
+    });
+    
+    if (canceled || !filePath) return null;
+    
+    try {
+        const handler = new SheetHandler();
+        const result = handler.exportData(data, filePath);
+        if (result.success) return { success: true, filePath };
+        throw new Error(result.error);
+    } catch (error) {
+        return { error: `Export Error: ${error.message}` };
     }
 });
 
@@ -2571,7 +2701,23 @@ ipcMain.on('launch-bots', async (event, instances) => {
         
         worker.logStatus = (msg) => event.reply('bot-status', { id: instance.id, status: msg });
         worker.logError = (key, msg) => event.reply('bot-status', { id: instance.id, status: `Error: ${msg}` });
-        worker.onAppointmentResult = (resultType) => event.reply('appointment-result', { id: instance.id, result: resultType });
+        
+        worker.onAppointmentResult = (resultType) => {
+            event.reply('appointment-result', { id: instance.id, result: resultType });
+            
+            // 🚨 Trigger OS-Level alert when an appointment is found
+            if (resultType === 'available' && mainWindow) {
+                if (mainWindow.isMinimized()) mainWindow.restore();
+                mainWindow.focus();
+                
+                dialog.showMessageBox(mainWindow, {
+                    type: 'info',
+                    title: '🚨 Appointment Available! 🚨',
+                    message: `An appointment was found for ${instance.data.account}!\n\nThe bot has safely clicked 'Continue' and the Chromium browser is now visible on your screen.\n\nPlease proceed manually.`,
+                    buttons: ['Understood']
+                });
+            }
+        };
 
         activeWorkers.set(instance.id, worker);
         worker.launchBrowser();
@@ -2638,6 +2784,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
     selectLocalFile: () => ipcRenderer.invoke('select-local-file'),
     fetchGoogleSheet: (url) => ipcRenderer.invoke('fetch-google-sheet', url),
+    exportData: (data) => ipcRenderer.invoke('export-data', data),
     
     launchBots: (instances) => ipcRenderer.send('launch-bots', instances),
     closeBots: (ids) => ipcRenderer.send('close-bots', ids),
@@ -2877,6 +3024,17 @@ import './theme.css';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
+// Time parsing helpers to convert DD/HH/MM/SS string to object and vice-versa
+const parseDelayStr = (str) => {
+    const parts = (str || "00/00/05/00").split(/[\/\-:]/).map(n => parseInt(n, 10) || 0);
+    return { d: parts[0] || 0, h: parts[1] || 0, m: parts[2] || 0, s: parts[3] || 0 };
+};
+
+const formatDelayStr = ({ d, h, m, s }) => {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(d)}/${pad(h)}/${pad(m)}/${pad(s)}`;
+};
+
 const YallaVisaLogo = () => (
     <svg viewBox="0 0 380 50" height="40" xmlns="http://www.w3.org/2000/svg">
         <g transform="translate(0, 0) scale(0.45)">
@@ -2912,7 +3070,9 @@ export default function App() {
         attempts: 1,
         attemptDelay: '00/00/05/00',
         switches: 1,
-        switchDelay: 3000
+        switchDelay: 3000,
+        autoClose: true,
+        attemptSeparator: 'Sign Out'
     });
     
     const [showDefaultsModal, setShowDefaultsModal] = useState(false);
@@ -2967,7 +3127,6 @@ export default function App() {
             if (existingAccounts.has(item.account)) duplicates++;
             else newAccounts++;
 
-            // Evaluate Headless Mode via file overriding defaults
             let isHeadless = defaultHeadless;
             if (item.mode) {
                 const modeStr = item.mode.toString().toLowerCase().trim();
@@ -2975,9 +3134,15 @@ export default function App() {
                 else if (modeStr === 'visible') isHeadless = false;
             }
 
+            let isAutoClose = globalDefaults.autoClose;
+            if (item.autoClose !== undefined) {
+                const acStr = String(item.autoClose).toLowerCase().trim();
+                isAutoClose = !(acStr === 'false' || acStr === 'no' || acStr === '0');
+            }
+
             return {
                 id: generateId(),
-                data: { ...globalDefaults, ...item },
+                data: { ...globalDefaults, ...item, autoClose: isAutoClose },
                 headless: isHeadless,
                 status: 'Idle',
                 aptStatus: 'idle', 
@@ -2998,6 +3163,34 @@ export default function App() {
             processImport(data);
         } else if (data?.error) {
             setErrorMessage(data.error);
+        }
+    };
+
+    const handleExport = async () => {
+        if (instances.length === 0) {
+            setErrorMessage("No accounts available to export.");
+            return;
+        }
+
+        const dataToExport = instances.map(inst => ({
+            account: inst.data.account,
+            password: inst.data.password,
+            country: inst.data.country,
+            city: inst.data.city,
+            appointmentCategory: inst.data.appointmentCategory,
+            subCategory: inst.data.subCategory,
+            mode: inst.headless ? 'Headless' : 'Visible',
+            attempts: inst.data.attempts,
+            attemptDelay: inst.data.attemptDelay,
+            switches: inst.data.switches,
+            switchDelay: inst.data.switchDelay,
+            autoClose: inst.data.autoClose,
+            attemptSeparator: inst.data.attemptSeparator
+        }));
+
+        const result = await window.electronAPI.exportData(dataToExport);
+        if (result?.error) {
+            setErrorMessage(result.error);
         }
     };
 
@@ -3100,7 +3293,6 @@ export default function App() {
     return (
         <div className={`app-container ${theme}-theme`}>
             
-            {/* Custom Linux Style Draggable Titlebar */}
             <div className="custom-titlebar">
                 <div className="titlebar-controls">
                     <button className="win-btn win-min linux-btn" onClick={() => handleWindowAction('minimize')} title="Minimize Window">
@@ -3128,7 +3320,10 @@ export default function App() {
 
             <header className="header-panel">
                 <div className="header-left">
-                    <button className="btn-outline btn-compact" onClick={handleLocalFile} title="Browse your computer to upload a local Excel or CSV file.">Browse</button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <button className="btn-outline btn-compact" onClick={handleLocalFile} title="Import accounts from local Excel or CSV file.">Import</button>
+                        <button className="btn-outline btn-compact" onClick={handleExport} title="Export current accounts to Excel/CSV.">Export</button>
+                    </div>
                     <div className="sheet-fetcher">
                         <input 
                             type="text" 
@@ -3230,7 +3425,7 @@ export default function App() {
                 </div>
             </div>
 
-            {/* Custom Error Modal (Replaces Native alert) */}
+            {/* Custom Error Modal */}
             {errorMessage && (
                 <div className="modal-overlay" onClick={() => setErrorMessage(null)}>
                     <div className="modal-content danger-modal relative" onClick={e => e.stopPropagation()}>
@@ -3325,10 +3520,49 @@ export default function App() {
                 <div className="modal-overlay" onClick={() => setShowDefaultsModal(false)}>
                     <div className="modal-content relative" onClick={e => e.stopPropagation()}>
                         <button className="modal-close-x" onClick={() => setShowDefaultsModal(false)}>✕</button>
-                        <div className="modal-header"><h3>Global Defaults Config</h3></div>
+                        <div className="modal-header">
+                            <h3>Global Defaults Config</h3>
+                            <div className="toggle-wrapper" style={{ marginRight: '35px' }}>
+                                <span className="toggle-title">Auto Close</span>
+                                <label className="switch">
+                                    <input type="checkbox" checked={globalDefaults.autoClose} onChange={e => setGlobalDefaults({...globalDefaults, autoClose: e.target.checked})} />
+                                    <span className="slider"></span>
+                                </label>
+                            </div>
+                        </div>
                         <div className="form-grid" style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '5px' }}>
                             <div className="form-group"><label>Attempts per account</label><input type="number" min="1" value={globalDefaults.attempts} onChange={e => setGlobalDefaults({...globalDefaults, attempts: e.target.value})} /></div>
-                            <div className="form-group"><label>Attempt Delay (dd/hh/mm/ss)</label><input type="text" placeholder="00/00/05/00" value={globalDefaults.attemptDelay} onChange={e => setGlobalDefaults({...globalDefaults, attemptDelay: e.target.value})} /></div>
+                            
+                            {/* Structured Time Input for Defaults */}
+                            {(() => {
+                                const delayObj = parseDelayStr(globalDefaults.attemptDelay);
+                                const handleDelayChange = (field, val) => {
+                                    const newObj = { ...delayObj, [field]: parseInt(val) || 0 };
+                                    setGlobalDefaults({ ...globalDefaults, attemptDelay: formatDelayStr(newObj) });
+                                };
+                                return (
+                                    <div className="form-group">
+                                        <label>Time Between Attempts</label>
+                                        <div className="delay-inputs">
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.d} onChange={e => handleDelayChange('d', e.target.value)} /><label>Days</label></div>
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.h} onChange={e => handleDelayChange('h', e.target.value)} /><label>Hours</label></div>
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.m} onChange={e => handleDelayChange('m', e.target.value)} /><label>Mins</label></div>
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.s} onChange={e => handleDelayChange('s', e.target.value)} /><label>Secs</label></div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                            
+                            <div className="form-group">
+                                <label>Action Between Attempts</label>
+                                <select value={globalDefaults.attemptSeparator || 'Sign Out'} onChange={e => setGlobalDefaults({...globalDefaults, attemptSeparator: e.target.value})}>
+                                    <option value="Sign Out">Sign Out & Navigate to Login</option>
+                                    <option value="Refresh">Refresh Current Page</option>
+                                    <option value="Sign Out & Close">Sign Out & Restart Browser</option>
+                                    <option value="Close">Restart Browser (No Sign Out)</option>
+                                </select>
+                            </div>
+
                             <div className="form-group"><label>Category Switches (Internal)</label><input type="number" min="1" value={globalDefaults.switches} onChange={e => setGlobalDefaults({...globalDefaults, switches: e.target.value})} /></div>
                             <div className="form-group"><label>Switch Delay (ms)</label><input type="number" min="500" step="500" value={globalDefaults.switchDelay} onChange={e => setGlobalDefaults({...globalDefaults, switchDelay: e.target.value})} /></div>
                             <hr style={{ borderColor: 'var(--border-color)', margin: '10px 0', opacity: 0.5 }} />
@@ -3349,19 +3583,59 @@ export default function App() {
                         <button className="modal-close-x" onClick={cancelEdit}>✕</button>
                         <div className="modal-header">
                             <h3>{editingId === 'NEW' ? 'Hot Batch New' : `${editForm.account || 'Account'} Hot Batch`}</h3>
-                            <div className="toggle-wrapper" style={{ marginRight: '35px' }}>
-                                <span className="toggle-title">Headless</span>
-                                <label className="switch">
-                                    <input type="checkbox" checked={editForm.headless} onChange={e => setEditForm({...editForm, headless: e.target.checked})} />
-                                    <span className="slider"></span>
-                                </label>
+                            
+                            <div className="header-toggles" style={{ display: 'flex', gap: '15px', marginRight: '35px' }}>
+                                <div className="toggle-wrapper">
+                                    <span className="toggle-title">Auto Close</span>
+                                    <label className="switch">
+                                        <input type="checkbox" checked={editForm.autoClose} onChange={e => setEditForm({...editForm, autoClose: e.target.checked})} />
+                                        <span className="slider"></span>
+                                    </label>
+                                </div>
+                                <div className="toggle-wrapper">
+                                    <span className="toggle-title">Headless</span>
+                                    <label className="switch">
+                                        <input type="checkbox" checked={editForm.headless} onChange={e => setEditForm({...editForm, headless: e.target.checked})} />
+                                        <span className="slider"></span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                         <div className="form-grid" style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '5px' }}>
                             <div className="form-group"><label>Account Email</label><input type="text" value={editForm.account} onChange={e => setEditForm({...editForm, account: e.target.value})} /></div>
                             <div className="form-group"><label>Password</label><input type="text" value={editForm.password} onChange={e => setEditForm({...editForm, password: e.target.value})} /></div>
                             <div className="form-group"><label>Attempts</label><input type="number" min="1" value={editForm.attempts || 1} onChange={e => setEditForm({...editForm, attempts: e.target.value})} /></div>
-                            <div className="form-group"><label>Attempt Delay (dd/hh/mm/ss)</label><input type="text" placeholder="00/00/05/00" value={editForm.attemptDelay || ''} onChange={e => setEditForm({...editForm, attemptDelay: e.target.value})} /></div>
+                            
+                            {/* Structured Time Input for Editor */}
+                            {(() => {
+                                const delayObj = parseDelayStr(editForm.attemptDelay);
+                                const handleDelayChange = (field, val) => {
+                                    const newObj = { ...delayObj, [field]: parseInt(val) || 0 };
+                                    setEditForm({ ...editForm, attemptDelay: formatDelayStr(newObj) });
+                                };
+                                return (
+                                    <div className="form-group">
+                                        <label>Time Between Attempts</label>
+                                        <div className="delay-inputs">
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.d} onChange={e => handleDelayChange('d', e.target.value)} /><label>Days</label></div>
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.h} onChange={e => handleDelayChange('h', e.target.value)} /><label>Hours</label></div>
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.m} onChange={e => handleDelayChange('m', e.target.value)} /><label>Mins</label></div>
+                                            <div className="delay-field"><input type="number" min="0" value={delayObj.s} onChange={e => handleDelayChange('s', e.target.value)} /><label>Secs</label></div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            <div className="form-group">
+                                <label>Action Between Attempts</label>
+                                <select value={editForm.attemptSeparator || 'Sign Out'} onChange={e => setEditForm({...editForm, attemptSeparator: e.target.value})}>
+                                    <option value="Sign Out">Sign Out & Navigate to Login</option>
+                                    <option value="Refresh">Refresh Current Page</option>
+                                    <option value="Sign Out & Close">Sign Out & Restart Browser</option>
+                                    <option value="Close">Restart Browser (No Sign Out)</option>
+                                </select>
+                            </div>
+
                             <div className="form-group"><label>Category Switches (Internal)</label><input type="number" min="1" value={editForm.switches || 1} onChange={e => setEditForm({...editForm, switches: e.target.value})} /></div>
                             <div className="form-group"><label>Switch Delay (ms)</label><input type="number" min="500" step="500" value={editForm.switchDelay || 3000} onChange={e => setEditForm({...editForm, switchDelay: e.target.value})} /></div>
                             <hr style={{ borderColor: 'var(--border-color)', margin: '10px 0', opacity: 0.5 }} />
@@ -3814,6 +4088,22 @@ input:checked + .slider:before { transform: translateX(22px); }
 .form-group input { background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 10px; border-radius: 4px; transition: border-color 0.2s;}
 .form-group input:focus { outline: none; border-color: var(--color-launch); }
 
+/* --- Added Select Styles --- */
+.form-group select {
+    background: var(--input-bg); 
+    border: 1px solid var(--border-color); 
+    color: var(--text-main); 
+    padding: 10px; 
+    border-radius: 4px; 
+    transition: border-color 0.2s;
+    appearance: none;
+    cursor: pointer;
+}
+.form-group select:focus {
+    outline: none; 
+    border-color: var(--color-launch);
+}
+
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .modal-actions-col { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
 
@@ -3845,6 +4135,35 @@ input:checked + .slider:before { transform: translateX(22px); }
     0%, 100% { transform: translateX(0); }
     20%, 60% { transform: translateX(-4px); }
     40%, 80% { transform: translateX(4px); }
+}
+
+/* Multi-block Time Editor Styles */
+.delay-inputs {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+}
+
+.delay-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.delay-field label {
+    font-size: 0.65em !important;
+    color: var(--text-muted) !important;
+    text-align: center;
+    letter-spacing: 1px;
+}
+
+.delay-field input {
+    width: 100%;
+    text-align: center;
+    box-sizing: border-box;
+    padding: 8px 4px !important;
 }
 ```
 

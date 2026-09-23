@@ -42,6 +42,10 @@ export class ChromeWorker extends BaseBrowser {
         this.switches = parseInt(instanceData?.switches) || defaultBatchConfig.switches;
         this.switchDelay = parseInt(instanceData?.switchDelay) || defaultBatchConfig.switchDelay;
 
+        // New End/Separator settings
+        this.autoClose = instanceData?.autoClose ?? defaultBatchConfig.autoClose;
+        this.attemptSeparator = instanceData?.attemptSeparator || defaultBatchConfig.attemptSeparator;
+
         this.isOrchestratorRunning = false;
         this.captchaHandler = new CaptchaHandler(this);
         this.lastDeferLogTime = 0;
@@ -154,16 +158,22 @@ export class ChromeWorker extends BaseBrowser {
 
                     if (isAvailable) {
                         this.completedActivities.add('appointmentDetails');
-                        return; // Found it! Let the bot halt for human action.
+                        this.logStatus(`[Success] 🚨 TARGET AVAILABLE! Bringing browser window on-screen...`);
+                        
+                        // Dynamically pull the browser onto the screen if it was running headlessly
+                        if (this.headless) {
+                            await this.bringWindowOnScreen();
+                        }
+
+                        this.isOrchestratorRunning = false; // Freeze bot, wait for user
+                        return; 
                     }
 
                     // No appointment found after all switches.
                     // Random 1 to 2 second human delay before signing out
                     const humanDelay = Math.floor(Math.random() * 1000) + 1000;
-                    this.logStatus(`[No Appointment] Waiting ${humanDelay}ms to mimic human before signout...`);
+                    this.logStatus(`[No Appointment] Mimicking human wait for ${humanDelay}ms...`);
                     await new Promise(r => setTimeout(r, humanDelay));
-
-                    await this.performSignOut();
 
                     // Check full Attempts loop
                     if (this.currentAttempt < this.maxAttempts) {
@@ -173,21 +183,85 @@ export class ChromeWorker extends BaseBrowser {
                         this.logStatus(`[Attempt Complete] Waiting ${parsedDelay}ms before next attempt...`);
                         await new Promise(r => setTimeout(r, parsedDelay));
 
-                        this.logStatus(`[Attempt ${this.currentAttempt}/${this.maxAttempts}] Navigating to Login...`);
-                        
-                        // Delete phase completions so the orchestrator runs them again
+                        // Execute Separator Behavior
+                        const sep = (this.attemptSeparator || '').toLowerCase();
                         this.completedActivities.delete('signIn');
                         this.completedActivities.delete('dashboard');
-                        
-                        await this.page.goto(this.targetUrl, { waitUntil: 'domcontentloaded' });
+
+                        if (sep.includes('refresh')) {
+                            this.logStatus(`[Attempt ${this.currentAttempt}/${this.maxAttempts}] Refreshing page...`);
+                            await this.page.reload({ waitUntil: 'domcontentloaded' });
+                        } else if (sep.includes('close')) {
+                            if (sep.includes('sign out') || sep.includes('signout')) {
+                                await this.performSignOut();
+                            }
+                            this.logStatus(`[Attempt ${this.currentAttempt}/${this.maxAttempts}] Restarting browser engine...`);
+                            this.isOrchestratorRunning = false; 
+                            await this.closeBrowser();
+                            
+                            // Start new browser asynchronously and safely drop this thread
+                            this.launchBrowser().catch(e => this.logError('restart', e.message));
+                            return; 
+                        } else {
+                            // Default: Sign Out & Re-navigate
+                            await this.performSignOut();
+                            this.logStatus(`[Attempt ${this.currentAttempt}/${this.maxAttempts}] Navigating to Login...`);
+                            await this.page.goto(this.targetUrl, { waitUntil: 'domcontentloaded' });
+                        }
                     } else {
-                        this.logStatus(`[Finished] Max attempts (${this.maxAttempts}) reached. Closing window.`);
-                        this.terminate();
+                        // Max attempts reached
+                        if (this.autoClose) {
+                            this.logStatus(`[Finished] Max attempts reached. Auto-closing browser.`);
+                            await this.performSignOut();
+                            this.terminate();
+                        } else {
+                            this.logStatus(`[Finished] Max attempts reached. Auto-close disabled. Session parked.`);
+                            this.isOrchestratorRunning = false; 
+                        }
                     }
                 }
             }
         };
         this.currentOrderedDom = [];
+    }
+
+    /**
+     * Resizes and moves the simulated headless browser to the center of the active monitor.
+     * Uses explicit coordinates to break Windows OS off-screen positional locks.
+     */
+    async bringWindowOnScreen() {
+        if (!this.page || !this.browser) return;
+        try {
+            const session = await this.page.target().createCDPSession();
+            const { windowId } = await session.send('Browser.getWindowForTarget');
+            
+            // 1. Move to primary monitor bounds BEFORE maximizing
+            // Windows OS completely ignores coordinate updates if the window is min/maxed
+            await session.send('Browser.setWindowBounds', {
+                windowId,
+                bounds: { 
+                    left: 50, 
+                    top: 50, 
+                    width: 1200, 
+                    height: 800, 
+                    windowState: 'normal' 
+                }
+            });
+            
+            await new Promise(r => setTimeout(r, 400));
+            
+            // 2. Force maximize to snap it cleanly to the screen
+            await session.send('Browser.setWindowBounds', {
+                windowId,
+                bounds: { windowState: 'maximized' }
+            });
+
+            await this.page.bringToFront();
+            this.headless = false; // Sync internal state
+            this.logStatus("[Display] 🖥️ Brought browser window on-screen.");
+        } catch (e) {
+            this.logWarning("display", "Could not bring window on-screen: " + e.message);
+        }
     }
 
     parseAttemptDelay(delayStr) {
@@ -375,7 +449,6 @@ export class ChromeWorker extends BaseBrowser {
         }
     }
 
-    // Direct Native SignOut Method
     async performSignOut() {
         try {
             this.logStatus("[SignOut] Executing secure sign out...");
@@ -485,16 +558,31 @@ export class ChromeWorker extends BaseBrowser {
                         const alertBox = document.querySelector('div[role="alert"]');
                         if (alertBox && alertBox.offsetHeight > 0) {
                             const text = (alertBox.textContent || alertBox.innerText || '').toLowerCase();
+                            
+                            // Check explicit negative phrases
                             if (text.includes('no appointment') || text.includes('sorry') || text.includes('try again')) {
                                 clearInterval(interval);
                                 resolve({ status: 'unavailable', message: text.trim() });
                                 return;
                             }
+                            
+                            // Explicit check for known positive string from VFS
+                            if (text.includes('earliest available slot')) {
+                                const buttons = Array.from(document.querySelectorAll('button'));
+                                const continueBtn = buttons.find(b => (b.textContent || '').includes('Continue'));
+                                if (continueBtn && !continueBtn.disabled && continueBtn.offsetHeight > 0) {
+                                    clearInterval(interval);
+                                    continueBtn.click();
+                                    resolve({ status: 'available', message: text.trim() });
+                                    return;
+                                }
+                            }
                         }
 
+                        // Fallback: If no alert box is found but the Continue button is active
                         const buttons = Array.from(document.querySelectorAll('button'));
                         const continueBtn = buttons.find(b => (b.textContent || '').includes('Continue'));
-                        if (continueBtn && !continueBtn.disabled && continueBtn.offsetHeight > 0) {
+                        if (continueBtn && !continueBtn.disabled && continueBtn.offsetHeight > 0 && !document.querySelector('ngx-ui-loader .ngx-overlay')) {
                             clearInterval(interval);
                             continueBtn.click(); 
                             resolve({ status: 'available', message: 'Proceeding to Your Details phase.' });
@@ -504,6 +592,7 @@ export class ChromeWorker extends BaseBrowser {
                 });
             });
             
+            // Return status manually string mapped so the upper loop handles logic seamlessly
             if (result.status === 'unavailable') {
                 this.logStatus(`[Result] 🚫 ${result.message}`);
                 if (typeof this.onAppointmentResult === 'function') this.onAppointmentResult('unavailable');

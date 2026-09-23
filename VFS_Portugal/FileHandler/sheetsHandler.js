@@ -132,7 +132,6 @@ class SheetHandler {
             validData.push(cleanRecord);
         });
 
-        // 👈 NEW FIX: If rows were processed but ALL were invalid, throw a GUI error instead of silently succeeding.
         if (validData.length === 0 && rawRows.length > 0) {
             let errorMsg = "The document was fetched, but NO valid accounts could be imported.";
             if (warnings.length > 0) {
@@ -215,6 +214,18 @@ class SheetHandler {
 
         } catch (error) {
             return this._createErrorResult(`Cannot import Error: ${error.message}`);
+        }
+    }
+
+    exportData(data, filePath) {
+        try {
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Accounts");
+            XLSX.writeFile(wb, filePath);
+            return { success: true };
+        } catch (error) {
+            return this._createErrorResult(`Failed to export file: ${error.message}`);
         }
     }
 

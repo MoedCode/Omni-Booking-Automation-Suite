@@ -16,7 +16,9 @@ const allKeys = {
         "attempts",
         "attemptDelay",
         "switches",
-        "switchDelay"
+        "switchDelay",
+        "autoClose",
+        "attemptSeparator"
     ],
     keyConv: {
         password: ["passwords", "pass", "pwd"], 
@@ -28,7 +30,9 @@ const allKeys = {
         attempts: ["number of attempts", "retries", "attempt"],
         attemptDelay: ["attempt delay", "delay", "time between", "time between each attempt"],
         switches: ["switch", "switches", "number of switch", "sub category switch"],
-        switchDelay: ["switch delay"]
+        switchDelay: ["switch delay"],
+        autoClose: ["auto close", "autoclose", "close after"],
+        attemptSeparator: ["separator", "attempt separator", "between attempts"]
     }
 };
 
@@ -41,7 +45,9 @@ const defaultBatchConfig = {
     attempts: 1,
     attemptDelay: "00/00/05/00", // Default 5 minutes (dd/hh/mm/ss)
     switches: 1,
-    switchDelay: 3000
+    switchDelay: 3000,
+    autoClose: true,
+    attemptSeparator: "Sign Out"
 };
 
 const terminationCmds = ["exit", "\\q", "q"];

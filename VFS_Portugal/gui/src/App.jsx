@@ -50,7 +50,9 @@ export default function App() {
         attempts: 1,
         attemptDelay: '00/00/05/00',
         switches: 1,
-        switchDelay: 3000
+        switchDelay: 3000,
+        autoClose: true,
+        attemptSeparator: 'Sign Out'
     });
     
     const [showDefaultsModal, setShowDefaultsModal] = useState(false);
@@ -112,9 +114,15 @@ export default function App() {
                 else if (modeStr === 'visible') isHeadless = false;
             }
 
+            let isAutoClose = globalDefaults.autoClose;
+            if (item.autoClose !== undefined) {
+                const acStr = String(item.autoClose).toLowerCase().trim();
+                isAutoClose = !(acStr === 'false' || acStr === 'no' || acStr === '0');
+            }
+
             return {
                 id: generateId(),
-                data: { ...globalDefaults, ...item },
+                data: { ...globalDefaults, ...item, autoClose: isAutoClose },
                 headless: isHeadless,
                 status: 'Idle',
                 aptStatus: 'idle', 
@@ -135,6 +143,34 @@ export default function App() {
             processImport(data);
         } else if (data?.error) {
             setErrorMessage(data.error);
+        }
+    };
+
+    const handleExport = async () => {
+        if (instances.length === 0) {
+            setErrorMessage("No accounts available to export.");
+            return;
+        }
+
+        const dataToExport = instances.map(inst => ({
+            account: inst.data.account,
+            password: inst.data.password,
+            country: inst.data.country,
+            city: inst.data.city,
+            appointmentCategory: inst.data.appointmentCategory,
+            subCategory: inst.data.subCategory,
+            mode: inst.headless ? 'Headless' : 'Visible',
+            attempts: inst.data.attempts,
+            attemptDelay: inst.data.attemptDelay,
+            switches: inst.data.switches,
+            switchDelay: inst.data.switchDelay,
+            autoClose: inst.data.autoClose,
+            attemptSeparator: inst.data.attemptSeparator
+        }));
+
+        const result = await window.electronAPI.exportData(dataToExport);
+        if (result?.error) {
+            setErrorMessage(result.error);
         }
     };
 
@@ -264,7 +300,10 @@ export default function App() {
 
             <header className="header-panel">
                 <div className="header-left">
-                    <button className="btn-outline btn-compact" onClick={handleLocalFile} title="Browse your computer to upload a local Excel or CSV file.">Browse</button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <button className="btn-outline btn-compact" onClick={handleLocalFile} title="Import accounts from local Excel or CSV file.">Import</button>
+                        <button className="btn-outline btn-compact" onClick={handleExport} title="Export current accounts to Excel/CSV.">Export</button>
+                    </div>
                     <div className="sheet-fetcher">
                         <input 
                             type="text" 
@@ -461,7 +500,16 @@ export default function App() {
                 <div className="modal-overlay" onClick={() => setShowDefaultsModal(false)}>
                     <div className="modal-content relative" onClick={e => e.stopPropagation()}>
                         <button className="modal-close-x" onClick={() => setShowDefaultsModal(false)}>✕</button>
-                        <div className="modal-header"><h3>Global Defaults Config</h3></div>
+                        <div className="modal-header">
+                            <h3>Global Defaults Config</h3>
+                            <div className="toggle-wrapper" style={{ marginRight: '35px' }}>
+                                <span className="toggle-title">Auto Close</span>
+                                <label className="switch">
+                                    <input type="checkbox" checked={globalDefaults.autoClose} onChange={e => setGlobalDefaults({...globalDefaults, autoClose: e.target.checked})} />
+                                    <span className="slider"></span>
+                                </label>
+                            </div>
+                        </div>
                         <div className="form-grid" style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '5px' }}>
                             <div className="form-group"><label>Attempts per account</label><input type="number" min="1" value={globalDefaults.attempts} onChange={e => setGlobalDefaults({...globalDefaults, attempts: e.target.value})} /></div>
                             
@@ -485,6 +533,16 @@ export default function App() {
                                 );
                             })()}
                             
+                            <div className="form-group">
+                                <label>Action Between Attempts</label>
+                                <select value={globalDefaults.attemptSeparator || 'Sign Out'} onChange={e => setGlobalDefaults({...globalDefaults, attemptSeparator: e.target.value})}>
+                                    <option value="Sign Out">Sign Out & Navigate to Login</option>
+                                    <option value="Refresh">Refresh Current Page</option>
+                                    <option value="Sign Out & Close">Sign Out & Restart Browser</option>
+                                    <option value="Close">Restart Browser (No Sign Out)</option>
+                                </select>
+                            </div>
+
                             <div className="form-group"><label>Category Switches (Internal)</label><input type="number" min="1" value={globalDefaults.switches} onChange={e => setGlobalDefaults({...globalDefaults, switches: e.target.value})} /></div>
                             <div className="form-group"><label>Switch Delay (ms)</label><input type="number" min="500" step="500" value={globalDefaults.switchDelay} onChange={e => setGlobalDefaults({...globalDefaults, switchDelay: e.target.value})} /></div>
                             <hr style={{ borderColor: 'var(--border-color)', margin: '10px 0', opacity: 0.5 }} />
@@ -505,12 +563,22 @@ export default function App() {
                         <button className="modal-close-x" onClick={cancelEdit}>✕</button>
                         <div className="modal-header">
                             <h3>{editingId === 'NEW' ? 'Hot Batch New' : `${editForm.account || 'Account'} Hot Batch`}</h3>
-                            <div className="toggle-wrapper" style={{ marginRight: '35px' }}>
-                                <span className="toggle-title">Headless</span>
-                                <label className="switch">
-                                    <input type="checkbox" checked={editForm.headless} onChange={e => setEditForm({...editForm, headless: e.target.checked})} />
-                                    <span className="slider"></span>
-                                </label>
+                            
+                            <div className="header-toggles" style={{ display: 'flex', gap: '15px', marginRight: '35px' }}>
+                                <div className="toggle-wrapper">
+                                    <span className="toggle-title">Auto Close</span>
+                                    <label className="switch">
+                                        <input type="checkbox" checked={editForm.autoClose} onChange={e => setEditForm({...editForm, autoClose: e.target.checked})} />
+                                        <span className="slider"></span>
+                                    </label>
+                                </div>
+                                <div className="toggle-wrapper">
+                                    <span className="toggle-title">Headless</span>
+                                    <label className="switch">
+                                        <input type="checkbox" checked={editForm.headless} onChange={e => setEditForm({...editForm, headless: e.target.checked})} />
+                                        <span className="slider"></span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                         <div className="form-grid" style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '5px' }}>
@@ -537,6 +605,16 @@ export default function App() {
                                     </div>
                                 );
                             })()}
+
+                            <div className="form-group">
+                                <label>Action Between Attempts</label>
+                                <select value={editForm.attemptSeparator || 'Sign Out'} onChange={e => setEditForm({...editForm, attemptSeparator: e.target.value})}>
+                                    <option value="Sign Out">Sign Out & Navigate to Login</option>
+                                    <option value="Refresh">Refresh Current Page</option>
+                                    <option value="Sign Out & Close">Sign Out & Restart Browser</option>
+                                    <option value="Close">Restart Browser (No Sign Out)</option>
+                                </select>
+                            </div>
 
                             <div className="form-group"><label>Category Switches (Internal)</label><input type="number" min="1" value={editForm.switches || 1} onChange={e => setEditForm({...editForm, switches: e.target.value})} /></div>
                             <div className="form-group"><label>Switch Delay (ms)</label><input type="number" min="500" step="500" value={editForm.switchDelay || 3000} onChange={e => setEditForm({...editForm, switchDelay: e.target.value})} /></div>

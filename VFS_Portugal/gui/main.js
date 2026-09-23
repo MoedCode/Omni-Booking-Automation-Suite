@@ -57,7 +57,7 @@ ipcMain.on('window-control', (event, action) => {
     }
 });
 
-// File Handling (Local)
+// File Handling (Import Local)
 ipcMain.removeHandler('select-local-file');
 ipcMain.handle('select-local-file', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
@@ -72,6 +72,30 @@ ipcMain.handle('select-local-file', async () => {
         throw new Error(result.error);
     } catch (error) {
         return { error: `Cannot import Error: ${error.message}` };
+    }
+});
+
+// File Handling (Export Local)
+ipcMain.removeHandler('export-data');
+ipcMain.handle('export-data', async (event, data) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+        title: 'Export Accounts',
+        defaultPath: 'VFS_Accounts_Export.xlsx',
+        filters: [
+            { name: 'Excel Workbook', extensions: ['xlsx'] },
+            { name: 'CSV File', extensions: ['csv'] }
+        ]
+    });
+    
+    if (canceled || !filePath) return null;
+    
+    try {
+        const handler = new SheetHandler();
+        const result = handler.exportData(data, filePath);
+        if (result.success) return { success: true, filePath };
+        throw new Error(result.error);
+    } catch (error) {
+        return { error: `Export Error: ${error.message}` };
     }
 });
 
@@ -109,7 +133,23 @@ ipcMain.on('launch-bots', async (event, instances) => {
         
         worker.logStatus = (msg) => event.reply('bot-status', { id: instance.id, status: msg });
         worker.logError = (key, msg) => event.reply('bot-status', { id: instance.id, status: `Error: ${msg}` });
-        worker.onAppointmentResult = (resultType) => event.reply('appointment-result', { id: instance.id, result: resultType });
+        
+        worker.onAppointmentResult = (resultType) => {
+            event.reply('appointment-result', { id: instance.id, result: resultType });
+            
+            // 🚨 Trigger OS-Level alert when an appointment is found
+            if (resultType === 'available' && mainWindow) {
+                if (mainWindow.isMinimized()) mainWindow.restore();
+                mainWindow.focus();
+                
+                dialog.showMessageBox(mainWindow, {
+                    type: 'info',
+                    title: '🚨 Appointment Available! 🚨',
+                    message: `An appointment was found for ${instance.data.account}!\n\nThe bot has safely clicked 'Continue' and the Chromium browser is now visible on your screen.\n\nPlease proceed manually.`,
+                    buttons: ['Understood']
+                });
+            }
+        };
 
         activeWorkers.set(instance.id, worker);
         worker.launchBrowser();
