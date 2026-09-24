@@ -52,7 +52,7 @@ export default function App() {
         switches: 1,
         switchDelay: 3000,
         autoClose: true,
-        attemptSeparator: 'Sign Out'
+        attemptSeparator: 'Refresh Current Page'
     });
     
     const [showDefaultsModal, setShowDefaultsModal] = useState(false);
@@ -535,11 +535,10 @@ export default function App() {
                             
                             <div className="form-group">
                                 <label>Action Between Attempts</label>
-                                <select value={globalDefaults.attemptSeparator || 'Sign Out'} onChange={e => setGlobalDefaults({...globalDefaults, attemptSeparator: e.target.value})}>
-                                    <option value="Sign Out">Sign Out & Navigate to Login</option>
-                                    <option value="Refresh">Refresh Current Page</option>
-                                    <option value="Sign Out & Close">Sign Out & Restart Browser</option>
-                                    <option value="Close">Restart Browser (No Sign Out)</option>
+                                <select value={globalDefaults.attemptSeparator || 'Refresh Current Page'} onChange={e => setGlobalDefaults({...globalDefaults, attemptSeparator: e.target.value})}>
+                                    <option value="Refresh Current Page">Refresh Current Page</option>
+                                    <option value="Restart window">Restart window</option>
+                                    <option value="Log out and restart">Log out and restart</option>
                                 </select>
                             </div>
 
@@ -562,7 +561,8 @@ export default function App() {
                     <div className="modal-content relative" onClick={e => e.stopPropagation()}>
                         <button className="modal-close-x" onClick={cancelEdit}>✕</button>
                         <div className="modal-header">
-                            <h3>{editingId === 'NEW' ? 'Hot Batch New' : `${editForm.account || 'Account'} Hot Batch`}</h3>
+                            {/* Updated title structure removing the dynamic account email */}
+                            <h3>{editingId === 'NEW' ? 'Hot Batch New' : 'Hot Batch'}</h3>
                             
                             <div className="header-toggles" style={{ display: 'flex', gap: '15px', marginRight: '35px' }}>
                                 <div className="toggle-wrapper">
@@ -608,11 +608,10 @@ export default function App() {
 
                             <div className="form-group">
                                 <label>Action Between Attempts</label>
-                                <select value={editForm.attemptSeparator || 'Sign Out'} onChange={e => setEditForm({...editForm, attemptSeparator: e.target.value})}>
-                                    <option value="Sign Out">Sign Out & Navigate to Login</option>
-                                    <option value="Refresh">Refresh Current Page</option>
-                                    <option value="Sign Out & Close">Sign Out & Restart Browser</option>
-                                    <option value="Close">Restart Browser (No Sign Out)</option>
+                                <select value={editForm.attemptSeparator || 'Refresh Current Page'} onChange={e => setEditForm({...editForm, attemptSeparator: e.target.value})}>
+                                    <option value="Refresh Current Page">Refresh Current Page</option>
+                                    <option value="Restart window">Restart window</option>
+                                    <option value="Log out and restart">Log out and restart</option>
                                 </select>
                             </div>
 

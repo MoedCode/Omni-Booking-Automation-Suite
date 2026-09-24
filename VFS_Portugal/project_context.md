@@ -1066,13 +1066,21 @@ export class ChromeWorker extends BaseBrowser {
                         this.completedActivities.delete('signIn');
                         this.completedActivities.delete('dashboard');
 
-                        if (sep.includes('refresh')) {
+                        if (sep === 'refresh current page') {
                             this.logStatus(`[Attempt ${this.currentAttempt}/${this.maxAttempts}] Refreshing page...`);
                             await this.page.reload({ waitUntil: 'domcontentloaded' });
-                        } else if (sep.includes('close')) {
-                            if (sep.includes('sign out') || sep.includes('signout')) {
-                                await this.performSignOut();
-                            }
+                            
+                        } else if (sep === 'log out and restart') {
+                            await this.performSignOut();
+                            this.logStatus(`[Attempt ${this.currentAttempt}/${this.maxAttempts}] Restarting browser engine...`);
+                            this.isOrchestratorRunning = false; 
+                            await this.closeBrowser();
+                            
+                            // Start new browser asynchronously and safely drop this thread
+                            this.launchBrowser().catch(e => this.logError('restart', e.message));
+                            return; 
+                            
+                        } else if (sep === 'restart window') {
                             this.logStatus(`[Attempt ${this.currentAttempt}/${this.maxAttempts}] Restarting browser engine...`);
                             this.isOrchestratorRunning = false; 
                             await this.closeBrowser();
@@ -1081,10 +1089,9 @@ export class ChromeWorker extends BaseBrowser {
                             this.launchBrowser().catch(e => this.logError('restart', e.message));
                             return; 
                         } else {
-                            // Default: Sign Out & Re-navigate
-                            await this.performSignOut();
-                            this.logStatus(`[Attempt ${this.currentAttempt}/${this.maxAttempts}] Navigating to Login...`);
-                            await this.page.goto(this.targetUrl, { waitUntil: 'domcontentloaded' });
+                            // Default Fallback
+                            this.logStatus(`[Attempt ${this.currentAttempt}/${this.maxAttempts}] Refreshing page...`);
+                            await this.page.reload({ waitUntil: 'domcontentloaded' });
                         }
                     } else {
                         // Max attempts reached
@@ -1113,22 +1120,21 @@ export class ChromeWorker extends BaseBrowser {
             const session = await this.page.target().createCDPSession();
             const { windowId } = await session.send('Browser.getWindowForTarget');
             
-            // 1. Move to primary monitor bounds BEFORE maximizing
-            // Windows OS completely ignores coordinate updates if the window is min/maxed
+            // 1. Force the state to 'normal' first to unstick it from off-screen max/min bounds
             await session.send('Browser.setWindowBounds', {
                 windowId,
-                bounds: { 
-                    left: 50, 
-                    top: 50, 
-                    width: 1200, 
-                    height: 800, 
-                    windowState: 'normal' 
-                }
+                bounds: { windowState: 'normal' }
             });
+            await new Promise(r => setTimeout(r, 200));
+
+            // 2. Explicitly teleport the window to a fully visible coordinate on the primary monitor
+            await session.send('Browser.setWindowBounds', {
+                windowId,
+                bounds: { left: 50, top: 50, width: 1300, height: 900 }
+            });
+            await new Promise(r => setTimeout(r, 200));
             
-            await new Promise(r => setTimeout(r, 400));
-            
-            // 2. Force maximize to snap it cleanly to the screen
+            // 3. Force maximize to snap it cleanly to the screen
             await session.send('Browser.setWindowBounds', {
                 windowId,
                 bounds: { windowState: 'maximized' }
@@ -3072,7 +3078,7 @@ export default function App() {
         switches: 1,
         switchDelay: 3000,
         autoClose: true,
-        attemptSeparator: 'Sign Out'
+        attemptSeparator: 'Refresh Current Page'
     });
     
     const [showDefaultsModal, setShowDefaultsModal] = useState(false);
@@ -3555,11 +3561,10 @@ export default function App() {
                             
                             <div className="form-group">
                                 <label>Action Between Attempts</label>
-                                <select value={globalDefaults.attemptSeparator || 'Sign Out'} onChange={e => setGlobalDefaults({...globalDefaults, attemptSeparator: e.target.value})}>
-                                    <option value="Sign Out">Sign Out & Navigate to Login</option>
-                                    <option value="Refresh">Refresh Current Page</option>
-                                    <option value="Sign Out & Close">Sign Out & Restart Browser</option>
-                                    <option value="Close">Restart Browser (No Sign Out)</option>
+                                <select value={globalDefaults.attemptSeparator || 'Refresh Current Page'} onChange={e => setGlobalDefaults({...globalDefaults, attemptSeparator: e.target.value})}>
+                                    <option value="Refresh Current Page">Refresh Current Page</option>
+                                    <option value="Restart window">Restart window</option>
+                                    <option value="Log out and restart">Log out and restart</option>
                                 </select>
                             </div>
 
@@ -3582,7 +3587,8 @@ export default function App() {
                     <div className="modal-content relative" onClick={e => e.stopPropagation()}>
                         <button className="modal-close-x" onClick={cancelEdit}>✕</button>
                         <div className="modal-header">
-                            <h3>{editingId === 'NEW' ? 'Hot Batch New' : `${editForm.account || 'Account'} Hot Batch`}</h3>
+                            {/* Updated title structure removing the dynamic account email */}
+                            <h3>{editingId === 'NEW' ? 'Hot Batch New' : 'Hot Batch'}</h3>
                             
                             <div className="header-toggles" style={{ display: 'flex', gap: '15px', marginRight: '35px' }}>
                                 <div className="toggle-wrapper">
@@ -3628,11 +3634,10 @@ export default function App() {
 
                             <div className="form-group">
                                 <label>Action Between Attempts</label>
-                                <select value={editForm.attemptSeparator || 'Sign Out'} onChange={e => setEditForm({...editForm, attemptSeparator: e.target.value})}>
-                                    <option value="Sign Out">Sign Out & Navigate to Login</option>
-                                    <option value="Refresh">Refresh Current Page</option>
-                                    <option value="Sign Out & Close">Sign Out & Restart Browser</option>
-                                    <option value="Close">Restart Browser (No Sign Out)</option>
+                                <select value={editForm.attemptSeparator || 'Refresh Current Page'} onChange={e => setEditForm({...editForm, attemptSeparator: e.target.value})}>
+                                    <option value="Refresh Current Page">Refresh Current Page</option>
+                                    <option value="Restart window">Restart window</option>
+                                    <option value="Log out and restart">Log out and restart</option>
                                 </select>
                             </div>
 
