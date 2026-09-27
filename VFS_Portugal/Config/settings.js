@@ -47,7 +47,9 @@ const defaultBatchConfig = {
     switches: 1,
     switchDelay: 3000,
     autoClose: true,
-    attemptSeparator: "Sign Out"
+    attemptSeparator: "Sign Out",
+    fillMode: "typing", // typing | paste | fill | random — chosen in main window, applied to all accounts
+    typingMode: "typing"
 };
 
 const terminationCmds = ["exit", "\\q", "q"];

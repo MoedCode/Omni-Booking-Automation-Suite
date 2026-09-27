@@ -128,7 +128,8 @@ ipcMain.on('launch-bots', async (event, instances) => {
             headless: isHeadless,
             email: instance.data.account,
             password: instance.data.password,
-            instanceData: instance.data 
+            instanceData: instance.data,
+            inputMethod: instance.data.inputMethod || instance.data.fillMode || instance.data.typingMode || 'fill'
         });
         
         worker.logStatus = (msg) => event.reply('bot-status', { id: instance.id, status: msg });

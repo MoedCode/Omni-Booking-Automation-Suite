@@ -4,6 +4,7 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { EgPtrLoginURL, BROWSER_ARGS, CHANNEL, terminationCmds, debug, actionsConfig, cookiesAcceptant, defaultBatchConfig } from '../Config/settings.js';
 import Selectors from '../Config/Selectors.js';
+import { injectionSignIn, signInSelectors } from '../Config/injection.js';
 import { BaseBrowser } from './BaseBrowser.js';
 import { CaptchaHandler } from './captchaHandler.js';
 import readline from 'node:readline/promises';
@@ -18,7 +19,7 @@ const rl = readline.createInterface({ input, output });
 puppeteer.use(StealthPlugin());
 
 export class ChromeWorker extends BaseBrowser {
-    constructor({ headless = false, targetUrl = EgPtrLoginURL, email, password, instanceData } = {}) {
+    constructor({ headless = false, targetUrl = EgPtrLoginURL, email, password, instanceData, inputMethod } = {}) {
         super();
         this.targetUrl = targetUrl;
         this.headless = headless;
@@ -33,6 +34,7 @@ export class ChromeWorker extends BaseBrowser {
             appointmentCategory: instanceData?.appointmentCategory || defaultBatchConfig.appointmentCategory,
             subCategory: instanceData?.subCategory || defaultBatchConfig.subCategory
         };
+        this.inputMethod = inputMethod || instanceData?.inputMethod || instanceData?.fillMode || instanceData?.typingMode || defaultBatchConfig.fillMode || 'fill';
 
         this.isOrchestratorRunning = false;
         this.captchaHandler = new CaptchaHandler(this);
@@ -64,7 +66,7 @@ export class ChromeWorker extends BaseBrowser {
                 endDelay: actionsConfig.signIn.endDelay,
                 dependencies: [],
                 method: async () => {
-                    await this.signIn();
+                    await this.signIn(this.email, this.password, this.inputMethod);
                     this.completedActivities.add('signIn');
                 }
             },
@@ -259,10 +261,10 @@ export class ChromeWorker extends BaseBrowser {
         }
     }
 
-    async signIn(email = this.email, password = this.password) {
+    async signIn(account = this.email, password = this.password, inputMethod = this.inputMethod) {
         if (!this.page) return;
 
-        !email && (this.errors.credential = "Email not provided");
+        !account && (this.errors.credential = "Email not provided");
         !password && (this.errors.credential = "Password not provided");
 
         if (this.errors.credential) {
@@ -270,11 +272,34 @@ export class ChromeWorker extends BaseBrowser {
             this.isOrchestratorRunning = false;
             return;
         }
+        this.inputMethod = inputMethod || this.inputMethod || 'fill';
 
-        this.logStatus(`[Worker] Entering credentials for: ${email}`);
+        this.logStatus(`[Worker] Entering credentials for: ${account} (mode: ${this.inputMethod})`);
 
         try {
-            await this.typeByDescriptor(Selectors.signIn.email, email);
+            const result = await this.page.evaluate(injectionSignIn, {
+                account,
+                password,
+                selectors: signInSelectors,
+                inputMethod: this.inputMethod,
+            }).catch((e) => ({ ok: false, reason: `injection-error: ${e.message}` }));
+
+            if (result && result.captcha === 'pending') {
+                this.logStatus("[Worker] Turnstile captcha pending — deferring submit until solved...");
+                if (await this.captchaHandler.isPresent()) {
+                    const tokenReady = await this.captchaHandler.isResolved();
+                    if (!tokenReady) return;
+                }
+            }
+
+            if (result && result.ok) {
+                this.logStatus(`[Worker] ✅ Sign-in submitted via injection (method: ${result.method}).`);
+                await this.page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+                return;
+            }
+            this.logWarning("signin", `Injection path: ${result?.reason || 'unknown'} — using fallback.`);
+
+            await this.typeByDescriptor(Selectors.signIn.email, account);
             await this.typeByDescriptor(Selectors.signIn.password, password);
 
             if (await this.captchaHandler.isPresent()) {

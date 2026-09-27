@@ -909,7 +909,8 @@ export class ChromeWorker extends BaseBrowser {
         this.instanceData = {
             city: instanceData?.city || defaultBatchConfig.city,
             appointmentCategory: instanceData?.appointmentCategory || defaultBatchConfig.appointmentCategory,
-            subCategory: instanceData?.subCategory || defaultBatchConfig.subCategory
+            subCategory: instanceData?.subCategory || defaultBatchConfig.subCategory,
+            typingMode: instanceData?.typingMode || defaultBatchConfig.typingMode // 👈 Pass typing mode
         };
         
         // Loop State & Constraints

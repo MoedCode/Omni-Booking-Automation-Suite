@@ -52,7 +52,8 @@ export default function App() {
         switches: 1,
         switchDelay: 3000,
         autoClose: true,
-        attemptSeparator: 'Refresh Current Page'
+        attemptSeparator: 'Refresh Current Page',
+        inputMethod: 'fill'
     });
     
     const [showDefaultsModal, setShowDefaultsModal] = useState(false);
@@ -165,7 +166,8 @@ export default function App() {
             switches: inst.data.switches,
             switchDelay: inst.data.switchDelay,
             autoClose: inst.data.autoClose,
-            attemptSeparator: inst.data.attemptSeparator
+            attemptSeparator: inst.data.attemptSeparator,
+            inputMethod: inst.data.inputMethod || globalDefaults.inputMethod || 'fill'
         }));
 
         const result = await window.electronAPI.exportData(dataToExport);
@@ -333,6 +335,19 @@ export default function App() {
                     
                     <div className="toolbar-right">
                         <button className="btn-add" onClick={handleManualAdd}>+ Add Account</button>
+                        <div className="toggle-wrapper" title="How credentials are typed into the login form">
+                            <span className="toggle-title">Login Typing</span>
+                            <select
+                                value={globalDefaults.inputMethod || 'fill'}
+                                onChange={e => setGlobalDefaults({...globalDefaults, inputMethod: e.target.value})}
+                                title="Login typing mode: fill (instant), typing (human), paste (clipboard), random"
+                            >
+                                <option value="fill">Fill (instant)</option>
+                                <option value="typing">Typing (human)</option>
+                                <option value="paste">Paste (clipboard)</option>
+                                <option value="random">Random</option>
+                            </select>
+                        </div>
                         <button className="btn-outline" onClick={() => setShowDefaultsModal(true)}>⚙️ Defaults</button>
                         <div className="toggle-wrapper" title="Default headless setting for new instances">
                             <span className="toggle-title">Default Headless</span>
