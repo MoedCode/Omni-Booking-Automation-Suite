@@ -1,5 +1,248 @@
 
 # VFS_Portugal/Config
+## *injection.js*
+```javascript
+/* Omni-Booking-Automation-Suite/VFS_Portugal/Config/injection.js */
+
+/**
+ * Selectors used by the injected sign-in routine.
+ * Kept here (per spec: selectors provided in config/injection.js) and
+ * mirrored from Config/staticSelectors.js + Config/selectors.js.
+ */
+export const signInSelectors = {
+  cookieAccept: [
+    '#onetrust-accept-btn-handler',
+    'button#onetrust-accept-btn-handler',
+    '#onetrust-banner-sdk button',
+  ],
+  cookieBanner: ['#onetrust-banner-sdk', 'div[id="onetrust-consent-sdk"]'],
+  email: [
+    'input#email',
+    'input[formcontrolname="username"]',
+    'input[placeholder="jane.doe@email.com"]',
+    'input[type="email"]',
+    'input[name="email"]',
+  ],
+  password: [
+    'input#password',
+    'input[formcontrolname="password"]',
+    'input[placeholder="**********"]',
+    'input[type="password"]',
+    'input[name="password"]',
+  ],
+  submit: [
+    'button[mat-stroked-button]',
+    'button.mat-mdc-outlined-button.btn-brand-orange',
+    'button[type="submit"]',
+  ],
+  submitText: ['Sign In', 'Sign in', 'Log In'],
+  captchaContainer: [
+    'app-cloudflare-captcha-container',
+    'div[appcloudflarerecaptcha]',
+    'iframe[src*="challenges.cloudflare.com"]',
+  ],
+  captchaResponseInput: [
+    'input[name="cf-turnstile-response"]',
+    'input#cf-chl-widget-zbnd6_response',
+  ],
+};
+
+/**
+ * Runs INSIDE the browser context via page.evaluate(injectionSignIn, {...}).
+ * Must stay fully self-contained (no outer-scope references).
+ *
+ * @param {{ account: string, password: string, selectors?: object, inputMethod?: string }} config
+ * @returns {Promise<{ ok: boolean, reason?: string, captcha?: string, method?: string }>}
+ */
+export async function injectionSignIn(config) {
+  const cfg = config || {};
+  const account = cfg.account || '';
+  const password = cfg.password || '';
+  const S = cfg.selectors || {};
+  let inputMethod = (cfg.inputMethod || 'fill').toLowerCase();
+  const VALID = ['typing', 'paste', 'fill', 'random'];
+  if (!VALID.includes(inputMethod)) inputMethod = 'fill';
+  // 'random': pick per execution
+  let method = inputMethod;
+  if (method === 'random') {
+    const pool = ['typing', 'paste', 'fill'];
+    method = pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const rnd = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+  const firstVisible = (selectors) => {
+    const list = Array.isArray(selectors) ? selectors : [selectors];
+    for (const sel of list) {
+      if (!sel) continue;
+      let el = null;
+      try {
+        el = document.querySelector(sel);
+      } catch { continue; }
+      if (!el) continue;
+      const style = window.getComputedStyle(el);
+      if (style.display === 'none' || style.visibility === 'hidden' || el.offsetHeight === 0) continue;
+      return el;
+    }
+    return null;
+  };
+
+  // a) Accept cookies using available selectors
+  try {
+    const acceptBtn = firstVisible(S.cookieAccept || []);
+    if (acceptBtn) {
+      acceptBtn.scrollIntoView({ block: 'center' });
+      acceptBtn.click();
+      await sleep(800);
+    } else {
+      // fallback: click any visible button whose text matches accept labels
+      const labels = ['accept all cookies', 'accept all', 'accept'];
+      const btns = Array.from(document.querySelectorAll('button'));
+      const match = btns.find((b) => {
+        const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+        return labels.includes(t) && b.offsetHeight > 0;
+      });
+      if (match) { match.click(); await sleep(800); }
+    }
+  } catch { /* non-fatal */ }
+
+  // b) Handle Cloudflare Turnstile/captcha if present
+  let captchaState = 'absent';
+  try {
+    const containers = S.captchaContainer || [];
+    const hasContainer = containers.some((sel) => { try { return !!document.querySelector(sel); } catch { return false; } });
+    const tokenSelectors = S.captchaResponseInput || [];
+    let token = '';
+    for (const sel of tokenSelectors) {
+      try {
+        const inp = document.querySelector(sel);
+        if (inp && inp.value && inp.value.trim().length > 20) { token = inp.value; break; }
+      } catch { /* ignore */ }
+    }
+    if (hasContainer) {
+      captchaState = token ? 'solved' : 'pending';
+      if (!token) {
+        // Attempt a best-effort click on the widget checkbox area so a visible
+        // run can be solved manually; never throws.
+        try {
+          const frame = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
+          const holder = frame ? (frame.closest('div') || frame) : firstVisible(containers);
+          if (holder && holder.scrollIntoView) holder.scrollIntoView({ block: 'center' });
+        } catch { /* ignore */ }
+      }
+    }
+  } catch { /* non-fatal */ }
+
+  // c) Fill the login form based on selectors
+  const fireAngularEvents = (el) => {
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+    el.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+  };
+
+  const nativeSetValue = (el, value) => {
+    const proto = el.tagName === 'TEXTAREA'
+      ? window.HTMLTextAreaElement.prototype
+      : window.HTMLInputElement.prototype;
+    const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+    if (desc && desc.set) desc.set.call(el, value);
+    else el.value = value;
+    fireAngularEvents(el);
+  };
+
+  const typeLetterByLetter = async (el, value) => {
+    el.focus();
+    el.click();
+    // triple-click select + backspace to clear (physical, Angular-safe)
+    document.execCommand && document.execCommand('selectAll', false, null);
+    for (const ch of value) {
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent('keypress', { key: ch, bubbles: true }));
+      nativeSetValue(el, (el.value || '') + ch);
+      el.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true }));
+      await sleep(rnd(35, 130));
+    }
+  };
+
+  const pasteValue = async (el, value) => {
+    el.focus();
+    el.click();
+    document.execCommand && document.execCommand('selectAll', false, null);
+    let pasted = false;
+    try {
+      const dt = new DataTransfer();
+      dt.setData('text/plain', value);
+      const evt = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt });
+      pasted = el.dispatchEvent(evt);
+      // If the page has no paste handler, apply value via native setter.
+      if (pasted) {
+        const before = el.value;
+        await sleep(60);
+        if (el.value === before) nativeSetValue(el, value);
+        else fireAngularEvents(el);
+      } else {
+        nativeSetValue(el, value);
+      }
+    } catch {
+      nativeSetValue(el, value);
+    }
+  };
+
+  const fillInstant = async (el, value) => {
+    el.focus();
+    nativeSetValue(el, '');
+    nativeSetValue(el, value);
+    await sleep(50);
+  };
+
+  const applyMethod = async (el, value) => {
+    if (method === 'typing') return typeLetterByLetter(el, value);
+    if (method === 'paste') return pasteValue(el, value);
+    return fillInstant(el, value);
+  };
+
+  const emailEl = firstVisible(S.email || []);
+  const passEl = firstVisible(S.password || []);
+  if (!emailEl) return { ok: false, reason: 'email-not-found', captcha: captchaState, method };
+  if (!passEl) return { ok: false, reason: 'password-not-found', captcha: captchaState, method };
+
+  emailEl.scrollIntoView({ block: 'center' });
+  await applyMethod(emailEl, account);
+  await sleep(rnd(150, 450));
+  passEl.scrollIntoView({ block: 'center' });
+  await applyMethod(passEl, password);
+  await sleep(300);
+
+  const verify = (el, expected) => (el.value || '') === expected;
+  if (!verify(emailEl, account) || !verify(passEl, password)) {
+    // One repair pass with instant fill before reporting failure.
+    nativeSetValue(emailEl, account);
+    nativeSetValue(passEl, password);
+    if (!verify(emailEl, account) || !verify(passEl, password)) {
+      return { ok: false, reason: 'fill-verify-failed', captcha: captchaState, method };
+    }
+  }
+
+  // d) Click submit (sign-in submission handled here so typing mode is atomic)
+  let btn = firstVisible(S.submit || []);
+  if (!btn) {
+    const wants = (S.submitText || []).map((t) => t.toLowerCase());
+    btn = Array.from(document.querySelectorAll('button, input[type="submit"]')).find((b) => {
+      const t = ((b.innerText || b.textContent || b.value) || '').trim().toLowerCase();
+      return wants.some((w) => t.includes(w.toLowerCase())) && b.offsetHeight > 0;
+    }) || null;
+  }
+  if (!btn) return { ok: false, reason: 'submit-not-found', captcha: captchaState, method };
+  btn.scrollIntoView({ block: 'center' });
+  await sleep(300);
+  btn.click();
+  return { ok: true, captcha: captchaState, method };
+}
+
+export default { signInSelectors, injectionSignIn };
+```
 ## *selectors.js*
 ```javascript
 /* Omni-Booking-Automation-Suite/VFS_Portugal/Config/Selectors.js */
@@ -131,7 +374,9 @@ const defaultBatchConfig = {
     switches: 1,
     switchDelay: 3000,
     autoClose: true,
-    attemptSeparator: "Sign Out"
+    attemptSeparator: "Sign Out",
+    fillMode: "typing", // typing | paste | fill | random — chosen in main window, applied to all accounts
+    typingMode: "typing"
 };
 
 const terminationCmds = ["exit", "\\q", "q"];
@@ -882,6 +1127,7 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { EgPtrLoginURL, BROWSER_ARGS, CHANNEL, terminationCmds, debug, actionsConfig, cookiesAcceptant, defaultBatchConfig } from '../Config/settings.js';
 import Selectors from '../Config/Selectors.js';
+import { injectionSignIn, signInSelectors } from '../Config/injection.js';
 import { BaseBrowser } from './BaseBrowser.js';
 import { CaptchaHandler } from './captchaHandler.js';
 import readline from 'node:readline/promises';
@@ -896,7 +1142,7 @@ const rl = readline.createInterface({ input, output });
 puppeteer.use(StealthPlugin());
 
 export class ChromeWorker extends BaseBrowser {
-    constructor({ headless = false, targetUrl = EgPtrLoginURL, email, password, instanceData } = {}) {
+    constructor({ headless = false, targetUrl = EgPtrLoginURL, email, password, instanceData, inputMethod } = {}) {
         super();
         this.targetUrl = targetUrl;
         this.headless = headless;
@@ -909,8 +1155,7 @@ export class ChromeWorker extends BaseBrowser {
         this.instanceData = {
             city: instanceData?.city || defaultBatchConfig.city,
             appointmentCategory: instanceData?.appointmentCategory || defaultBatchConfig.appointmentCategory,
-            subCategory: instanceData?.subCategory || defaultBatchConfig.subCategory,
-            typingMode: instanceData?.typingMode || defaultBatchConfig.typingMode // 👈 Pass typing mode
+            subCategory: instanceData?.subCategory || defaultBatchConfig.subCategory
         };
         
         // Loop State & Constraints
@@ -924,6 +1169,7 @@ export class ChromeWorker extends BaseBrowser {
         // New End/Separator settings
         this.autoClose = instanceData?.autoClose ?? defaultBatchConfig.autoClose;
         this.attemptSeparator = instanceData?.attemptSeparator || defaultBatchConfig.attemptSeparator;
+        this.inputMethod = inputMethod || instanceData?.inputMethod || instanceData?.fillMode || instanceData?.typingMode || defaultBatchConfig.fillMode || 'fill';
 
         this.isOrchestratorRunning = false;
         this.captchaHandler = new CaptchaHandler(this);
@@ -955,7 +1201,7 @@ export class ChromeWorker extends BaseBrowser {
                 endDelay: actionsConfig.signIn.endDelay,
                 dependencies: [],
                 method: async () => {
-                    await this.signIn();
+                    await this.signIn(this.email, this.password, this.inputMethod);
                     this.completedActivities.add('signIn');
                 }
             },
@@ -1297,17 +1543,40 @@ export class ChromeWorker extends BaseBrowser {
         }
     }
 
-    async signIn(email = this.email, password = this.password) {
+    async signIn(account = this.email, password = this.password, inputMethod = this.inputMethod) {
         if (!this.page) return;
-        if (!email || !password) {
+        if (!account || !password) {
+            this.logError("credential", "Email/password not provided");
             this.isOrchestratorRunning = false;
             return;
         }
+        this.inputMethod = inputMethod || this.inputMethod || 'fill';
 
-        this.logStatus(`[Worker] Entering credentials for: ${email}`);
+        this.logStatus(`[Worker] Entering credentials for: ${account} (mode: ${this.inputMethod})`);
 
         try {
-            await this.typeByDescriptor(Selectors.signIn.email, email);
+            // Primary path: inject and invoke injectionSignIn in browser context.
+            const result = await this.page.evaluate(injectionSignIn, {
+                account,
+                password,
+                selectors: signInSelectors,
+                inputMethod: this.inputMethod,
+            }).catch((e) => ({ ok: false, reason: `injection-error: ${e.message}` }));
+
+            if (result && result.captcha === 'pending') {
+                this.logStatus("[Worker] Turnstile captcha pending — deferring submit until solved...");
+                if (!(await this.captchaHandler.isResolved())) return;
+            }
+
+            if (result && result.ok) {
+                this.logStatus(`[Worker] ✅ Sign-in submitted via injection (method: ${result.method}).`);
+                await this.page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+                return;
+            }
+
+            // Fallback: legacy Node-side fill + submit.
+            this.logWarning("signin", `Injection path: ${result?.reason || 'unknown'} — using fallback.`);
+            await this.typeByDescriptor(Selectors.signIn.email, account);
             await this.typeByDescriptor(Selectors.signIn.password, password);
 
             if (await this.captchaHandler.isPresent()) {
@@ -1504,106 +1773,6 @@ export class ChromeWorker extends BaseBrowser {
         rl.close();
     }
 }
-```
-## *chrome.py*
-```py
-import time
-from seleniumbase import SB
-from selenium.common.exceptions import WebDriverException, NoSuchWindowException
-
-def open_vfs_website(url, headless=False):
-    with SB(uc=True, headless=headless) as sb:
-        print(f"Opening VFS (Headless: {headless})...")
-        sb.open(url)
-        print("Page loaded successfully.")
-        print("[Status] Running... Close the Chrome window or press Ctrl+C to stop.")
-
-        consecutive_errors = 0
-        max_errors = 3  # Only exit if the window fails to respond 3 times in a row
-
-        while True:
-            try:
-                # 1. Check if user pressed Ctrl+C or windows are gone
-                handles = sb.driver.window_handles
-                if not handles or len(handles) == 0:
-                    print("\n[Event] Browser window closed by user.")
-                    break
-
-                # 2. Ping active window state
-                _ = sb.driver.title
-                
-                # Reset error counter on successful ping
-                consecutive_errors = 0
-                time.sleep(1)
-
-            except KeyboardInterrupt:
-                print("\n[Event] Manual interruption (Ctrl+C).")
-                break
-
-            except (NoSuchWindowException, WebDriverException) as e:
-                consecutive_errors += 1
-                if consecutive_errors >= max_errors:
-                    print(f"\n[Event] Browser disconnected permanently: {e}")
-                    break
-                time.sleep(1)
-
-            except Exception as e:
-                print(f"\n[Warning] Transient error ignored: {e}")
-                time.sleep(1)
-
-        print("Exiting context manager...")
-
-    print("Cleanup complete. Browser terminated.")
-
-
-if __name__ == "__main__":
-    target_url = "https://visa.vfsglobal.com/egy/en/prt/login"
-    open_vfs_website(target_url, headless=False)
-    
-    
-''' previous implementation
-import time
-from seleniumbase import SB
-
-def open_vfs_website(url, headless=False):
-    """
-    Opens the VFS login page and keeps the browser running 
-    directly in the main thread until manual user action.
-    """
-    # What: Initialize SeleniumBase with Undetected ChromeDriver (uc=True)
-    # Why: Bypasses Cloudflare bot detection on VFS Global without extra thread overhead.
-    with SB(uc=True, headless=headless) as sb:
-        print(f"Opening VFS (Headless: {headless})...")
-        
-        # What: Navigate directly to the URL
-        # Why: Loads the target page into the active session.
-        sb.open(url)
-        print("Page loaded successfully.")
-
-        try:
-            # What: Halt execution right here inside the 'with' block
-            # Why: As long as the script waits at input(), the 'with' block 
-            # remains active and the browser stays open.
-            input("\n[Browser Active] Press ENTER or Ctrl+C in this terminal to close the browser...\n")
-            
-        except KeyboardInterrupt:
-            # What: Catch manual termination via terminal (Ctrl+C)
-            # Why: Prevents ugly stack traces when you stop the script manually.
-            print("\nTermination signal received.")
-
-        print("Exiting context... closing browser.")
-        
-    # What: Exiting the 'with' scope triggers driver cleanup
-    # Why: Gracefully shuts down Chrome and terminates all driver processes.
-    print("Browser closed successfully.")
-
-
-if __name__ == "__main__":
-    target_url = "https://visa.vfsglobal.com/egy/en/prt/login"
-    
-    # Run synchronously in the foreground
-    open_vfs_website(target_url, headless=True)
-'''
 ```
 ## *injection.js*
 ```javascript
@@ -2703,7 +2872,8 @@ ipcMain.on('launch-bots', async (event, instances) => {
             headless: isHeadless,
             email: instance.data.account,
             password: instance.data.password,
-            instanceData: instance.data 
+            instanceData: instance.data,
+            inputMethod: instance.data.inputMethod || instance.data.fillMode || instance.data.typingMode || 'fill'
         });
         
         worker.logStatus = (msg) => event.reply('bot-status', { id: instance.id, status: msg });
@@ -3079,7 +3249,8 @@ export default function App() {
         switches: 1,
         switchDelay: 3000,
         autoClose: true,
-        attemptSeparator: 'Refresh Current Page'
+        attemptSeparator: 'Refresh Current Page',
+        inputMethod: 'fill'
     });
     
     const [showDefaultsModal, setShowDefaultsModal] = useState(false);
@@ -3192,7 +3363,8 @@ export default function App() {
             switches: inst.data.switches,
             switchDelay: inst.data.switchDelay,
             autoClose: inst.data.autoClose,
-            attemptSeparator: inst.data.attemptSeparator
+            attemptSeparator: inst.data.attemptSeparator,
+            inputMethod: inst.data.inputMethod || globalDefaults.inputMethod || 'fill'
         }));
 
         const result = await window.electronAPI.exportData(dataToExport);
@@ -3360,6 +3532,19 @@ export default function App() {
                     
                     <div className="toolbar-right">
                         <button className="btn-add" onClick={handleManualAdd}>+ Add Account</button>
+                        <div className="toggle-wrapper" title="How credentials are typed into the login form">
+                            <span className="toggle-title">Login Typing</span>
+                            <select
+                                value={globalDefaults.inputMethod || 'fill'}
+                                onChange={e => setGlobalDefaults({...globalDefaults, inputMethod: e.target.value})}
+                                title="Login typing mode: fill (instant), typing (human), paste (clipboard), random"
+                            >
+                                <option value="fill">Fill (instant)</option>
+                                <option value="typing">Typing (human)</option>
+                                <option value="paste">Paste (clipboard)</option>
+                                <option value="random">Random</option>
+                            </select>
+                        </div>
                         <button className="btn-outline" onClick={() => setShowDefaultsModal(true)}>⚙️ Defaults</button>
                         <div className="toggle-wrapper" title="Default headless setting for new instances">
                             <span className="toggle-title">Default Headless</span>
