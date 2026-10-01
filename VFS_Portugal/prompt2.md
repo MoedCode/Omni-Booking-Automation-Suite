@@ -1,34 +1,6 @@
-Please restrict your workspace scope and operations exclusively to the "VFS_Portugal" folder. Do not read, scan, modify, or interact with any files, subdirectories, or components outside of "VFS_Portugal" (such as "TLS_Germany", "vfs_Holland", or the parent repository root). Treat "VFS_Portugal" as your sole working directory for all subsequent tasks.
-
-لا يمكنه التعامل مع الكاباتشا و لا يضغط start new bokcing , ولا يملاء 
-
-Application Detail from 
-*in all pages in all step bot must inject account name in  page title   so domScanner keep r watch title and in each change inject jut account name  "the part before `@`" in page title*
-*bot must be boused and resumed so bot must a ware in which area its exist ..s o add one button  pause and resume  with same youtube icons like pause and resume youtube video button*
-again it must 
-A - signIn stage must done in ordered manner (done with injection)
-    1- accept cookiles according to  waht user select from main windo  wither all or onky necessary
-    2- path captcha 
-    2- fill sgin in from
-B - dashboard statge  (Done Directly by bot)
-    1- clock start new Backing  
-C- Application from stage (hybrid) 
-    1- fill `Application Detila from` press continue must be done super sonic speed (injected script)
-
-    2- bot will look if there appointment to allert user 
- D- user detail stage   (hybrid) 
- 1-   filling  `your detail` form  pressing save (injection) if injected icnounter input  that is not empty it must check the value in
- 2- bot will keep watch every thing ..uf error hapeb wheb  injected script pressing save button.
-   so bot must paused .  should do pop up to user  with  
-    1:that error..  
-    2: `view` button to view window  if   it Headless make visible user solve issue fill `Your Detail`  manually 
-        then press continue  in this if `continue` pressed while bot in same `Your Detail Page` in this case bot will refresh `Your Detail` from page and re inject script that fill again ..    
-    3:`Terminate`  logout  close instant      
-3- in `Your Detail` from inputs that VFS allow typing text in it onjected script will fill it directly like copy paste clipboard ..like all date inputs and other text inputs firest name , sceond name , email ...atc
-  all waht we can type in it is drop  down menu  inputs .. like `gender`
-  we want do it fast as possible
-4-note that in `Your Detial` form  you have t o wait 30 second before saving data  but you can fill from thorw this 3 second 
-more data how to you might need
+   
+ i need my bot to handle `Your Detail` from thorw injecting script that fill form 
+ here is htmal element for `Your Detail` from ..
 ```md
 A- `Gender, Date Of Birth, Current Nationality, Passport Expiry Date, Contact number`  there are will be farther ulostration 
 1-Gender frop dwon menue
@@ -59,12 +31,21 @@ but in `hot-batch` enable user wither to type manulally or use `hot-batch ngb-da
 ```
 
  D- never use `id` or `class name as selector` ...in all 
-```
+
 **NOTES**
-1- chrimeWorker.domScanner must owrk so bot know where is it exactly 
 
-2-in `Application detail` if bot paused it should'nt refresh at all,  cause refresh here mean logout 
-3- gerally bot allways where it exist  .. know  when pause and resume  if pause accurs while script  injected still running or didtn finshed is task that script will be  re injected again ..
-    "refrsh just in stages that it old you make bot refresh in it"
 
-i
+4- in `Your Detail` any input that can fill directly as text fill it like date time inputs 
+ -Date Of Birth , 
+Passport Expiry Date dont bother injected acript  opening liek ngb-`datepicker`
+# -in hot-patch  will be organized ass follow splited to to pages friest one
+A- section 1 titled as `Ceadntial` account passwvv ord 
+B- section 2 titled as `Application dDetailed` but user will type visa manually .. i suer bot didnt find waht user typed prompt error must be appers  telling suer the error
+C-section 3 titled as `Your Detail From`  
+    1- any date time in hot-batch will be `ngb-datepicker`  and manualy but we ahve to make input  with red border until user type correct formate fot `vsf`
+        dcorrect formate apperas with grean hugh contrust aboive inout 
+    2- any drop dwon menu in VVFS wiill be same in the same in hot-batch ..
+    3- any text input in VFS will be the same  in hot batch juat text input 
+D- section 4 titled as `Configuration`  
+
+you are n

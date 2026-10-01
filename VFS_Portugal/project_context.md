@@ -1,248 +1,5 @@
 
 # VFS_Portugal/Config
-## *injection.js*
-```javascript
-/* Omni-Booking-Automation-Suite/VFS_Portugal/Config/injection.js */
-
-/**
- * Selectors used by the injected sign-in routine.
- * Kept here (per spec: selectors provided in config/injection.js) and
- * mirrored from Config/staticSelectors.js + Config/selectors.js.
- */
-export const signInSelectors = {
-  cookieAccept: [
-    '#onetrust-accept-btn-handler',
-    'button#onetrust-accept-btn-handler',
-    '#onetrust-banner-sdk button',
-  ],
-  cookieBanner: ['#onetrust-banner-sdk', 'div[id="onetrust-consent-sdk"]'],
-  email: [
-    'input#email',
-    'input[formcontrolname="username"]',
-    'input[placeholder="jane.doe@email.com"]',
-    'input[type="email"]',
-    'input[name="email"]',
-  ],
-  password: [
-    'input#password',
-    'input[formcontrolname="password"]',
-    'input[placeholder="**********"]',
-    'input[type="password"]',
-    'input[name="password"]',
-  ],
-  submit: [
-    'button[mat-stroked-button]',
-    'button.mat-mdc-outlined-button.btn-brand-orange',
-    'button[type="submit"]',
-  ],
-  submitText: ['Sign In', 'Sign in', 'Log In'],
-  captchaContainer: [
-    'app-cloudflare-captcha-container',
-    'div[appcloudflarerecaptcha]',
-    'iframe[src*="challenges.cloudflare.com"]',
-  ],
-  captchaResponseInput: [
-    'input[name="cf-turnstile-response"]',
-    'input#cf-chl-widget-zbnd6_response',
-  ],
-};
-
-/**
- * Runs INSIDE the browser context via page.evaluate(injectionSignIn, {...}).
- * Must stay fully self-contained (no outer-scope references).
- *
- * @param {{ account: string, password: string, selectors?: object, inputMethod?: string }} config
- * @returns {Promise<{ ok: boolean, reason?: string, captcha?: string, method?: string }>}
- */
-export async function injectionSignIn(config) {
-  const cfg = config || {};
-  const account = cfg.account || '';
-  const password = cfg.password || '';
-  const S = cfg.selectors || {};
-  let inputMethod = (cfg.inputMethod || 'fill').toLowerCase();
-  const VALID = ['typing', 'paste', 'fill', 'random'];
-  if (!VALID.includes(inputMethod)) inputMethod = 'fill';
-  // 'random': pick per execution
-  let method = inputMethod;
-  if (method === 'random') {
-    const pool = ['typing', 'paste', 'fill'];
-    method = pool[Math.floor(Math.random() * pool.length)];
-  }
-
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const rnd = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-
-  const firstVisible = (selectors) => {
-    const list = Array.isArray(selectors) ? selectors : [selectors];
-    for (const sel of list) {
-      if (!sel) continue;
-      let el = null;
-      try {
-        el = document.querySelector(sel);
-      } catch { continue; }
-      if (!el) continue;
-      const style = window.getComputedStyle(el);
-      if (style.display === 'none' || style.visibility === 'hidden' || el.offsetHeight === 0) continue;
-      return el;
-    }
-    return null;
-  };
-
-  // a) Accept cookies using available selectors
-  try {
-    const acceptBtn = firstVisible(S.cookieAccept || []);
-    if (acceptBtn) {
-      acceptBtn.scrollIntoView({ block: 'center' });
-      acceptBtn.click();
-      await sleep(800);
-    } else {
-      // fallback: click any visible button whose text matches accept labels
-      const labels = ['accept all cookies', 'accept all', 'accept'];
-      const btns = Array.from(document.querySelectorAll('button'));
-      const match = btns.find((b) => {
-        const t = (b.innerText || b.textContent || '').trim().toLowerCase();
-        return labels.includes(t) && b.offsetHeight > 0;
-      });
-      if (match) { match.click(); await sleep(800); }
-    }
-  } catch { /* non-fatal */ }
-
-  // b) Handle Cloudflare Turnstile/captcha if present
-  let captchaState = 'absent';
-  try {
-    const containers = S.captchaContainer || [];
-    const hasContainer = containers.some((sel) => { try { return !!document.querySelector(sel); } catch { return false; } });
-    const tokenSelectors = S.captchaResponseInput || [];
-    let token = '';
-    for (const sel of tokenSelectors) {
-      try {
-        const inp = document.querySelector(sel);
-        if (inp && inp.value && inp.value.trim().length > 20) { token = inp.value; break; }
-      } catch { /* ignore */ }
-    }
-    if (hasContainer) {
-      captchaState = token ? 'solved' : 'pending';
-      if (!token) {
-        // Attempt a best-effort click on the widget checkbox area so a visible
-        // run can be solved manually; never throws.
-        try {
-          const frame = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
-          const holder = frame ? (frame.closest('div') || frame) : firstVisible(containers);
-          if (holder && holder.scrollIntoView) holder.scrollIntoView({ block: 'center' });
-        } catch { /* ignore */ }
-      }
-    }
-  } catch { /* non-fatal */ }
-
-  // c) Fill the login form based on selectors
-  const fireAngularEvents = (el) => {
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-    el.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
-  };
-
-  const nativeSetValue = (el, value) => {
-    const proto = el.tagName === 'TEXTAREA'
-      ? window.HTMLTextAreaElement.prototype
-      : window.HTMLInputElement.prototype;
-    const desc = Object.getOwnPropertyDescriptor(proto, 'value');
-    if (desc && desc.set) desc.set.call(el, value);
-    else el.value = value;
-    fireAngularEvents(el);
-  };
-
-  const typeLetterByLetter = async (el, value) => {
-    el.focus();
-    el.click();
-    // triple-click select + backspace to clear (physical, Angular-safe)
-    document.execCommand && document.execCommand('selectAll', false, null);
-    for (const ch of value) {
-      el.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true }));
-      el.dispatchEvent(new KeyboardEvent('keypress', { key: ch, bubbles: true }));
-      nativeSetValue(el, (el.value || '') + ch);
-      el.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true }));
-      await sleep(rnd(35, 130));
-    }
-  };
-
-  const pasteValue = async (el, value) => {
-    el.focus();
-    el.click();
-    document.execCommand && document.execCommand('selectAll', false, null);
-    let pasted = false;
-    try {
-      const dt = new DataTransfer();
-      dt.setData('text/plain', value);
-      const evt = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt });
-      pasted = el.dispatchEvent(evt);
-      // If the page has no paste handler, apply value via native setter.
-      if (pasted) {
-        const before = el.value;
-        await sleep(60);
-        if (el.value === before) nativeSetValue(el, value);
-        else fireAngularEvents(el);
-      } else {
-        nativeSetValue(el, value);
-      }
-    } catch {
-      nativeSetValue(el, value);
-    }
-  };
-
-  const fillInstant = async (el, value) => {
-    el.focus();
-    nativeSetValue(el, '');
-    nativeSetValue(el, value);
-    await sleep(50);
-  };
-
-  const applyMethod = async (el, value) => {
-    if (method === 'typing') return typeLetterByLetter(el, value);
-    if (method === 'paste') return pasteValue(el, value);
-    return fillInstant(el, value);
-  };
-
-  const emailEl = firstVisible(S.email || []);
-  const passEl = firstVisible(S.password || []);
-  if (!emailEl) return { ok: false, reason: 'email-not-found', captcha: captchaState, method };
-  if (!passEl) return { ok: false, reason: 'password-not-found', captcha: captchaState, method };
-
-  emailEl.scrollIntoView({ block: 'center' });
-  await applyMethod(emailEl, account);
-  await sleep(rnd(150, 450));
-  passEl.scrollIntoView({ block: 'center' });
-  await applyMethod(passEl, password);
-  await sleep(300);
-
-  const verify = (el, expected) => (el.value || '') === expected;
-  if (!verify(emailEl, account) || !verify(passEl, password)) {
-    // One repair pass with instant fill before reporting failure.
-    nativeSetValue(emailEl, account);
-    nativeSetValue(passEl, password);
-    if (!verify(emailEl, account) || !verify(passEl, password)) {
-      return { ok: false, reason: 'fill-verify-failed', captcha: captchaState, method };
-    }
-  }
-
-  // d) Click submit (sign-in submission handled here so typing mode is atomic)
-  let btn = firstVisible(S.submit || []);
-  if (!btn) {
-    const wants = (S.submitText || []).map((t) => t.toLowerCase());
-    btn = Array.from(document.querySelectorAll('button, input[type="submit"]')).find((b) => {
-      const t = ((b.innerText || b.textContent || b.value) || '').trim().toLowerCase();
-      return wants.some((w) => t.includes(w.toLowerCase())) && b.offsetHeight > 0;
-    }) || null;
-  }
-  if (!btn) return { ok: false, reason: 'submit-not-found', captcha: captchaState, method };
-  btn.scrollIntoView({ block: 'center' });
-  await sleep(300);
-  btn.click();
-  return { ok: true, captcha: captchaState, method };
-}
-
-export default { signInSelectors, injectionSignIn };
-```
 ## *selectors.js*
 ```javascript
 /* Omni-Booking-Automation-Suite/VFS_Portugal/Config/Selectors.js */
@@ -309,7 +66,7 @@ const Selectors = {
         }
     },
 
-appointmentDetails: {
+    appointmentDetails: {
         centerDropdown: {
             elementType: "Container",
             selector: "mat-select[formcontrolname='centerCode']"
@@ -317,6 +74,17 @@ appointmentDetails: {
         alertBox: {
             elementType: "Container",
             selector: "div[role='alert']"
+        }
+    },
+
+    yourDetails: {
+        pageHeader: { 
+            elementType: "Heading", 
+            text: ["Your Details"] 
+        },
+        saveButton: { 
+            elementType: "Button", 
+            text: ["Save", "Continue"] 
         }
     }
 };
@@ -345,21 +113,46 @@ const allKeys = {
         "switches",
         "switchDelay",
         "autoClose",
-        "attemptSeparator"
+        "attemptSeparator",
+        "inputMethod",
+        // Your Details Form Fields
+        "firstName",
+        "lastName",
+        "gender",
+        "dateOfBirth",
+        "nationality",
+        "passportNumber",
+        "passportExpiry",
+        "dialCode",
+        "contactNumber",
+        "email"
     ],
     keyConv: {
         password: ["passwords", "pass", "pwd"], 
-        account: ["accounts", "email", "username"],
+        account: ["accounts", "username", "login email"],
         appointmentCategory: ["appointment category", "appointment_category", "appointment-category"],
-        city: ["cites"],
-        country: ["country's"],
+        city: ["cites", "application centre", "center", "centre"],
+        country: ["country's", "countrycode", "country code"],
         mode: ["headless", "visible", "execution mode", "execution_mode"],
         attempts: ["number of attempts", "retries", "attempt"],
         attemptDelay: ["attempt delay", "delay", "time between", "time between each attempt"],
         switches: ["switch", "switches", "number of switch", "sub category switch"],
         switchDelay: ["switch delay"],
         autoClose: ["auto close", "autoclose", "close after"],
-        attemptSeparator: ["separator", "attempt separator", "between attempts"]
+        attemptSeparator: ["separator", "attempt separator", "between attempts", "action between attempts"],
+        inputMethod: ["login typing", "input method", "fill mode"],
+        
+        // Your Details Aliases
+        firstName: ["first name", "given name", "firstname"],
+        lastName: ["last name", "surname", "lastname"],
+        dateOfBirth: ["dob", "date of birth", "birth date", "birthdate"],
+        passportExpiry: ["passport expiry", "expiry date", "passport expiry date", "passportexpirydate"],
+        contactNumber: ["phone", "phone number", "contact", "mobile", "contactnumber"],
+        dialCode: ["dial code", "dialcode", "phone code"],
+        nationality: ["current nationality", "nationality"],
+        gender: ["sex"],
+        passportNumber: ["passport", "passport no", "passport no."],
+        email: ["email address", "contact email", "email id", "email"]
     }
 };
 
@@ -370,13 +163,24 @@ const defaultBatchConfig = {
     appointmentCategory: "Short Term Visa",
     subCategory: "Tourism",
     attempts: 1,
-    attemptDelay: "00/00/05/00", // Default 5 minutes (dd/hh/mm/ss)
+    attemptDelay: "00/00/05/00", 
     switches: 1,
     switchDelay: 3000,
     autoClose: true,
-    attemptSeparator: "Sign Out",
-    fillMode: "typing", // typing | paste | fill | random — chosen in main window, applied to all accounts
-    typingMode: "typing"
+    attemptSeparator: "Refresh Current Page",
+    inputMethod: "fill",
+    
+    // Default Empty Profile
+    firstName: "",
+    lastName: "",
+    gender: "Male",
+    dateOfBirth: "",
+    nationality: "EGYPT",
+    passportNumber: "",
+    passportExpiry: "",
+    dialCode: "20",
+    contactNumber: "",
+    email: ""
 };
 
 const terminationCmds = ["exit", "\\q", "q"];
@@ -391,6 +195,7 @@ const actionsConfig = {
     signIn: { priority: 3, startDelay: 300, endDelay: 0 },
     dashboard: { priority: 4, startDelay: 2000, endDelay: 2000 },
     appointmentDetails: { priority: 5, startDelay: 1500, endDelay: 2000 },
+    yourDetails: { priority: 6, startDelay: 2000, endDelay: 2000 }, // Added Your Details Action Node
     default: { priority: 99, startDelay: 100, endDelay: 100 }
 };
 
@@ -408,386 +213,6 @@ module.exports = {
     actionsConfig,
     cookiesAcceptant
 };
-```
-## *staticSelectors.js*
-```javascript
-/* Omni-Booking-Automation-Suite\VFS_Portugal/Config/Selectors.js*/
-
-/**
- * Selectors Configuration for VFS Global (Portugal - Egypt Portal)
- * 
- * Hierarchy:
- * Selectors -> [Page] -> [Section] -> [Element Name] -> [Array of Selectors]
- * 
- * Note: Field key names strictly match the keys in Config/Settings.js (allKeys).
- */
-
-const Selectors = {
-  // Global & Common Components across the portal
-  common: {
-    cookieBanner: {
-      bannerContainer: [
-        '#onetrust-banner-sdk',
-        'div[id="onetrust-consent-sdk"]',
-        '.onetrust-pc-dark-filter'
-      ],
-      acceptButton: [
-        '#onetrust-accept-btn-handler',
-        'button#onetrust-accept-btn-handler',
-        '//button[@id="onetrust-accept-btn-handler"]'
-      ],
-      rejectButton: [
-        '#onetrust-reject-all-handler',
-        'button#onetrust-reject-all-handler'
-      ],
-      preferencesButton: [
-        '#onetrust-pc-btn-handler',
-        'button.cookie-setting-link'
-      ]
-    },
-    loaders: {
-      spinnerOverlay: [
-        'ngx-ui-loader .ngx-overlay',
-        '.ngx-overlay.loading-foreground',
-        '.ngx-foreground-spinner',
-        '#loader'
-      ],
-      spinnerAnimation: [
-        '.sk-ball-spin-clockwise',
-        '.ngx-foreground-spinner div'
-      ],
-      cdkBackdrop: [
-        '.cdk-overlay-backdrop',
-        '.cdk-overlay-dark-backdrop'
-      ]
-    },
-    header: {
-      logo: [
-        'header .navbar-brand img',
-        'img[alt="VFS.Global logo"]',
-        'a.navbar-brand'
-      ],
-      languageDropdown: [
-        '#dropdownMenuButton',
-        'button#dropdownMenuButton',
-        '//button[@id="dropdownMenuButton"]'
-      ],
-      notifications: [
-        'app-notification',
-        '.notification-container'
-      ]
-    },
-    footer: {
-      contactUsLink: [
-        'a[href*="contact-us"]',
-        '//a[contains(text(), "Contact Us")]'
-      ],
-      versionInfo: [
-        'footer.footer-bottom .container',
-        'footer .c-brand-grey-para'
-      ]
-    }
-  },
-
-  // 1. Login Page (https://visa.vfsglobal.com/egy/en/prt/login)
-  login: {
-    header: {
-      title: [
-        'app-login h1',
-        'h1.fs-21',
-        '//h1[contains(text(), "Sign in")]'
-      ],
-      subtitle: [
-        'app-login p.c-brand-grey-para',
-        '//p[contains(text(), "Enter your email and password to continue")]'
-      ]
-    },
-    form: {
-      // Key matches Settings.js allKeys: "account"
-      account: [
-        'input#email',
-        'input[formcontrolname="username"]',
-        'input[placeholder="jane.doe@email.com"]',
-        '//input[@id="email"]',
-        '//input[@formcontrolname="username"]'
-      ],
-      // Key matches Settings.js allKeys: "password"
-      password: [
-        'input#password',
-        'input[formcontrolname="password"]',
-        'input[placeholder="**********"]',
-        '//input[@id="password"]',
-        '//input[@formcontrolname="password"]'
-      ],
-      passwordToggleIcon: [
-        'i.icon-toggle',
-        'i.fa-eye',
-        'i[aria-label="Show Password"]'
-      ],
-      captchaContainer: [
-        'app-cloudflare-captcha-container',
-        'div[appcloudflarerecaptcha]',
-        'iframe[src*="challenges.cloudflare.com"]'
-      ],
-      captchaResponseInput: [
-        'input[name="cf-turnstile-response"]',
-        'input#cf-chl-widget-zbnd6_response'
-      ],
-      submitButton: [
-        'button[mat-stroked-button]',
-        'button.mat-mdc-outlined-button.btn-brand-orange',
-        '//button[contains(., "Sign In")]',
-        '//button[.//span[contains(text(), "Sign In")]]'
-      ]
-    },
-    links: {
-      forgotPassword: [
-        '//a[contains(text(), "Forgot Password")]',
-        'a.cursor-pointer:has-text("Forgot Password")'
-      ],
-      registerAccount: [
-        '//a[contains(text(), "I don\'t have an account")]',
-        'a.cursor-pointer:has-text("I don\'t have an account")'
-      ],
-      activateAccount: [
-        '//a[contains(text(), "Activate my account")]',
-        'a.cursor-pointer:has-text("Activate my account")'
-      ]
-    }
-  },
-
-  // 2. Dashboard Page (https://visa.vfsglobal.com/egy/en/prt/dashboard)
-  dashboard: {
-    header: {
-      userDropdown: [
-        '#navbarDropdown',
-        'a#navbarDropdown.dropdown-toggle',
-        '//a[contains(text(), "My Account")]'
-      ],
-      signOutButton: [
-        'a.nav-link:has-text("Sign Out")',
-        '//a[contains(text(), "Sign Out")]',
-        '//a[contains(text(), "Logout")]'
-      ]
-    },
-    mainContent: {
-      startNewBookingButton: [
-        'button.custom-height-button.btn-brand-orange',
-        'button.btn-brand-orange.d-none.d-lg-inline-block',
-        'div.col-12.col-sm-auto button.btn-brand-orange',
-        '//button[contains(., "Start New Booking")]',
-        '//span[contains(text(), "Start New Booking")]/ancestor::button'
-      ],
-      activeApplicationsTab: [
-        '#mat-tab-group-0-label-0',
-        'div[role="tab"]#mat-tab-group-0-label-0',
-        '//div[@role="tab"][contains(., "Active application(s)")]'
-      ],
-      noApplicationsMessage: [
-        'mat-tab-body .mat-mdc-tab-body-content div:has-text("No Application(s) Found")',
-        '//div[contains(text(), "No Application(s) Found.")]'
-      ],
-      deleteAccountLink: [
-        'a.cursor-pointer:has-text("Delete My Account")',
-        '//a[contains(text(), "Delete My Account")]'
-      ]
-    }
-  },
-
-  // 3. Appointment Details Page (https://visa.vfsglobal.com/egy/en/prt/application-detail)
-  appointmentDetails: {
-    stepper: {
-      container: [
-        '#stepper',
-        'nav.navbar ul.steps-nav'
-      ],
-      stepAppointmentDetails: [
-        'ul.steps-nav li:nth-child(1)',
-        '//span[contains(text(), "Appointment Details")]/ancestor::li'
-      ],
-      stepYourDetails: [
-        'ul.steps-nav li:nth-child(2)',
-        '//span[contains(text(), "Your Details")]/ancestor::li'
-      ],
-      stepBookAppointment: [
-        'ul.steps-nav li:nth-child(3)',
-        '//span[contains(text(), "Book Appointment")]/ancestor::li'
-      ],
-      stepServices: [
-        'ul.steps-nav li:nth-child(4)',
-        '//span[contains(text(), "Services")]/ancestor::li'
-      ],
-      stepReview: [
-        'ul.steps-nav li:nth-child(5)',
-        '//span[contains(text(), "Review")]/ancestor::li'
-      ]
-    },
-    header: {
-      accountDropdown: [
-        '#navbarDropdown',
-        'a#navbarDropdown',
-        '//a[contains(text(), "My Account")]'
-      ],
-      dashboardMenuItem: [
-        'a.dropdown-item:has-text("Dashboard")',
-        '//a[contains(@class, "dropdown-item") and contains(text(), "Dashboard")]'
-      ],
-      logoutMenuItem: [
-        'a.dropdown-item.bg-brand-orange',
-        '//a[contains(@class, "dropdown-item") and contains(text(), "Logout")]'
-      ]
-    },
-    form: {
-      cardContainer: [
-        'mat-card.form-card',
-        'app-eligibility-criteria mat-card'
-      ],
-      // Key matches Settings.js allKeys: "city" (Application Centre)
-      city: {
-        label: [
-          'label#mat-select-value-1',
-          'label[for="mat-select-0"]',
-          '//label[contains(., "Choose your Application Centre")]'
-        ],
-        trigger: [
-          'mat-select#mat-select-0',
-          'mat-select[formcontrolname="centerCode"]',
-          '//mat-select[@formcontrolname="centerCode"]',
-          '//mat-select[@id="mat-select-0"]'
-        ],
-        selectedValueText: [
-          '#mat-select-value-0 span',
-          'mat-select[formcontrolname="centerCode"] .mat-mdc-select-value'
-        ],
-        errorMessage: [
-          '#errorMsg .errorMessage',
-          '.form-group.form-error .errorMessage',
-          '//div[contains(text(), "Please select your centre")]'
-        ]
-      },
-      // Key matches Settings.js allKeys: "appointmentCategory"
-      appointmentCategory: {
-        label: [
-          'label#mat-select-value-5',
-          'label[for="mat-select-4"]',
-          '//label[contains(., "Choose your appointment category")]'
-        ],
-        trigger: [
-          'mat-select#mat-select-2',
-          'mat-select[formcontrolname="selectedSubvisaCategory"]',
-          '//mat-select[@formcontrolname="selectedSubvisaCategory"]',
-          '//mat-select[@id="mat-select-2"]'
-        ],
-        selectedValueText: [
-          '#mat-select-value-2 span',
-          'mat-select[formcontrolname="selectedSubvisaCategory"] .mat-mdc-select-value'
-        ]
-      },
-      // Key matches Settings.js allKeys: "subCategory"
-      subCategory: {
-        label: [
-          'label#mat-select-value-3',
-          'label[for="mat-select-2"]',
-          '//label[contains(., "Choose your sub-category")]'
-        ],
-        trigger: [
-          'mat-select#mat-select-1',
-          'mat-select[formcontrolname="visaCategoryCode"]',
-          '//mat-select[@formcontrolname="visaCategoryCode"]',
-          '//mat-select[@id="mat-select-1"]'
-        ],
-        selectedValueText: [
-          '#mat-select-value-1 span',
-          'mat-select[formcontrolname="visaCategoryCode"] .mat-mdc-select-value'
-        ]
-      },
-      continueButton: [
-        'button[mat-raised-button].btn-brand-orange',
-        'mat-card button.mat-mdc-raised-button',
-        '//button[contains(., "Continue")]',
-        '//span[contains(text(), "Continue")]/ancestor::button'
-      ]
-    },
-    dropdownPanels: {
-      // Options panel for City / Application Centre
-      cityPanel: {
-        container: [
-          '#mat-select-0-panel',
-          'div[role="listbox"]#mat-select-0-panel'
-        ],
-        allOptions: [
-          '#mat-select-0-panel mat-option',
-          'div[role="listbox"]#mat-select-0-panel mat-option'
-        ],
-        alexandria: [
-          'mat-option#AEX',
-          '//mat-option[@id="AEX"]',
-          '//mat-option[contains(., "Alexandria")]'
-        ],
-        cairo: [
-          'mat-option#CAI',
-          '//mat-option[@id="CAI"]',
-          '//mat-option[contains(., "Cairo")]'
-        ]
-      },
-      // Options panel for Appointment Category
-      appointmentCategoryPanel: {
-        container: [
-          '#mat-select-2-panel',
-          'div[role="listbox"]#mat-select-2-panel',
-          '#cdk-overlay-1 div[role="listbox"]'
-        ],
-        allOptions: [
-          '#mat-select-2-panel mat-option',
-          'div[role="listbox"]#mat-select-2-panel mat-option'
-        ],
-        appeal: [
-          'mat-option#apl',
-          '//mat-option[@id="apl"]',
-          '//mat-option[contains(., "Appeal")]'
-        ],
-        nationalVisa: [
-          'mat-option#Long\\ ',
-          'mat-option[id^="Long"]',
-          '//mat-option[contains(., "National Visa")]'
-        ],
-        shortTermVisa: [
-          'mat-option#1',
-          '//mat-option[@id="1"]',
-          '//mat-option[contains(., "Short Term Visa")]'
-        ]
-      },
-      // Options panel for Sub-category
-      subCategoryPanel: {
-        container: [
-          '#mat-select-1-panel',
-          'div[role="listbox"]#mat-select-1-panel'
-        ],
-        allOptions: [
-          '#mat-select-1-panel mat-option',
-          'div[role="listbox"]#mat-select-1-panel mat-option'
-        ],
-        jobSeeker: [
-          'mat-option#JB',
-          '//mat-option[@id="JB"]',
-          '//mat-option[contains(., "Job seeker")]'
-        ],
-        longTermVisaNational: [
-          'mat-option#LT',
-          '//mat-option[@id="LT"]',
-          '//mat-option[contains(., "Long Term Visa - National")]'
-        ],
-        subordinatedWork: [
-          'mat-option#SWC',
-          '//mat-option[@id="SWC"]',
-          '//mat-option[contains(., "Subordinated Work")]'
-        ]
-      }
-    }
-  }
-};
-
-module.exports = Selectors;
 ```
 
 ------------------------------------------------
@@ -1127,7 +552,7 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { EgPtrLoginURL, BROWSER_ARGS, CHANNEL, terminationCmds, debug, actionsConfig, cookiesAcceptant, defaultBatchConfig } from '../Config/settings.js';
 import Selectors from '../Config/Selectors.js';
-import { injectionSignIn, signInSelectors } from '../Config/injection.js';
+import { injectionSignIn, signInSelectors } from './injection.js';
 import { BaseBrowser } from './BaseBrowser.js';
 import { CaptchaHandler } from './captchaHandler.js';
 import readline from 'node:readline/promises';
@@ -1778,103 +1203,234 @@ export class ChromeWorker extends BaseBrowser {
 ```javascript
 /* Omni-Booking-Automation-Suite/VFS_Portugal/Browsers/injection.js */
 
-(function () {
-    // Prevent multiple injections
-    if (window.__VFS_BOT_INJECTED__) return;
-    window.__VFS_BOT_INJECTED__ = true;
+export const signInSelectors = {}; // Deprecated: Replaced entirely by semantic XPaths
 
-    // Load configuration passed from ChromeWorker
-    const config = window.BOT_CONFIG || {};
+export async function injectionSignIn(config = {}) {
+    const account = config.account || config.email || '';
+    const password = config.password || '';
+    let rawMethod = (config.inputMethod || config.fillMode || config.typingMode || 'fill').toLowerCase();
+    const validMethods = ['typing', 'paste', 'fill', 'random'];
+    if (!validMethods.includes(rawMethod)) rawMethod = 'fill';
 
-    /**
-     * Module 1: Continuous Page Title Modifier
-     * Prepend the account email to the page title regardless of Angular routing.
-     */
-    const updateTitle = () => {
-        const prefix = `[${config.account || 'BOT'}] `;
-        if (document.title && !document.title.startsWith(prefix)) {
-            // Strip any existing brackets to prevent duplication
-            document.title = prefix + document.title.replace(/^\[.*?\]\s*/, '');
+    let method = rawMethod;
+    if (method === 'random') {
+        method = ['typing', 'paste', 'fill'][Math.floor(Math.random() * 3)];
+    }
+
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const randomDelay = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+    
+    const getXPath = (xpath) => {
+        const iter = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+        let node;
+        while ((node = iter.iterateNext())) {
+            const style = window.getComputedStyle(node);
+            if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && node.offsetHeight > 0) {
+                return node;
+            }
+        }
+        return null;
+    };
+
+    // Cookies
+    try {
+        const cookieBtn = getXPath('//button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "accept all")]');
+        if (cookieBtn) {
+            cookieBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+            cookieBtn.click();
+            await sleep(800);
+        }
+    } catch (e) {}
+
+    // Cloudflare Challenge
+    let captchaState = 'absent';
+    try {
+        const cfFrame = getXPath('//iframe[contains(@src, "challenges.cloudflare.com")]');
+        if (cfFrame) {
+            const token = document.evaluate('//input[@name="cf-turnstile-response" or contains(@name, "response")]', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+            if (token && token.value && token.value.trim().length > 20) {
+                captchaState = 'solved';
+            } else {
+                captchaState = 'pending';
+                if (cfFrame.scrollIntoView) cfFrame.scrollIntoView({ behavior: 'instant', block: 'center' });
+            }
+        }
+    } catch (e) {}
+
+    const fireInputEvents = (el) => {
+        el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
+    };
+
+    const setNativeValue = (el, value) => {
+        el.focus();
+        const proto = window.HTMLInputElement.prototype;
+        const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+        if (desc && desc.set) desc.set.call(el, value);
+        else el.value = value;
+        fireInputEvents(el);
+    };
+
+    const emailEl = getXPath('//input[@type="email"] | //label[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "email")]/following::input[1]');
+    const passEl = getXPath('//input[@type="password"] | //label[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "password")]/following::input[1]');
+
+    if (!emailEl) return { ok: false, reason: 'email-input-not-found', captcha: captchaState, method };
+    if (!passEl) return { ok: false, reason: 'password-input-not-found', captcha: captchaState, method };
+
+    const dispatchInput = async (el, val) => {
+        el.focus();
+        el.click();
+        setNativeValue(el, '');
+        if (method === 'typing') {
+            for (const char of val) {
+                el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+                el.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
+                setNativeValue(el, (el.value || '') + char);
+                el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+                await sleep(randomDelay(40, 120));
+            }
+        } else if (method === 'paste') {
+            try {
+                const dt = new DataTransfer();
+                dt.setData('text/plain', val);
+                el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
+                setNativeValue(el, val);
+            } catch {
+                setNativeValue(el, val);
+            }
+            await sleep(60);
+        } else {
+            setNativeValue(el, val);
+            await sleep(50);
         }
     };
 
-    // Aggressively observe DOM `<title>` changes
-    const titleObserver = new MutationObserver(updateTitle);
-    const titleEl = document.querySelector('title');
-    if (titleEl) {
-        titleObserver.observe(titleEl, { childList: true, characterData: true, subtree: true });
-    }
-    // Fallback interval to guarantee title injection on full page reloads
-    setInterval(updateTitle, 1000);
+    await dispatchInput(emailEl, account);
+    await sleep(randomDelay(150, 350));
+    await dispatchInput(passEl, password);
+    await sleep(randomDelay(200, 400));
 
+    const submitBtn = getXPath('//button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "sign in") or contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "log in")] | //button[@type="submit"]');
+    
+    if (!submitBtn) return { ok: false, reason: 'submit-button-not-found', captcha: captchaState, method };
 
-    /**
-     * Module 2: Angular DOM Automator
-     * Scans for expected views and interacts with elements based on BOT_CONFIG
-     */
-    setInterval(() => {
-        
-        // --- View A: Dashboard ---
-        const startBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.includes('Start New Booking'));
-        if (startBtn && !startBtn.disabled && window.getComputedStyle(startBtn).display !== 'none') {
-            startBtn.click();
-        }
+    submitBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+    await sleep(300);
 
-        // --- View B: Appointment Details ---
-        const header = document.querySelector('h1');
-        if (header && header.innerText.includes('Appointment Details')) {
-            
-            // Helper function to handle Angular mat-select interactions
-            const selectDropdown = (formControlName, targetText) => {
-                if (!targetText) return false;
-                
-                const trigger = document.querySelector(`mat-select[formcontrolname="${formControlName}"]`);
-                if (!trigger) return false;
+    submitBtn.removeAttribute('disabled');
+    submitBtn.click();
+    
+    return { ok: true, captcha: captchaState, method };
+}
 
-                const valueSpan = trigger.querySelector('.mat-mdc-select-value-text');
-                const currentValue = valueSpan ? valueSpan.innerText : '';
-                
-                // Return true if the required value is already selected
-                if (currentValue.toLowerCase().includes(targetText.toLowerCase())) {
-                    return true; 
-                }
-                
-                const panelId = trigger.getAttribute('aria-controls');
-                const panel = document.getElementById(panelId);
-                
-                if (!panel) {
-                    // Open the dropdown panel
-                    trigger.click(); 
-                } else {
-                    // Search for the matching mat-option and click it
-                    const options = Array.from(panel.querySelectorAll('mat-option'));
-                    const targetOpt = options.find(opt => opt.innerText.toLowerCase().includes(targetText.toLowerCase()));
-                    if (targetOpt) {
-                        targetOpt.click();
-                    }
-                }
-                return false;
-            };
-
-            // Process dropdowns sequentially to prevent UI overlap failures
-            const isCenterDone = selectDropdown('centerCode', config.city);
-            if (isCenterDone) {
-                const isCatDone = selectDropdown('selectedSubvisaCategory', config.appointmentCategory);
-                if (isCatDone) {
-                    const isSubCatDone = selectDropdown('visaCategoryCode', config.subCategory);
-                    
-                    if (isSubCatDone) {
-                        const continueBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.includes('Continue'));
-                        if (continueBtn && !continueBtn.disabled) {
-                            continueBtn.click();
-                        }
-                    }
-                }
+/**
+ * 2. Your Details Form Filler
+ * Relies exclusively on Deep-Node text targeting to find labels across any UI layout.
+ */
+export async function fillYourDetails(data = {}) {
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    
+    const getXPath = (xpath) => {
+        const iter = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+        let node;
+        while ((node = iter.iterateNext())) {
+            const style = window.getComputedStyle(node);
+            if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && node.offsetHeight > 0) {
+                return node;
             }
         }
-    }, 1500); 
+        return null;
+    };
 
-})();
+    const fireInputEvents = (el) => {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
+    };
+
+    // Advanced Deep-Node locator: Finds the absolute lowest node containing the text, then hops to the input
+    const pasteIntoInput = async (labelText, val, index = 1) => {
+        if (!val) return;
+        
+        // This query isolates the exact text node containing the string (ignores parent nodes), ensuring a clean jump.
+        const xpath = `(//*[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${labelText.toLowerCase()}') and not(.//*[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${labelText.toLowerCase()}')])])/following::input[${index}]`;
+        
+        const el = getXPath(xpath);
+        if (el) {
+            el.focus();
+            el.click();
+            await sleep(50);
+            
+            try {
+                const dt = new DataTransfer();
+                dt.setData('text/plain', val);
+                el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
+            } catch (e) {}
+            
+            // Fallback forced native setter bypasses Angular UI components
+            const proto = window.HTMLInputElement.prototype;
+            const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+            if (desc && desc.set) desc.set.call(el, val);
+            else el.value = val;
+            
+            fireInputEvents(el);
+            await sleep(50);
+            
+            // Force dismissal of datepicker if it popped up
+            document.body.click(); 
+        }
+    };
+
+    const selectDropdown = async (labelText, targetValue) => {
+        if (!targetValue) return;
+        
+        const xpath = `(//*[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${labelText.toLowerCase()}') and not(.//*[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${labelText.toLowerCase()}')])])/following::mat-select[1]`;
+        
+        const trigger = getXPath(xpath);
+        if (!trigger) return;
+        
+        if (trigger.textContent.toLowerCase().includes(targetValue.toLowerCase())) return;
+
+        trigger.click();
+        await sleep(600);
+
+        const panel = getXPath(`//div[@role='listbox']`);
+        if (panel) {
+            const optXpath = `.//mat-option//*[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${targetValue.toLowerCase()}')]`;
+            const opt = document.evaluate(optXpath, panel, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+            
+            if (opt) {
+                opt.click();
+            } else {
+                document.body.click(); 
+            }
+            await sleep(500);
+        }
+    };
+
+    try {
+        await pasteIntoInput("first name", data.firstName);
+        await pasteIntoInput("last name", data.lastName);
+        await pasteIntoInput("passport number", data.passportNumber);
+        await pasteIntoInput("email", data.email || data.account);
+        
+        // Contact number uses index to jump to the right input fields (Dial Code vs Phone Number)
+        await pasteIntoInput("contact number", data.dialCode, 1);
+        await pasteIntoInput("contact number", data.contactNumber, 2);
+
+        // Date Pickers explicitly populated directly via paste to avoid calendar overhead
+        await pasteIntoInput("date of birth", data.dateOfBirth);
+        await pasteIntoInput("passport expiry", data.passportExpiry);
+
+        await selectDropdown('gender', data.gender);
+        await selectDropdown('current nationality', data.nationality);
+
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+}
 ```
 
 ------------------------------------------------
@@ -3201,7 +2757,6 @@ import './theme.css';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
-// Time parsing helpers to convert DD/HH/MM/SS string to object and vice-versa
 const parseDelayStr = (str) => {
     const parts = (str || "00/00/05/00").split(/[\/\-:]/).map(n => parseInt(n, 10) || 0);
     return { d: parts[0] || 0, h: parts[1] || 0, m: parts[2] || 0, s: parts[3] || 0 };
@@ -3211,6 +2766,46 @@ const formatDelayStr = ({ d, h, m, s }) => {
     const pad = (n) => String(n).padStart(2, '0');
     return `${pad(d)}/${pad(h)}/${pad(m)}/${pad(s)}`;
 };
+
+const isDateValid = (val) => {
+    if (!val) return false;
+    return /^(0[1-9]|[12][0-9]|3[01])\/(0[1-9]|1[0-2])\/\d{4}$/.test(val.trim());
+};
+
+const NATIONALITIES = [
+    "AFGHANISTAN", "ALBANIA", "ALGERIA", "ANGOLA", "ANGUILLA", "ANTIGUA AND BARBUDA", "ARGENTINA", 
+    "ARMENIA", "ARUBA", "AUSTRALIA", "AUSTRIA", "AZERBAIJAN", "BAHAMAS", "BAHRAIN", "BANGLADESH", 
+    "BARBADOS", "BELARUS", "BELGIUM", "BELIZE", "BENIN", "BENIN (DAHOMEY)", "BERMUDA", "BHUTAN", 
+    "BOLIVIA", "BOSNIA AND HERZEGOVINA", "BOTSWANA", "BRAZIL", "BRITISH VIRGIN ISLANDS", "BRUNEI DARUSSALAM", 
+    "BULGARIA", "BURKINA FASO", "BURKINA FASO (UPPER VOLTA)", "BURUNDI", "CAMBODIA", "CAMBODIA (KAMPUCHEA)", 
+    "CAMEROON", "CANADA", "CAPE VERDE", "CAYMAN ISLANDS", "CENTRAL AFRICAN REPUBLIC", "CHAD", "CHILE", 
+    "CHINA", "CHRISTMAS ISLAND", "COCOS (KEELING) ISLANDS", "COLOMBIA", "COMOROS", "CONGO", "COOK ISLANDS", 
+    "COSTA RICA", "COTE D'IVOIRE", "CROATIA", "CROTIA", "CUBA", "CYPRUS", "CZECH REPUBLIC", "DEMOCRATIC REPUBLIC OF CONGO", 
+    "DENMARK", "DJIBOUTI", "DOMINICA", "DOMINICAN REPUBLIC", "ECUADOR", "EGYPT", "EL SALVADOR", "EQUATORIAL GUINEA", 
+    "ERITREA", "ESTONIA", "ETHIOPIA", "Express service", "FALKLAND ISLANDS", "FAROE ISLANDS", "FIJI", "FINLAND", 
+    "FINLAND RESIDENCE PERMIT", "FRANCE", "GABON", "GAMBIA", "GEORGIA", "GERMANY", "GHANA", "GIBRALTAR", "GREECE", 
+    "GREENLAND", "GRENADA", "GUATEMALA", "GUINEA", "GUINEA-BISSAU", "GUYANA", "HAITI", "HOLY SEE", "HONDURAS", 
+    "HONG KONG", "HUNGARY", "Hong Kong BNO", "Hong Kong SAR", "ICELAND", "INDIA", "INDONESIA", "IRAN", "IRAQ", 
+    "IRELAND", "ISRAEL", "ITALY", "IVORY COAST", "JAMAICA", "JAPAN", "JORDAN", "KAZAKHSTAN", "KENYA", "KIRIBATI", 
+    "KOREA, DEMOCRATIC PEOPLES REP", "KOSOVO", "KUWAIT", "KYRGYZSTAN", "LAOS", "LATVIA", "LEBANON", "LESOTHO", 
+    "LIBERIA", "LIBYA", "LIBYAN ARAB JAMAHIRIYA", "LIECHTENSTEIN", "LITHUANIA", "LITHUANIA RESIDENCE PERMIT", 
+    "LUXEMBOURG", "MACAU", "MACEDONIA", "MADAGASCAR", "MALAWI", "MALAYSIA", "MALDIVES", "MALI", "MALTA", 
+    "MARSHALL ISLANDS", "MAURITANIA", "MAURITIUS", "MEXICO", "MICRONESIA", "MOLDOVA", "MONACO", "MONGOLIA", 
+    "MONTENEGRO", "MONTSERRAT", "MOROCCO", "MOZAMBIQUE", "MYANMAR, BURMA", "Macao Travel Permit", "Malta", 
+    "NAMIBIA", "NAURU", "NEPAL", "NETHERLANDS", "NETHERLANDS ANTILLES", "NEW ZEALAND", "NICARAGUA", "NIGER", 
+    "NIGERIA", "NORWAY", "National service", "OMAN", "PAKISTAN", "PALAU", "PALESTINE", "PANAMA", "PAPUA NEW GUINEA", 
+    "PARAGUAY", "PERU", "PHILIPPINES", "PITCAIRN ISLAND", "POLAND", "PORTUGAL", "QATAR", "REPUBLIC OF KOREA", 
+    "REPUBLIC OF MACEDONIA", "REPUBLIC OF MOLDOVA", "REPUBLIC OF MONTENEGRO", "REPUBLIC OF SERBIA", "ROMANIA", 
+    "RUSSIAN FEDERATION", "RWANDA", "SAINT KITTS AND NEVIS", "SAINT LUCIA", "SAINT VINCENT AND THE GRENADINES", 
+    "SAMOA", "SAN MARINO", "SAO TOME AND PRINCIPE", "SAUDI ARABIA", "SENEGAL", "SEYCHELLES", "SIERRA LEONE", 
+    "SINGAPORE", "SLOVAKIA", "SLOVENIA", "SOLOMON ISLANDS", "SOMALIA", "SOUTH AFRICA", "SOUTH KOREA", "SOUTH SUDAN", 
+    "SPAIN", "SRI LANKA", "STATELESS", "SUDAN", "SURINAM", "SURINAME", "SWAZILAND", "SWEDEN", "SWITZERLAND", "SYRIA", 
+    "SYRIAN ARAB REPUBLIC", "St. KITTS & NEVIS", "Syria, Syrian Arab Republic", "TAIWAN", "TAJIKISTAN", "TANZANIA", 
+    "THAILAND", "TIBET", "TIMOR-LESTE (EAST TIMOR)", "TOGO", "TONGA", "TRINIDAD AND TOBAGO", "TUNISIA", "TURKMENISTAN", 
+    "TURKS AND CAICOS ISLANDS", "TUVALU", "Turkiye", "UGANDA", "UK BRITISH NATIONAL(OVERSEES)", "UK BRITISH SUBJECT", 
+    "UKRAINE", "UNITED ARAB EMIRATES", "UNITED KINGDOM", "UNITED NATIONS ORGANIZATION", "UNITED STATES", "URUGUAY", 
+    "UZBEKISTAN", "VANUATU", "VATICAN CITY", "VENEZUELA", "VIETNAM", "VIRGIN ISLANDS (BRITISH)", "YEMEN", "ZAMBIA", "ZIMBABWE"
+];
 
 const YallaVisaLogo = () => (
     <svg viewBox="0 0 380 50" height="40" xmlns="http://www.w3.org/2000/svg">
@@ -3250,10 +2845,19 @@ export default function App() {
         switchDelay: 3000,
         autoClose: true,
         attemptSeparator: 'Refresh Current Page',
-        inputMethod: 'fill'
+        inputMethod: 'fill',
+        firstName: '',
+        lastName: '',
+        gender: 'Male',
+        dateOfBirth: '',
+        nationality: 'EGYPT',
+        passportNumber: '',
+        passportExpiry: '',
+        dialCode: '20',
+        contactNumber: '',
+        email: ''
     });
     
-    const [showDefaultsModal, setShowDefaultsModal] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [editForm, setEditForm] = useState(null);
     const [deleteConfirm, setDeleteConfirm] = useState(null); 
@@ -3266,8 +2870,13 @@ export default function App() {
             window.electronAPI.onBotStatusUpdate(({ id, status }) => {
                 setInstances(prev => prev.map(inst => inst.id === id ? { ...inst, status: status } : inst));
             });
-            window.electronAPI.onAppointmentResult(({ id, result }) => {
-                setInstances(prev => prev.map(inst => inst.id === id ? { ...inst, aptStatus: result } : inst));
+            window.electronAPI.onAppointmentResult(({ id, result, message }) => {
+                if (result === 'error') {
+                    setErrorMessage(`Configuration Error: ${message}`);
+                    setInstances(prev => prev.map(inst => inst.id === id ? { ...inst, aptStatus: 'unavailable', status: `Error: ${message}` } : inst));
+                } else {
+                    setInstances(prev => prev.map(inst => inst.id === id ? { ...inst, aptStatus: result } : inst));
+                }
             });
             if (window.electronAPI.onWindowMaximizeChange) {
                 window.electronAPI.onWindowMaximizeChange((state) => setIsMaximized(state));
@@ -3337,19 +2946,12 @@ export default function App() {
 
     const handleLocalFile = async () => {
         const data = await window.electronAPI.selectLocalFile();
-        if (data && !data.error) {
-            processImport(data);
-        } else if (data?.error) {
-            setErrorMessage(data.error);
-        }
+        if (data && !data.error) processImport(data);
+        else if (data?.error) setErrorMessage(data.error);
     };
 
     const handleExport = async () => {
-        if (instances.length === 0) {
-            setErrorMessage("No accounts available to export.");
-            return;
-        }
-
+        if (instances.length === 0) return setErrorMessage("No accounts available to export.");
         const dataToExport = instances.map(inst => ({
             account: inst.data.account,
             password: inst.data.password,
@@ -3364,13 +2966,21 @@ export default function App() {
             switchDelay: inst.data.switchDelay,
             autoClose: inst.data.autoClose,
             attemptSeparator: inst.data.attemptSeparator,
-            inputMethod: inst.data.inputMethod || globalDefaults.inputMethod || 'fill'
+            inputMethod: inst.data.inputMethod || globalDefaults.inputMethod || 'fill',
+            firstName: inst.data.firstName,
+            lastName: inst.data.lastName,
+            gender: inst.data.gender,
+            dateOfBirth: inst.data.dateOfBirth,
+            nationality: inst.data.nationality,
+            passportNumber: inst.data.passportNumber,
+            passportExpiry: inst.data.passportExpiry,
+            dialCode: inst.data.dialCode,
+            contactNumber: inst.data.contactNumber,
+            email: inst.data.email
         }));
 
         const result = await window.electronAPI.exportData(dataToExport);
-        if (result?.error) {
-            setErrorMessage(result.error);
-        }
+        if (result?.error) setErrorMessage(result.error);
     };
 
     const handleGoogleSheet = async () => {
@@ -3379,46 +2989,32 @@ export default function App() {
             setTimeout(() => setIsUrlInvalid(false), 500);
             return; 
         }
-        
         const data = await window.electronAPI.fetchGoogleSheet(sheetUrl);
-        
         if (data && !data.error) {
             processImport(data);
             setSheetUrl('');
-        } else if (data?.error) {
-            setErrorMessage(data.error); 
-        }
+        } else if (data?.error) setErrorMessage(data.error); 
     };
 
     const resolveImport = (strategy) => {
         if (!pendingImport) return;
         let finalInstances = [...instances];
         const imported = pendingImport.parsedData;
-
         if (strategy === 'ignore') {
             const existingAccounts = new Set(instances.map(i => i.data.account));
-            const uniqueNew = imported.filter(i => !existingAccounts.has(i.data.account));
-            finalInstances = [...finalInstances, ...uniqueNew];
+            finalInstances = [...finalInstances, ...imported.filter(i => !existingAccounts.has(i.data.account))];
         } else if (strategy === 'replace') {
             const newAccountsMap = new Map(imported.map(i => [i.data.account, i]));
-            finalInstances = finalInstances.filter(i => !newAccountsMap.has(i.data.account));
-            finalInstances = [...finalInstances, ...imported];
+            finalInstances = [...finalInstances.filter(i => !newAccountsMap.has(i.data.account)), ...imported];
         } else if (strategy === 'all') {
             finalInstances = [...finalInstances, ...imported];
         }
-
         setInstances(finalInstances);
         setPendingImport(null);
     };
 
-    const handleManualAdd = () => {
-        setEditingId('NEW');
-        setEditForm({ account: '', password: '', ...globalDefaults, headless: defaultHeadless });
-    };
-
     const toggleSelect = (id) => setInstances(prev => prev.map(inst => inst.id === id ? { ...inst, selected: !inst.selected } : inst));
     const toggleSelectAll = (e) => setInstances(prev => prev.map(inst => ({ ...inst, selected: e.target.checked })));
-
     const fastToggleHeadless = (id, e) => {
         e.stopPropagation();
         setInstances(prev => prev.map(inst => inst.id === id ? { ...inst, headless: !inst.headless } : inst));
@@ -3429,7 +3025,6 @@ export default function App() {
         window.electronAPI.launchBots(toLaunch);
         setInstances(prev => prev.map(inst => ids.includes(inst.id) ? { ...inst, status: 'Launching...', aptStatus: 'checking' } : inst));
     };
-
     const closeBots = (ids) => window.electronAPI.closeBots(ids);
     const confirmDelete = (ids) => setDeleteConfirm(ids);
     const executeDelete = () => {
@@ -3439,14 +3034,13 @@ export default function App() {
             setDeleteConfirm(null);
         }
     };
-
     const selectedIds = instances.filter(i => i.selected).map(i => i.id);
 
     const startEdit = (inst) => {
         setEditingId(inst.id);
         setEditForm({ ...inst.data, headless: inst.headless ?? true });
     };
-
+    
     const cancelEdit = () => {
         setEditingId(null);
         setEditForm(null);
@@ -3455,8 +3049,14 @@ export default function App() {
     const saveEdit = () => {
         if (!editForm.account) return setErrorMessage("Account email is required.");
         
-        const { headless, ...dataFields } = editForm;
+        if (editForm.dateOfBirth && !isDateValid(editForm.dateOfBirth)) {
+            return setErrorMessage("Date of Birth format must be exactly DD/MM/YYYY");
+        }
+        if (editForm.passportExpiry && !isDateValid(editForm.passportExpiry)) {
+            return setErrorMessage("Passport Expiry format must be exactly DD/MM/YYYY");
+        }
 
+        const { headless, ...dataFields } = editForm;
         if (editingId === 'NEW') {
             setInstances(prev => [...prev, { id: generateId(), data: dataFields, headless, status: 'Idle', aptStatus: 'idle', selected: false }]);
         } else {
@@ -3465,32 +3065,20 @@ export default function App() {
         setEditingId(null);
     };
 
-    const copyInstanceData = (data) => {
-        navigator.clipboard.writeText(`Account: ${data.account}\nPassword: ${data.password}\nCountry: ${data.country}\nCity: ${data.city}\nCategory: ${data.appointmentCategory}\nSub-category: ${data.subCategory}`);
-    };
-
     return (
         <div className={`app-container ${theme}-theme`}>
-            
             <div className="custom-titlebar">
                 <div className="titlebar-controls">
                     <button className="win-btn win-min linux-btn" onClick={() => handleWindowAction('minimize')} title="Minimize Window">
                         <svg width="10" height="10" viewBox="0 0 12 12"><path d="M2 6h8v1H2z" fill="currentColor"/></svg>
                     </button>
-                    
                     <button className="win-btn win-max linux-btn" onClick={() => handleWindowAction('maximize')} title="Maximize/Restore Window">
                         {isMaximized ? (
-                            <svg width="10" height="10" viewBox="0 0 11 11">
-                                <path d="M2.5 2.5h5v5h-5z" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-                                <path d="M4 1.5h5v5" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-                            </svg>
+                            <svg width="10" height="10" viewBox="0 0 11 11"><path d="M2.5 2.5h5v5h-5z" fill="none" stroke="currentColor" strokeWidth="1.5"/><path d="M4 1.5h5v5" fill="none" stroke="currentColor" strokeWidth="1.5"/></svg>
                         ) : (
-                            <svg width="10" height="10" viewBox="0 0 11 11">
-                                <path d="M1.5 1.5h8v8h-8z" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-                            </svg>
+                            <svg width="10" height="10" viewBox="0 0 11 11"><path d="M1.5 1.5h8v8h-8z" fill="none" stroke="currentColor" strokeWidth="1.5"/></svg>
                         )}
                     </button>
-
                     <button className="win-btn win-close linux-btn" onClick={requestAppClose} title="Close Application">
                         <svg width="10" height="10" viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                     </button>
@@ -3500,25 +3088,15 @@ export default function App() {
             <header className="header-panel">
                 <div className="header-left">
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        <button className="btn-outline btn-compact" onClick={handleLocalFile} title="Import accounts from local Excel or CSV file.">Import</button>
-                        <button className="btn-outline btn-compact" onClick={handleExport} title="Export current accounts to Excel/CSV.">Export</button>
+                        <button className="btn-outline btn-compact" onClick={handleLocalFile}>Import</button>
+                        <button className="btn-outline btn-compact" onClick={handleExport}>Export</button>
                     </div>
                     <div className="sheet-fetcher">
-                        <input 
-                            type="text" 
-                            placeholder="Google Sheet URL" 
-                            value={sheetUrl} 
-                            onChange={e => setSheetUrl(e.target.value)} 
-                            className={`url-bar ${isUrlInvalid ? 'input-error-shake' : ''}`} 
-                        />
-                        <button className="btn-outline btn-compact" onClick={handleGoogleSheet} title="Fetch account configurations directly from a published Google Sheet.">Fetch</button>
+                        <input type="text" placeholder="Google Sheet URL" value={sheetUrl} onChange={e => setSheetUrl(e.target.value)} className={`url-bar ${isUrlInvalid ? 'input-error-shake' : ''}`} />
+                        <button className="btn-outline btn-compact" onClick={handleGoogleSheet}>Fetch</button>
                     </div>
                 </div>
-
-                <div className="header-center">
-                    <YallaVisaLogo />
-                </div>
-
+                <div className="header-center"><YallaVisaLogo /></div>
                 <div className="header-right"></div>
             </header>
 
@@ -3531,21 +3109,16 @@ export default function App() {
                     </div>
                     
                     <div className="toolbar-right">
-                        <button className="btn-add" onClick={handleManualAdd}>+ Add Account</button>
+                        <button className="btn-add" onClick={() => { setEditingId('NEW'); setEditForm({ ...globalDefaults, headless: defaultHeadless, account: '', password: '' }); }}>+ Add Account</button>
                         <div className="toggle-wrapper" title="How credentials are typed into the login form">
                             <span className="toggle-title">Login Typing</span>
-                            <select
-                                value={globalDefaults.inputMethod || 'fill'}
-                                onChange={e => setGlobalDefaults({...globalDefaults, inputMethod: e.target.value})}
-                                title="Login typing mode: fill (instant), typing (human), paste (clipboard), random"
-                            >
-                                <option value="fill">Fill (instant)</option>
-                                <option value="typing">Typing (human)</option>
+                            <select value={globalDefaults.inputMethod || 'fill'} onChange={e => setGlobalDefaults({...globalDefaults, inputMethod: e.target.value})}>
+                                <option value="fill">Fill (browser)</option>
+                                <option value="typing">Typing (keyboard)</option>
                                 <option value="paste">Paste (clipboard)</option>
                                 <option value="random">Random</option>
                             </select>
                         </div>
-                        <button className="btn-outline" onClick={() => setShowDefaultsModal(true)}>⚙️ Defaults</button>
                         <div className="toggle-wrapper" title="Default headless setting for new instances">
                             <span className="toggle-title">Default Headless</span>
                             <label className="switch">
@@ -3584,7 +3157,7 @@ export default function App() {
                                     <td>
                                         <div className="flex-row-copy">
                                             <span>{inst.data.account}</span>
-                                            <button className="copy-btn" onClick={(e) => { e.stopPropagation(); copyInstanceData(inst.data); }} title="Copy Data">📋</button>
+                                            <button className="copy-btn" onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(`Account: ${inst.data.account}\nPassword: ${inst.data.password}`); }} title="Copy Data">📋</button>
                                         </div>
                                     </td>
                                     <td>{inst.data.country || '-'}</td>
@@ -3617,23 +3190,19 @@ export default function App() {
                 </div>
             </div>
 
-            {/* Custom Error Modal */}
+            {/* Error Modal */}
             {errorMessage && (
                 <div className="modal-overlay" onClick={() => setErrorMessage(null)}>
                     <div className="modal-content danger-modal relative" onClick={e => e.stopPropagation()}>
                         <button className="modal-close-x" onClick={() => setErrorMessage(null)}>✕</button>
                         <h3>⚠️ Error</h3>
-                        <p style={{marginTop: '10px', marginBottom: '20px', lineHeight: '1.5', wordBreak: 'break-word', whiteSpace: 'pre-wrap'}}>
-                            {errorMessage}
-                        </p>
-                        <div className="modal-actions">
-                            <button className="btn-outline" onClick={() => setErrorMessage(null)}>OK</button>
-                        </div>
+                        <p style={{marginTop: '10px', marginBottom: '20px', lineHeight: '1.5', wordBreak: 'break-word', whiteSpace: 'pre-wrap'}}>{errorMessage}</p>
+                        <div className="modal-actions"><button className="btn-outline" onClick={() => setErrorMessage(null)}>OK</button></div>
                     </div>
                 </div>
             )}
 
-            {/* Application Close Warning */}
+            {/* Close Warning Modal */}
             {appCloseWarning && (
                 <div className="modal-overlay">
                     <div className="modal-content danger-modal relative">
@@ -3653,12 +3222,12 @@ export default function App() {
                 </div>
             )}
 
-            {/* Record Delete Confirmation */}
+            {/* Delete Verification Modal */}
             {deleteConfirm && (
                 <div className="modal-overlay">
                     <div className={`modal-content relative ${deleteConfirm.length > 1 ? 'danger-modal' : ''}`}>
                         <button className="modal-close-x" onClick={() => setDeleteConfirm(null)}>✕</button>
-                        <h3>{deleteConfirm.length > 1 ? '⚠️ Bulk Delete Warning' : 'Confirm Deletion'}</h3>
+                        <h3>{deleteConfirm.length > 1 ? '⚠ Bulk Delete Warning' : 'Confirm Deletion'}</h3>
                         <p style={{marginTop: '10px', marginBottom: '20px', lineHeight: '1.5'}}>
                             Are you sure you want to delete <strong>{deleteConfirm.length}</strong> selected instance(s)? 
                             This will also close any active browsers associated with them.
@@ -3671,13 +3240,12 @@ export default function App() {
                 </div>
             )}
 
-            {/* Smart Import Conflict Resolution */}
+            {/* Import Conflict Modal */}
             {pendingImport && (
                 <div className="modal-overlay">
                     <div className="modal-content relative">
                         <button className="modal-close-x" title="Cancel Import" onClick={() => setPendingImport(null)}>✕</button>
                         <h3>File Import Confirmation</h3>
-                        
                         <div className="conflict-stats">
                             <ul>
                                 <li><strong>{pendingImport.total}</strong> total accounts detected in the file.</li>
@@ -3685,97 +3253,28 @@ export default function App() {
                                 <li><strong>{pendingImport.newAccounts}</strong> brand new account(s) detected.</li>
                             </ul>
                         </div>
-
                         {pendingImport.duplicates > 0 ? (
                             <div className="modal-actions-col">
-                                <button className="btn-launch" title="Only adds the new accounts and ignores the ones that are already in the table." onClick={() => resolveImport('ignore')}>
-                                    Ignore Duplicates
-                                </button>
-                                <button className="btn-close" title="Overwrites the existing matching accounts with the new data from the file." onClick={() => resolveImport('replace')}>
-                                    Replace Duplicates
-                                </button>
-                                <button className="btn-outline" title="Adds everything from the file, even if it creates duplicate entries in the table." onClick={() => resolveImport('all')}>
-                                    Add All Unconditionally
-                                </button>
+                                <button className="btn-launch" onClick={() => resolveImport('ignore')}>Ignore Duplicates</button>
+                                <button className="btn-close" onClick={() => resolveImport('replace')}>Replace Duplicates</button>
+                                <button className="btn-outline" onClick={() => resolveImport('all')}>Add All Unconditionally</button>
                             </div>
                         ) : (
                             <div className="modal-actions">
-                                <button className="btn-launch" title="Adds all the new accounts to your workspace." onClick={() => resolveImport('all')}>Confirm Import</button>
+                                <button className="btn-launch" onClick={() => resolveImport('all')}>Confirm Import</button>
                             </div>
                         )}
                     </div>
                 </div>
             )}
 
-            {/* Defaults Modal */}
-            {showDefaultsModal && (
-                <div className="modal-overlay" onClick={() => setShowDefaultsModal(false)}>
-                    <div className="modal-content relative" onClick={e => e.stopPropagation()}>
-                        <button className="modal-close-x" onClick={() => setShowDefaultsModal(false)}>✕</button>
-                        <div className="modal-header">
-                            <h3>Global Defaults Config</h3>
-                            <div className="toggle-wrapper" style={{ marginRight: '35px' }}>
-                                <span className="toggle-title">Auto Close</span>
-                                <label className="switch">
-                                    <input type="checkbox" checked={globalDefaults.autoClose} onChange={e => setGlobalDefaults({...globalDefaults, autoClose: e.target.checked})} />
-                                    <span className="slider"></span>
-                                </label>
-                            </div>
-                        </div>
-                        <div className="form-grid" style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '5px' }}>
-                            <div className="form-group"><label>Attempts per account</label><input type="number" min="1" value={globalDefaults.attempts} onChange={e => setGlobalDefaults({...globalDefaults, attempts: e.target.value})} /></div>
-                            
-                            {/* Structured Time Input for Defaults */}
-                            {(() => {
-                                const delayObj = parseDelayStr(globalDefaults.attemptDelay);
-                                const handleDelayChange = (field, val) => {
-                                    const newObj = { ...delayObj, [field]: parseInt(val) || 0 };
-                                    setGlobalDefaults({ ...globalDefaults, attemptDelay: formatDelayStr(newObj) });
-                                };
-                                return (
-                                    <div className="form-group">
-                                        <label>Time Between Attempts</label>
-                                        <div className="delay-inputs">
-                                            <div className="delay-field"><input type="number" min="0" value={delayObj.d} onChange={e => handleDelayChange('d', e.target.value)} /><label>Days</label></div>
-                                            <div className="delay-field"><input type="number" min="0" value={delayObj.h} onChange={e => handleDelayChange('h', e.target.value)} /><label>Hours</label></div>
-                                            <div className="delay-field"><input type="number" min="0" value={delayObj.m} onChange={e => handleDelayChange('m', e.target.value)} /><label>Mins</label></div>
-                                            <div className="delay-field"><input type="number" min="0" value={delayObj.s} onChange={e => handleDelayChange('s', e.target.value)} /><label>Secs</label></div>
-                                        </div>
-                                    </div>
-                                );
-                            })()}
-                            
-                            <div className="form-group">
-                                <label>Action Between Attempts</label>
-                                <select value={globalDefaults.attemptSeparator || 'Refresh Current Page'} onChange={e => setGlobalDefaults({...globalDefaults, attemptSeparator: e.target.value})}>
-                                    <option value="Refresh Current Page">Refresh Current Page</option>
-                                    <option value="Restart window">Restart window</option>
-                                    <option value="Log out and restart">Log out and restart</option>
-                                </select>
-                            </div>
-
-                            <div className="form-group"><label>Category Switches (Internal)</label><input type="number" min="1" value={globalDefaults.switches} onChange={e => setGlobalDefaults({...globalDefaults, switches: e.target.value})} /></div>
-                            <div className="form-group"><label>Switch Delay (ms)</label><input type="number" min="500" step="500" value={globalDefaults.switchDelay} onChange={e => setGlobalDefaults({...globalDefaults, switchDelay: e.target.value})} /></div>
-                            <hr style={{ borderColor: 'var(--border-color)', margin: '10px 0', opacity: 0.5 }} />
-                            <div className="form-group"><label>Default Country</label><input type="text" value={globalDefaults.country} onChange={e => setGlobalDefaults({...globalDefaults, country: e.target.value})} /></div>
-                            <div className="form-group"><label>Default City</label><input type="text" value={globalDefaults.city} onChange={e => setGlobalDefaults({...globalDefaults, city: e.target.value})} /></div>
-                            <div className="form-group"><label>Default Appointment Category</label><input type="text" value={globalDefaults.appointmentCategory} onChange={e => setGlobalDefaults({...globalDefaults, appointmentCategory: e.target.value})} /></div>
-                            <div className="form-group"><label>Default Sub Category</label><input type="text" value={globalDefaults.subCategory} onChange={e => setGlobalDefaults({...globalDefaults, subCategory: e.target.value})} /></div>
-                        </div>
-                        <div className="modal-actions" style={{ marginTop: '15px' }}><button className="btn-launch" onClick={() => setShowDefaultsModal(false)}>Done</button></div>
-                    </div>
-                </div>
-            )}
-
-            {/* Editor Modal */}
+            {/* Editor Modal / Hot-Batch */}
             {editingId && (
                 <div className="modal-overlay" onClick={cancelEdit}>
-                    <div className="modal-content relative" onClick={e => e.stopPropagation()}>
+                    <div className="modal-content relative" onClick={e => e.stopPropagation()} style={{ width: '600px' }}>
                         <button className="modal-close-x" onClick={cancelEdit}>✕</button>
                         <div className="modal-header">
-                            {/* Updated title structure removing the dynamic account email */}
-                            <h3>{editingId === 'NEW' ? 'Hot Batch New' : 'Hot Batch'}</h3>
-                            
+                            <h3>{editingId === 'NEW' ? 'New Target Instance' : 'Hot Batch Editor'}</h3>
                             <div className="header-toggles" style={{ display: 'flex', gap: '15px', marginRight: '35px' }}>
                                 <div className="toggle-wrapper">
                                     <span className="toggle-title">Auto Close</span>
@@ -3793,12 +3292,80 @@ export default function App() {
                                 </div>
                             </div>
                         </div>
-                        <div className="form-grid" style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: '5px' }}>
+                        
+                        <div className="form-grid" style={{ maxHeight: '68vh', overflowY: 'auto', paddingRight: '10px' }}>
+                            
+                            {/* SECTION 1 */}
+                            <div className="section-header">Section 1: Credential</div>
                             <div className="form-group"><label>Account Email</label><input type="text" value={editForm.account} onChange={e => setEditForm({...editForm, account: e.target.value})} /></div>
                             <div className="form-group"><label>Password</label><input type="text" value={editForm.password} onChange={e => setEditForm({...editForm, password: e.target.value})} /></div>
-                            <div className="form-group"><label>Attempts</label><input type="number" min="1" value={editForm.attempts || 1} onChange={e => setEditForm({...editForm, attempts: e.target.value})} /></div>
                             
-                            {/* Structured Time Input for Editor */}
+                            {/* SECTION 2 */}
+                            <div className="section-header">Section 2: Application Detailed</div>
+                            <div className="form-group"><label>Country</label><input type="text" value={editForm.country} onChange={e => setEditForm({...editForm, country: e.target.value})} /></div>
+                            <div className="form-group"><label>City</label><input type="text" value={editForm.city} onChange={e => setEditForm({...editForm, city: e.target.value})} /></div>
+                            <div className="form-group"><label>Appointment Category</label><input type="text" placeholder="e.g. Short Term Visa" value={editForm.appointmentCategory} onChange={e => setEditForm({...editForm, appointmentCategory: e.target.value})} /></div>
+                            <div className="form-group"><label>Sub Category</label><input type="text" placeholder="e.g. Tourism" value={editForm.subCategory} onChange={e => setEditForm({...editForm, subCategory: e.target.value})} /></div>
+
+                            {/* SECTION 3 */}
+                            <div className="section-header">Section 3: Your Detail Form</div>
+                            <div style={{display: 'flex', gap: '10px'}}>
+                                <div className="form-group" style={{flex: 1}}><label>First Name</label><input type="text" value={editForm.firstName || ''} onChange={e => setEditForm({...editForm, firstName: e.target.value})} /></div>
+                                <div className="form-group" style={{flex: 1}}><label>Last Name</label><input type="text" value={editForm.lastName || ''} onChange={e => setEditForm({...editForm, lastName: e.target.value})} /></div>
+                            </div>
+                            <div style={{display: 'flex', gap: '10px'}}>
+                                <div className="form-group" style={{flex: 1}}>
+                                    <label>Gender</label>
+                                    <select value={editForm.gender || 'Male'} onChange={e => setEditForm({...editForm, gender: e.target.value})}>
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                        <option value="Not Specified">Not Specified</option>
+                                        <option value="Others / Transgender">Others / Transgender</option>
+                                    </select>
+                                </div>
+                                <div className="form-group" style={{flex: 1}}>
+                                    <label>Current Nationality</label>
+                                    <select value={editForm.nationality || 'EGYPT'} onChange={e => setEditForm({...editForm, nationality: e.target.value})}>
+                                        {NATIONALITIES.map(n => <option key={n} value={n}>{n}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div style={{display: 'flex', gap: '10px'}}>
+                                <div className="form-group" style={{flex: 1}}><label>Passport Number</label><input type="text" value={editForm.passportNumber || ''} onChange={e => setEditForm({...editForm, passportNumber: e.target.value})} /></div>
+                                <div className="form-group" style={{flex: 1}}>
+                                    <label>Email Address</label>
+                                    <input type="text" value={editForm.email || editForm.account || ''} onChange={e => setEditForm({...editForm, email: e.target.value})} />
+                                </div>
+                            </div>
+                            <div style={{display: 'flex', gap: '10px'}}>
+                                <div className="form-group" style={{flex: 1}}>
+                                    <label>Date Of Birth (DD/MM/YYYY)</label>
+                                    <input type="text" 
+                                        className={!editForm.dateOfBirth ? 'input-invalid' : isDateValid(editForm.dateOfBirth) ? 'input-valid' : 'input-invalid'} 
+                                        placeholder="DD/MM/YYYY" 
+                                        value={editForm.dateOfBirth || ''} 
+                                        onChange={e => setEditForm({...editForm, dateOfBirth: e.target.value})} 
+                                    />
+                                </div>
+                                <div className="form-group" style={{flex: 1}}>
+                                    <label>Passport Expiry Date (DD/MM/YYYY)</label>
+                                    <input type="text" 
+                                        className={!editForm.passportExpiry ? 'input-invalid' : isDateValid(editForm.passportExpiry) ? 'input-valid' : 'input-invalid'} 
+                                        placeholder="DD/MM/YYYY" 
+                                        value={editForm.passportExpiry || ''} 
+                                        onChange={e => setEditForm({...editForm, passportExpiry: e.target.value})} 
+                                    />
+                                </div>
+                            </div>
+                            <div style={{display: 'flex', gap: '10px'}}>
+                                <div className="form-group" style={{width: '90px'}}><label>Dial Code</label><input type="text" value={editForm.dialCode || '20'} onChange={e => setEditForm({...editForm, dialCode: e.target.value})} /></div>
+                                <div className="form-group" style={{flex: 1}}><label>Contact Number</label><input type="text" value={editForm.contactNumber || ''} onChange={e => setEditForm({...editForm, contactNumber: e.target.value})} /></div>
+                            </div>
+
+                            {/* SECTION 4 */}
+                            <div className="section-header">Section 4: Configuration</div>
+                            <div className="form-group"><label>Total Bot Attempts</label><input type="number" min="1" value={editForm.attempts || 1} onChange={e => setEditForm({...editForm, attempts: e.target.value})} /></div>
+                            
                             {(() => {
                                 const delayObj = parseDelayStr(editForm.attemptDelay);
                                 const handleDelayChange = (field, val) => {
@@ -3807,7 +3374,7 @@ export default function App() {
                                 };
                                 return (
                                     <div className="form-group">
-                                        <label>Time Between Attempts</label>
+                                        <label>Delay Between Attempts (DD/HH/MM/SS)</label>
                                         <div className="delay-inputs">
                                             <div className="delay-field"><input type="number" min="0" value={delayObj.d} onChange={e => handleDelayChange('d', e.target.value)} /><label>Days</label></div>
                                             <div className="delay-field"><input type="number" min="0" value={delayObj.h} onChange={e => handleDelayChange('h', e.target.value)} /><label>Hours</label></div>
@@ -3826,17 +3393,15 @@ export default function App() {
                                     <option value="Log out and restart">Log out and restart</option>
                                 </select>
                             </div>
-
-                            <div className="form-group"><label>Category Switches (Internal)</label><input type="number" min="1" value={editForm.switches || 1} onChange={e => setEditForm({...editForm, switches: e.target.value})} /></div>
-                            <div className="form-group"><label>Switch Delay (ms)</label><input type="number" min="500" step="500" value={editForm.switchDelay || 3000} onChange={e => setEditForm({...editForm, switchDelay: e.target.value})} /></div>
-                            <hr style={{ borderColor: 'var(--border-color)', margin: '10px 0', opacity: 0.5 }} />
-                            <div className="form-group"><label>Country</label><input type="text" value={editForm.country} onChange={e => setEditForm({...editForm, country: e.target.value})} /></div>
-                            <div className="form-group"><label>City</label><input type="text" value={editForm.city} onChange={e => setEditForm({...editForm, city: e.target.value})} /></div>
-                            <div className="form-group"><label>Appointment Category</label><input type="text" value={editForm.appointmentCategory} onChange={e => setEditForm({...editForm, appointmentCategory: e.target.value})} /></div>
-                            <div className="form-group"><label>Sub Category</label><input type="text" value={editForm.subCategory} onChange={e => setEditForm({...editForm, subCategory: e.target.value})} /></div>
+                            
+                            <div style={{display: 'flex', gap: '10px'}}>
+                                <div className="form-group" style={{flex: 1}}><label>Category Switches (Internal)</label><input type="number" min="1" value={editForm.switches || 1} onChange={e => setEditForm({...editForm, switches: e.target.value})} /></div>
+                                <div className="form-group" style={{flex: 1}}><label>Switch Delay (ms)</label><input type="number" min="500" step="500" value={editForm.switchDelay || 3000} onChange={e => setEditForm({...editForm, switchDelay: e.target.value})} /></div>
+                            </div>
                         </div>
+                        
                         <div className="modal-actions" style={{ marginTop: '15px' }}>
-                            <button className="btn-launch" onClick={saveEdit}>Save Changes</button>
+                            <button className="btn-launch" onClick={saveEdit}>Save Configuration</button>
                         </div>
                     </div>
                 </div>

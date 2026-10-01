@@ -18,21 +18,46 @@ const allKeys = {
         "switches",
         "switchDelay",
         "autoClose",
-        "attemptSeparator"
+        "attemptSeparator",
+        "inputMethod",
+        // Your Details Form Fields
+        "firstName",
+        "lastName",
+        "gender",
+        "dateOfBirth",
+        "nationality",
+        "passportNumber",
+        "passportExpiry",
+        "dialCode",
+        "contactNumber",
+        "email"
     ],
     keyConv: {
         password: ["passwords", "pass", "pwd"], 
-        account: ["accounts", "email", "username"],
+        account: ["accounts", "username", "login email"],
         appointmentCategory: ["appointment category", "appointment_category", "appointment-category"],
-        city: ["cites"],
-        country: ["country's"],
+        city: ["cites", "application centre", "center", "centre"],
+        country: ["country's", "countrycode", "country code"],
         mode: ["headless", "visible", "execution mode", "execution_mode"],
         attempts: ["number of attempts", "retries", "attempt"],
         attemptDelay: ["attempt delay", "delay", "time between", "time between each attempt"],
         switches: ["switch", "switches", "number of switch", "sub category switch"],
         switchDelay: ["switch delay"],
         autoClose: ["auto close", "autoclose", "close after"],
-        attemptSeparator: ["separator", "attempt separator", "between attempts"]
+        attemptSeparator: ["separator", "attempt separator", "between attempts", "action between attempts"],
+        inputMethod: ["login typing", "input method", "fill mode"],
+        
+        // Your Details Aliases
+        firstName: ["first name", "given name", "firstname"],
+        lastName: ["last name", "surname", "lastname"],
+        dateOfBirth: ["dob", "date of birth", "birth date", "birthdate"],
+        passportExpiry: ["passport expiry", "expiry date", "passport expiry date", "passportexpirydate"],
+        contactNumber: ["phone", "phone number", "contact", "mobile", "contactnumber"],
+        dialCode: ["dial code", "dialcode", "phone code"],
+        nationality: ["current nationality", "nationality"],
+        gender: ["sex"],
+        passportNumber: ["passport", "passport no", "passport no."],
+        email: ["email address", "contact email", "email id", "email"]
     }
 };
 
@@ -43,13 +68,24 @@ const defaultBatchConfig = {
     appointmentCategory: "Short Term Visa",
     subCategory: "Tourism",
     attempts: 1,
-    attemptDelay: "00/00/05/00", // Default 5 minutes (dd/hh/mm/ss)
+    attemptDelay: "00/00/05/00", 
     switches: 1,
     switchDelay: 3000,
     autoClose: true,
-    attemptSeparator: "Sign Out",
-    fillMode: "typing", // typing | paste | fill | random — chosen in main window, applied to all accounts
-    typingMode: "typing"
+    attemptSeparator: "Refresh Current Page",
+    inputMethod: "fill",
+    
+    // Default Empty Profile
+    firstName: "",
+    lastName: "",
+    gender: "Male",
+    dateOfBirth: "",
+    nationality: "EGYPT",
+    passportNumber: "",
+    passportExpiry: "",
+    dialCode: "20",
+    contactNumber: "",
+    email: ""
 };
 
 const terminationCmds = ["exit", "\\q", "q"];
@@ -64,6 +100,7 @@ const actionsConfig = {
     signIn: { priority: 3, startDelay: 300, endDelay: 0 },
     dashboard: { priority: 4, startDelay: 2000, endDelay: 2000 },
     appointmentDetails: { priority: 5, startDelay: 1500, endDelay: 2000 },
+    yourDetails: { priority: 6, startDelay: 2000, endDelay: 2000 }, // Added Your Details Action Node
     default: { priority: 99, startDelay: 100, endDelay: 100 }
 };
 

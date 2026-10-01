@@ -62,7 +62,7 @@ const Selectors = {
         }
     },
 
-appointmentDetails: {
+    appointmentDetails: {
         centerDropdown: {
             elementType: "Container",
             selector: "mat-select[formcontrolname='centerCode']"
@@ -70,6 +70,17 @@ appointmentDetails: {
         alertBox: {
             elementType: "Container",
             selector: "div[role='alert']"
+        }
+    },
+
+    yourDetails: {
+        pageHeader: { 
+            elementType: "Heading", 
+            text: ["Your Details"] 
+        },
+        saveButton: { 
+            elementType: "Button", 
+            text: ["Save", "Continue"] 
         }
     }
 };

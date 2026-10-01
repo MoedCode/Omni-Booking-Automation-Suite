@@ -1,379 +1,242 @@
 /* Omni-Booking-Automation-Suite/VFS_Portugal/Browsers/injection.js */
 
-/**
- * Universal Selectors for Sign-in, Cookie banners, and Cloudflare Turnstile
- */
-export const signInSelectors = {
-  cookieAccept: [
-    '#onetrust-accept-btn-handler',
-    'button#onetrust-accept-btn-handler',
-    '//button[@id="onetrust-accept-btn-handler"]',
-    '#onetrust-banner-sdk button',
-  ],
-  cookieBanner: [
-    '#onetrust-banner-sdk',
-    'div[id="onetrust-consent-sdk"]',
-    '.onetrust-pc-dark-filter',
-  ],
-  email: [
-    'input#email',
-    'input[formcontrolname="username"]',
-    'input[placeholder="jane.doe@email.com"]',
-    'input[type="email"]',
-    'input[name="email"]',
-  ],
-  password: [
-    'input#password',
-    'input[formcontrolname="password"]',
-    'input[placeholder="**********"]',
-    'input[type="password"]',
-    'input[name="password"]',
-  ],
-  submit: [
-    'button[mat-stroked-button]',
-    'button.mat-mdc-outlined-button.btn-brand-orange',
-    'button[type="submit"]',
-    '//button[contains(., "Sign In")]',
-  ],
-  submitText: ['Sign In', 'Sign in', 'Log In'],
-  captchaContainer: [
-    'app-cloudflare-captcha-container',
-    'div[appcloudflarerecaptcha]',
-    'iframe[src*="challenges.cloudflare.com"]',
-  ],
-  captchaResponseInput: [
-    'input[name="cf-turnstile-response"]',
-    'input#cf-chl-widget-zbnd6_response',
-  ],
-};
+export const signInSelectors = {}; 
 
 /**
- * Core Sign-in Implementation
- * Runs inside the browser DOM context via page.evaluate() or window.chromeWorker.signin().
- * 
- * @param {{ account: string, email?: string, password: string, selectors?: object, inputMethod?: string }} config
- * @returns {Promise<{ ok: boolean, reason?: string, captcha?: string, method?: string }>}
+ * 1. Sign-In Form Filler 
  */
 export async function injectionSignIn(config = {}) {
-  const account = config.account || config.email || '';
-  const password = config.password || '';
-  const S = config.selectors || signInSelectors;
-  
-  let rawMethod = (config.inputMethod || config.fillMode || config.typingMode || 'fill').toLowerCase();
-  const validMethods = ['typing', 'paste', 'fill', 'random'];
-  if (!validMethods.includes(rawMethod)) rawMethod = 'fill';
+    const account = config.account || config.email || '';
+    const password = config.password || '';
+    let rawMethod = (config.inputMethod || 'fill').toLowerCase();
+    const validMethods = ['typing', 'paste', 'fill', 'random'];
+    if (!validMethods.includes(rawMethod)) rawMethod = 'fill';
 
-  // Resolve 'random' into an actual mode for this run
-  let method = rawMethod;
-  if (method === 'random') {
-    const pool = ['typing', 'paste', 'fill'];
-    method = pool[Math.floor(Math.random() * pool.length)];
-  }
+    let method = rawMethod;
+    if (method === 'random') {
+        method = ['typing', 'paste', 'fill'][Math.floor(Math.random() * 3)];
+    }
 
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const randomDelay = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-
-  const getFirstVisible = (selectors) => {
-    const list = Array.isArray(selectors) ? selectors : [selectors];
-    for (const sel of list) {
-      if (!sel) continue;
-      let el = null;
-      try {
-        if (sel.startsWith('//')) {
-          el = document.evaluate(sel, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-        } else {
-          el = document.querySelector(sel);
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const randomDelay = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+    
+    const getXPath = (xpath) => {
+        const iter = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+        let node;
+        while ((node = iter.iterateNext())) {
+            const style = window.getComputedStyle(node);
+            if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && node.offsetHeight > 0) {
+                return node;
+            }
         }
-      } catch {
-        continue;
-      }
-      if (!el) continue;
-      const style = window.getComputedStyle(el);
-      if (style.display === 'none' || style.visibility === 'hidden' || el.offsetHeight === 0) continue;
-      return el;
-    }
-    return null;
-  };
+        return null;
+    };
 
-  // --- 1. ACCEPT COOKIES ---
-  try {
-    const acceptBtn = getFirstVisible(S.cookieAccept || []);
-    if (acceptBtn) {
-      acceptBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
-      acceptBtn.click();
-      await sleep(800);
-    } else {
-      const labels = ['accept all cookies', 'accept all', 'accept'];
-      const buttons = Array.from(document.querySelectorAll('button, a[role="button"]'));
-      const textMatch = buttons.find((btn) => {
-        const text = (btn.innerText || btn.textContent || '').trim().toLowerCase();
-        return labels.includes(text) && btn.offsetHeight > 0;
-      });
-      if (textMatch) {
-        textMatch.click();
-        await sleep(800);
-      }
-    }
-  } catch {
-    // Cookie banner failure is non-fatal
-  }
-
-  // --- 2. CLOUDFLARE CAPTCHA INSPECTION ---
-  let captchaState = 'absent';
-  try {
-    const containers = S.captchaContainer || [];
-    const hasContainer = containers.some((sel) => {
-      try {
-        return !!document.querySelector(sel);
-      } catch {
-        return false;
-      }
-    });
-
-    const tokenSelectors = S.captchaResponseInput || [];
-    let token = '';
-    for (const sel of tokenSelectors) {
-      try {
-        const inp = document.querySelector(sel);
-        if (inp && inp.value && inp.value.trim().length > 20) {
-          token = inp.value;
-          break;
-        }
-      } catch {
-        // Ignore evaluation errors
-      }
-    }
-
-    if (hasContainer) {
-      captchaState = token ? 'solved' : 'pending';
-      if (!token) {
-        const cfFrame = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
-        const holder = cfFrame ? (cfFrame.closest('div') || cfFrame) : getFirstVisible(containers);
-        if (holder && holder.scrollIntoView) {
-          holder.scrollIntoView({ behavior: 'instant', block: 'center' });
-        }
-      }
-    }
-  } catch {
-    // Captcha detection failure is non-fatal
-  }
-
-  // --- 3. INPUT DISPATCHING & FORM FILLING ---
-  const fireInputEvents = (el) => {
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    el.dispatchEvent(new Event('blur', { bubbles: true }));
-    el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-    el.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
-  };
-
-  const setNativeValue = (el, value) => {
-    const proto = el.tagName === 'TEXTAREA'
-      ? window.HTMLTextAreaElement.prototype
-      : window.HTMLInputElement.prototype;
-    const desc = Object.getOwnPropertyDescriptor(proto, 'value');
-    if (desc && desc.set) {
-      desc.set.call(el, value);
-    } else {
-      el.value = value;
-    }
-    fireInputEvents(el);
-  };
-
-  // Mode A: Letter-by-letter with human cadence
-  const applyTyping = async (el, value) => {
-    el.focus();
-    el.click();
-    setNativeValue(el, '');
-
-    for (const char of value) {
-      el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
-      el.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
-      setNativeValue(el, (el.value || '') + char);
-      el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
-      await sleep(randomDelay(40, 120));
-    }
-    fireInputEvents(el);
-  };
-
-  // Mode B: Simulate native clipboard paste
-  const applyPaste = async (el, value) => {
-    el.focus();
-    el.click();
-    setNativeValue(el, '');
-
+    // Cookies
     try {
-      const dt = new DataTransfer();
-      dt.setData('text/plain', value);
-      const pasteEvent = new ClipboardEvent('paste', {
-        bubbles: true,
-        cancelable: true,
-        clipboardData: dt,
-      });
-      const handled = el.dispatchEvent(pasteEvent);
-      if (handled) {
-        setNativeValue(el, value);
-      }
-    } catch {
-      setNativeValue(el, value);
-    }
-    await sleep(60);
-    fireInputEvents(el);
-  };
+        const cookieBtn = getXPath('//button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "accept all")]');
+        if (cookieBtn) {
+            cookieBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+            cookieBtn.click();
+            await sleep(800);
+        }
+    } catch (e) {}
 
-  // Mode C: Instantaneous framework fill
-  const applyFill = async (el, value) => {
-    el.focus();
-    setNativeValue(el, '');
-    setNativeValue(el, value);
-    await sleep(50);
-  };
+    // Cloudflare Challenge
+    let captchaState = 'absent';
+    try {
+        const cfFrame = getXPath('//iframe[contains(@src, "challenges.cloudflare.com")]');
+        if (cfFrame) {
+            const token = document.evaluate('//input[@name="cf-turnstile-response" or contains(@name, "response")]', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+            if (token && token.value && token.value.trim().length > 20) {
+                captchaState = 'solved';
+            } else {
+                captchaState = 'pending';
+                if (cfFrame.scrollIntoView) cfFrame.scrollIntoView({ behavior: 'instant', block: 'center' });
+            }
+        }
+    } catch (e) {}
 
-  const dispatchInput = async (el, value) => {
-    if (method === 'typing') return applyTyping(el, value);
-    if (method === 'paste') return applyPaste(el, value);
-    return applyFill(el, value);
-  };
+    const emailEl = getXPath('//input[@type="email" or contains(@name, "email") or contains(@placeholder, "email")] | //label[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "email")]/following::input[1]');
+    const passEl = getXPath('//input[@type="password"] | //label[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "password")]/following::input[1]');
 
-  const emailEl = getFirstVisible(S.email || []);
-  const passEl = getFirstVisible(S.password || []);
+    if (!emailEl) return { ok: false, reason: 'email-input-not-found', captcha: captchaState, method };
+    if (!passEl) return { ok: false, reason: 'password-input-not-found', captcha: captchaState, method };
 
-  if (!emailEl) return { ok: false, reason: 'email-input-not-found', captcha: captchaState, method };
-  if (!passEl) return { ok: false, reason: 'password-input-not-found', captcha: captchaState, method };
+    const dispatchInput = async (el, val) => {
+        if (!el || !val) return;
+        el.focus();
+        el.click();
+        
+        const proto = window.HTMLInputElement.prototype;
+        const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+        if (desc && desc.set) desc.set.call(el, '');
+        else el.value = '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
 
-  emailEl.scrollIntoView({ behavior: 'instant', block: 'center' });
-  await dispatchInput(emailEl, account);
-  await sleep(randomDelay(150, 350));
+        if (method === 'typing') {
+            for (const char of val) {
+                el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+                el.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
+                if (desc && desc.set) desc.set.call(el, el.value + char);
+                else el.value += char;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+                await sleep(randomDelay(40, 120));
+            }
+        } else if (method === 'paste') {
+            try {
+                const dt = new DataTransfer();
+                dt.setData('text/plain', val);
+                el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
+            } catch(e) {}
+            if (desc && desc.set) desc.set.call(el, val);
+            else el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            await sleep(50);
+        } else { // fill (browser)
+            if (desc && desc.set) desc.set.call(el, val);
+            else el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            await sleep(20);
+        }
+        
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
+    };
 
-  passEl.scrollIntoView({ behavior: 'instant', block: 'center' });
-  await dispatchInput(passEl, password);
-  await sleep(randomDelay(200, 400));
+    await dispatchInput(emailEl, account);
+    await sleep(randomDelay(150, 350));
+    await dispatchInput(passEl, password);
+    await sleep(randomDelay(200, 400));
 
-  // Verify inputs were retained by Angular change detection
-  const isCorrect = (el, expected) => (el.value || '') === expected;
-  if (!isCorrect(emailEl, account) || !isCorrect(passEl, password)) {
-    setNativeValue(emailEl, account);
-    setNativeValue(passEl, password);
-    if (!isCorrect(emailEl, account) || !isCorrect(passEl, password)) {
-      return { ok: false, reason: 'validation-failed', captcha: captchaState, method };
-    }
-  }
+    const submitBtn = getXPath('//button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "sign in") or contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "log in")] | //button[@type="submit"]');
+    
+    if (!submitBtn) return { ok: false, reason: 'submit-button-not-found', captcha: captchaState, method };
 
-  // --- 4. SUBMIT FORM ---
-  let submitBtn = getFirstVisible(S.submit || []);
-  if (!submitBtn) {
-    const candidates = (S.submitText || []).map((t) => t.toLowerCase());
-    const allButtons = Array.from(document.querySelectorAll('button, input[type="submit"]'));
-    submitBtn = allButtons.find((btn) => {
-      const text = ((btn.innerText || btn.textContent || btn.value) || '').trim().toLowerCase();
-      return candidates.some((c) => text.includes(c)) && btn.offsetHeight > 0;
-    }) || null;
-  }
+    submitBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+    await sleep(300);
 
-  if (!submitBtn) {
-    return { ok: false, reason: 'submit-button-not-found', captcha: captchaState, method };
-  }
-
-  submitBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
-  await sleep(300);
-
-  if (!submitBtn.disabled) {
+    submitBtn.removeAttribute('disabled');
     submitBtn.click();
+    
     return { ok: true, captcha: captchaState, method };
-  }
-
-  return { ok: false, reason: 'submit-button-disabled', captcha: captchaState, method };
 }
 
-// Global aliases for DOM-level execution
-export const signin = injectionSignIn;
-
 /**
- * Self-executing Browser Automation Runtime
- * Attaches methods to window.chromeWorker and manages title/DOM automation.
+ * 2. Your Details Form Filler 
+ * Uses Advanced Semantic "Deep-Node" locating to find inputs strictly by text labels.
  */
-(function initializeInjectionRuntime() {
-  if (typeof window === 'undefined') return;
+export async function fillYourDetails(data = {}) {
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    
+    let method = (data.inputMethod || 'fill').toLowerCase();
+    if (method === 'random') method = ['typing', 'paste', 'fill'][Math.floor(Math.random() * 3)];
 
-  // Expose methods on window.chromeWorker for DOM callers
-  window.chromeWorker = window.chromeWorker || {};
-  window.chromeWorker.signin = injectionSignIn;
-  window.chromeWorker.sginin = injectionSignIn;
-
-  if (window.__VFS_BOT_INJECTED__) return;
-  window.__VFS_BOT_INJECTED__ = true;
-
-  const config = window.BOT_CONFIG || {};
-
-  // Module 1: Continuous Page Title Modifier
-  const updateTitle = () => {
-    const prefix = `[${config.account || 'BOT'}] `;
-    if (document.title && !document.title.startsWith(prefix)) {
-      document.title = prefix + document.title.replace(/^\[.*?\]\s*/, '');
-    }
-  };
-
-  const titleEl = document.querySelector('title');
-  if (titleEl) {
-    new MutationObserver(updateTitle).observe(titleEl, { childList: true, characterData: true, subtree: true });
-  }
-  setInterval(updateTitle, 1000);
-
-  // Module 2: Background Angular DOM Automator
-  setInterval(() => {
-    // View A: Dashboard
-    const startBtn = Array.from(document.querySelectorAll('button')).find(
-      (b) => b.innerText && b.innerText.includes('Start New Booking')
-    );
-    if (startBtn && !startBtn.disabled && window.getComputedStyle(startBtn).display !== 'none') {
-      startBtn.click();
-    }
-
-    // View B: Appointment Details Stepper Dropdowns
-    const header = document.querySelector('h1');
-    if (header && header.innerText.includes('Appointment Details')) {
-      const selectDropdown = (formControlName, targetText) => {
-        if (!targetText) return false;
-        const trigger = document.querySelector(`mat-select[formcontrolname="${formControlName}"]`);
-        if (!trigger) return false;
-
-        const valueSpan = trigger.querySelector('.mat-mdc-select-value-text');
-        const currentValue = valueSpan ? valueSpan.innerText : '';
-        if (currentValue.toLowerCase().includes(targetText.toLowerCase())) {
-          return true;
-        }
-
-        const panelId = trigger.getAttribute('aria-controls');
-        const panel = document.getElementById(panelId);
-        if (!panel) {
-          trigger.click();
-        } else {
-          const options = Array.from(panel.querySelectorAll('mat-option'));
-          const targetOpt = options.find((opt) => opt.innerText.toLowerCase().includes(targetText.toLowerCase()));
-          if (targetOpt) {
-            targetOpt.click();
-          }
-        }
-        return false;
-      };
-
-      const isCenterDone = selectDropdown('centerCode', config.city);
-      if (isCenterDone) {
-        const isCatDone = selectDropdown('selectedSubvisaCategory', config.appointmentCategory);
-        if (isCatDone) {
-          const isSubCatDone = selectDropdown('visaCategoryCode', config.subCategory);
-          if (isSubCatDone) {
-            const continueBtn = Array.from(document.querySelectorAll('button')).find(
-              (b) => b.innerText && b.innerText.includes('Continue')
-            );
-            if (continueBtn && !continueBtn.disabled) {
-              continueBtn.click();
+    const getXPath = (xpath) => {
+        const iter = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+        let node;
+        while ((node = iter.iterateNext())) {
+            const style = window.getComputedStyle(node);
+            if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && node.offsetHeight > 0) {
+                return node;
             }
-          }
         }
-      }
-    }
-  }, 1500);
-})();
+        return null;
+    };
 
-export default { signInSelectors, injectionSignIn, signin };
+    // Semantic Finder: Looks for any label/div containing the text, then hops to the requested input/select tag.
+    const getField = (labelText, tag = 'input', idx = 1) => {
+        const lower = labelText.toLowerCase();
+        return getXPath(`(//label[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${lower}')]/following::${tag} | //div[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${lower}')]/following::${tag} | //${tag}[contains(translate(@placeholder, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${lower}')])[${idx}]`);
+    };
+
+    const dispatchInput = async (el, val) => {
+        if (!el || !val) return;
+        el.focus();
+        el.click();
+        
+        const proto = window.HTMLInputElement.prototype;
+        const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+        if (desc && desc.set) desc.set.call(el, '');
+        else el.value = '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+
+        if (method === 'typing') {
+            for (const char of val) {
+                el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+                el.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
+                if (desc && desc.set) desc.set.call(el, el.value + char);
+                else el.value += char;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+                await sleep(Math.floor(Math.random() * (120 - 40 + 1)) + 40);
+            }
+        } else if (method === 'paste') {
+            try {
+                const dt = new DataTransfer();
+                dt.setData('text/plain', val);
+                el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
+            } catch(e) {}
+            if (desc && desc.set) desc.set.call(el, val);
+            else el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            await sleep(50);
+        } else { // fill (browser)
+            if (desc && desc.set) desc.set.call(el, val);
+            else el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            await sleep(20);
+        }
+        
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
+        
+        // Force dismissal of datepicker if it popped up
+        document.body.click(); 
+    };
+
+    const selectDropdown = async (labelText, targetValue) => {
+        if (!targetValue) return;
+        const trigger = getField(labelText, 'mat-select');
+        
+        if (!trigger) return;
+        if (trigger.textContent.toLowerCase().includes(targetValue.toLowerCase())) return;
+
+        trigger.click();
+        await sleep(600);
+
+        const panel = getXPath(`//div[@role='listbox']`);
+        if (panel) {
+            const optXpath = `.//mat-option//*[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${targetValue.toLowerCase()}')]`;
+            const opt = document.evaluate(optXpath, panel, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+            
+            if (opt) opt.click();
+            else document.body.click(); 
+            
+            await sleep(500);
+        }
+    };
+
+    try {
+        await dispatchInput(getField('first name', 'input'), data.firstName);
+        await dispatchInput(getField('last name', 'input'), data.lastName);
+        await dispatchInput(getField('passport number', 'input'), data.passportNumber);
+        await dispatchInput(getField('email', 'input'), data.email || data.account);
+        
+        // Contact number uses index to jump to the right input fields (1 for Code, 2 for Phone)
+        await dispatchInput(getField('contact number', 'input', 1), data.dialCode);
+        await dispatchInput(getField('contact number', 'input', 2), data.contactNumber);
+
+        // Date Pickers populated directly to avoid calendar overhead
+        await dispatchInput(getField('date of birth', 'input'), data.dateOfBirth);
+        await dispatchInput(getField('passport expiry', 'input'), data.passportExpiry);
+
+        await selectDropdown('gender', data.gender);
+        await selectDropdown('current nationality', data.nationality);
+
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+}
