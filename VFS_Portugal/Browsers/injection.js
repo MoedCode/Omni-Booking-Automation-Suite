@@ -124,31 +124,40 @@ export async function injectionSignIn(config = {}) {
 }
 
 /**
- * 2. Your Details Form Filler (rewritten)
+ * 2. Your Details Form Filler
  *
  * Runs inside page.evaluate(fillYourDetails, data) so EVERYTHING must live inside this function.
  *
- * Fixes vs. the old version:
- *  - waits for the form + Angular loader before touching anything
- *  - label lookup uses the label's OWN text (no giant ancestor <div> matches)
- *  - dropdowns: exact option match ("Male" never matches "Female"), opens .mat-mdc-select-trigger,
- *    waits for the overlay panel, verifies the selected value afterwards
- *  - dates: normalized to data.dateFormat (default DD/MM/YYYY) and validated; ng-invalid is checked
- *  - dial code / phone are cleaned to digits
- *  - NO silent failures: returns { success, filled, missing, empty, invalid, mismatched }
+ * - Fields are filled in the same top-to-bottom order a person would use, with a RANDOM pause
+ *   (data.fieldDelayMin..fieldDelayMax ms, default 400..1500) after every field, plus an occasional
+ *   longer "thinking" pause. Typing speed per character is random as well.
+ * - Fields that already hold the right value are skipped (a retry only touches what failed).
+ * - Dates accept DD/MM/YYYY, D/M/YY, YYYY-MM-DD ... and are written as data.dateFormat (default DD/MM/YYYY).
+ * - Returns { success, filled, missing, empty, invalid, mismatched } - never fails silently.
  *
- * Expected data keys: firstName, lastName, gender, dateOfBirth, nationality, passportNumber,
- * passportExpiry, dialCode, contactNumber, email|account, inputMethod, dateFormat (optional).
+ * Data keys: firstName, lastName, gender, dateOfBirth, nationality, passportNumber, passportExpiry,
+ * dialCode, contactNumber, email|account, inputMethod, dateFormat, dateOrder ('DMY' | 'MDY'),
+ * fieldDelayMin, fieldDelayMax.
  */
 export async function fillYourDetails(data = {}) {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
     const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-    let method = String(data.inputMethod || 'fill').toLowerCase();
-    if (!['typing', 'paste', 'fill', 'random'].includes(method)) method = 'fill';
-    if (method === 'random') method = ['typing', 'paste', 'fill'][Math.floor(Math.random() * 3)];
+    let baseMethod = String(data.inputMethod || 'fill').toLowerCase();
+    if (!['typing', 'paste', 'fill', 'random'].includes(baseMethod)) baseMethod = 'fill';
+    const pickMethod = () => (baseMethod === 'random' ? ['typing', 'paste', 'fill'][rand(0, 2)] : baseMethod);
 
     const dateFormat = String(data.dateFormat || 'DD/MM/YYYY').toUpperCase();
+    const dateOrder = String(data.dateOrder || 'DMY').toUpperCase();
+
+    const delayMin = Math.max(0, parseInt(data.fieldDelayMin, 10) || 400);
+    const delayMax = Math.max(delayMin, parseInt(data.fieldDelayMax, 10) || 1500);
+    const humanPause = async () => {
+        let ms = rand(delayMin, delayMax);
+        if (Math.random() < 0.15) ms += rand(400, 1200); // occasional "thinking" pause
+        await sleep(ms);
+    };
 
     const report = { filled: [], missing: [], empty: [], invalid: [], mismatched: [] };
 
@@ -192,7 +201,6 @@ export async function fillYourDetails(data = {}) {
             );
             if (after[idx - 1]) return after[idx - 1];
         }
-        // Fallback: placeholder text
         const t = norm(labelText);
         const byPlaceholder = all.filter(el => norm(el.getAttribute('placeholder')).includes(t));
         return byPlaceholder[idx - 1] || null;
@@ -205,13 +213,30 @@ export async function fillYourDetails(data = {}) {
     };
     const fire = (el, type) => el.dispatchEvent(new Event(type, { bubbles: true }));
 
-    // Accepts DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, YYYY-MM-DD, YYYY/MM/DD -> returns string in dateFormat, or null
-    const normalizeDate = (raw) => {
+    /**
+     * Turns many date spellings into data.dateFormat. Returns null if it cannot be understood.
+     *  - 4-digit year first (YYYY-MM-DD) is unambiguous
+     *  - 2-digit years are expanded: DOB  -> 89 = 1989, 05 = 2005 ; expiry -> always 20xx
+     *  - if one part is > 12 the day/month order is inferred, otherwise data.dateOrder (default DMY) is used
+     */
+    const normalizeDate = (raw, kind) => {
         const s = String(raw ?? '').trim();
         let d, m, y, mt;
-        if ((mt = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/))) { y = +mt[1]; m = +mt[2]; d = +mt[3]; }
-        else if ((mt = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})$/))) { d = +mt[1]; m = +mt[2]; y = +mt[3]; }
-        else return null;
+        if ((mt = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/))) {
+            y = +mt[1]; m = +mt[2]; d = +mt[3];
+        } else if ((mt = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2}|\d{4})$/))) {
+            let a = +mt[1], b = +mt[2];
+            y = +mt[3];
+            if (mt[3].length === 2) {
+                const cur = new Date().getFullYear() % 100;
+                if (kind === 'dob') y += (y <= cur ? 2000 : 1900);
+                else y += 2000;
+            }
+            if (a > 12 && b <= 12) { d = a; m = b; }
+            else if (b > 12 && a <= 12) { m = a; d = b; }
+            else if (dateOrder === 'MDY') { m = a; d = b; }
+            else { d = a; m = b; }
+        } else return null;
         const probe = new Date(y, m - 1, d);
         if (probe.getFullYear() !== y || probe.getMonth() !== m - 1 || probe.getDate() !== d) return null;
         const dd = String(d).padStart(2, '0');
@@ -225,9 +250,17 @@ export async function fillYourDetails(data = {}) {
         if (!val) { report.empty.push(key); return false; }
         if (!el) { report.missing.push(key); return false; }
 
+        // Already correct (e.g. on a retry): leave it alone
+        if (norm(el.value) === norm(val) && !el.classList.contains('ng-invalid')) {
+            report.filled.push(key);
+            return true;
+        }
+
+        const method = pickMethod();
         el.scrollIntoView({ behavior: 'instant', block: 'center' });
         el.focus();
         el.click();
+        await sleep(rand(80, 250));
 
         setNativeValue(el, '');
         fire(el, 'input');
@@ -239,7 +272,7 @@ export async function fillYourDetails(data = {}) {
                 setNativeValue(el, el.value + char);
                 fire(el, 'input');
                 el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
-                await sleep(Math.floor(Math.random() * 81) + 40);
+                await sleep(rand(40, 140));
             }
         } else if (method === 'paste') {
             try {
@@ -249,31 +282,36 @@ export async function fillYourDetails(data = {}) {
             } catch (e) {}
             setNativeValue(el, val);
             fire(el, 'input');
-            await sleep(50);
+            await sleep(rand(30, 90));
         } else { // fill
             setNativeValue(el, val);
             fire(el, 'input');
-            await sleep(20);
+            await sleep(rand(20, 60));
         }
 
         fire(el, 'change');
         fire(el, 'blur');
         el.blur();
-        if (isDate) document.body.click(); // dismiss the ngb datepicker popup if it opened
+        if (isDate) {
+            document.body.click(); // dismiss the ngb datepicker popup if it opened
+            await sleep(250);
+        } else {
+            await sleep(120);
+        }
 
-        await sleep(isDate ? 300 : 150);
-
-        // Verify (case-insensitive: the page forces upper-case on many inputs)
+        let ok = true;
         if (norm(el.value) !== norm(val)) {
             report.mismatched.push(`${key} (wanted "${val}", got "${el.value}")`);
-            return false;
-        }
-        if (el.classList.contains('ng-invalid')) {
+            ok = false;
+        } else if (el.classList.contains('ng-invalid')) {
             report.invalid.push(key);
-            return false;
+            ok = false;
+        } else {
+            report.filled.push(key);
         }
-        report.filled.push(key);
-        return true;
+
+        await humanPause(); // random gap before the next field
+        return ok;
     };
 
     const selectDropdown = async (labelText, rawTarget, key) => {
@@ -287,9 +325,9 @@ export async function fillYourDetails(data = {}) {
         if (readValue() === target) { report.filled.push(key); return true; }
 
         trigger.scrollIntoView({ behavior: 'instant', block: 'center' });
+        await sleep(rand(80, 250));
         (trigger.querySelector('.mat-mdc-select-trigger') || trigger).click();
 
-        // Wait for the overlay panel
         let panel = null;
         for (let i = 0; i < 20 && !panel; i++) {
             await sleep(150);
@@ -300,12 +338,13 @@ export async function fillYourDetails(data = {}) {
         }
         if (!panel) { report.missing.push(`${key} (dropdown did not open)`); return false; }
 
+        await sleep(rand(250, 600)); // "looking" at the list
         const options = Array.from(panel.querySelectorAll('mat-option'));
         let opt = options.find(o => norm(o.textContent) === target)
             || options.find(o => norm(o.textContent).startsWith(target));
         if (!opt) {
             const partial = options.filter(o => norm(o.textContent).includes(target));
-            if (partial.length === 1) opt = partial[0]; // only accept an unambiguous partial match
+            if (partial.length === 1) opt = partial[0];
         }
 
         if (!opt) {
@@ -319,12 +358,15 @@ export async function fillYourDetails(data = {}) {
         opt.click();
         await sleep(500);
 
+        let ok = true;
         if (readValue() !== norm(opt.textContent)) {
             report.mismatched.push(`${key} (wanted "${rawTarget}", got "${readValue()}")`);
-            return false;
+            ok = false;
+        } else {
+            report.filled.push(key);
         }
-        report.filled.push(key);
-        return true;
+        await humanPause();
+        return ok;
     };
 
     // ---------- main ----------
@@ -336,9 +378,8 @@ export async function fillYourDetails(data = {}) {
             const l = document.querySelector('ngx-ui-loader .ngx-overlay');
             return !l || !isVisible(l);
         }, 15000);
-        await sleep(300);
+        await sleep(rand(300, 900));
 
-        // Clean inputs
         const digits = (v) => String(v ?? '').replace(/\D/g, '');
         const dialCode = digits(data.dialCode).slice(0, 3);
         const phone = digits(data.contactNumber);
@@ -346,33 +387,32 @@ export async function fillYourDetails(data = {}) {
         const genderAliases = { m: 'male', f: 'female', 'ذكر': 'male', 'أنثى': 'female', 'انثى': 'female' };
         const gender = genderAliases[norm(data.gender)] || data.gender;
 
-        const dob = data.dateOfBirth ? normalizeDate(data.dateOfBirth) : '';
-        const expiry = data.passportExpiry ? normalizeDate(data.passportExpiry) : '';
+        const dob = data.dateOfBirth ? normalizeDate(data.dateOfBirth, 'dob') : '';
+        const expiry = data.passportExpiry ? normalizeDate(data.passportExpiry, 'expiry') : '';
         if (data.dateOfBirth && !dob) report.invalid.push(`dateOfBirth (unrecognized date "${data.dateOfBirth}")`);
         if (data.passportExpiry && !expiry) report.invalid.push(`passportExpiry (unrecognized date "${data.passportExpiry}")`);
 
+        const dobEl = () => document.querySelector('#dateOfBirth') || getField('date of birth', 'input');
+        const expiryEl = () => getField('passport expiry date', 'input') || getField('passport expiry', 'input');
+
+        // Same order as the page, top to bottom
         await dispatchInput(getField('first name', 'input'), data.firstName, 'firstName');
         await dispatchInput(getField('last name', 'input'), data.lastName, 'lastName');
+        await selectDropdown('gender', gender, 'gender');
+
+        if (dob) await dispatchInput(dobEl(), dob, 'dateOfBirth', true);
+        else if (!data.dateOfBirth) report.empty.push('dateOfBirth');
+
+        await selectDropdown('current nationality', data.nationality, 'nationality');
         await dispatchInput(getField('passport number', 'input'), data.passportNumber, 'passportNumber');
+
+        if (expiry) await dispatchInput(expiryEl(), expiry, 'passportExpiry', true);
+        else if (!data.passportExpiry) report.empty.push('passportExpiry');
 
         // Contact number: 1st input = dial code, 2nd input = phone
         await dispatchInput(getField('contact number', 'input', 1), dialCode, 'dialCode');
         await dispatchInput(getField('contact number', 'input', 2), phone, 'contactNumber');
-
         await dispatchInput(getField('email', 'input'), data.email || data.account, 'email');
-
-        // Dates (skipped if the date itself was invalid; already reported above)
-        if (dob) {
-            await dispatchInput(document.querySelector('#dateOfBirth') || getField('date of birth', 'input'), dob, 'dateOfBirth', true);
-        } else if (!data.dateOfBirth) report.empty.push('dateOfBirth');
-
-        if (expiry) {
-            await dispatchInput(getField('passport expiry date', 'input') || getField('passport expiry', 'input'), expiry, 'passportExpiry', true);
-        } else if (!data.passportExpiry) report.empty.push('passportExpiry');
-
-        // Dropdowns
-        await selectDropdown('gender', gender, 'gender');
-        await selectDropdown('current nationality', data.nationality, 'nationality');
 
         const success = !report.missing.length && !report.empty.length
             && !report.invalid.length && !report.mismatched.length;

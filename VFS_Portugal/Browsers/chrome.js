@@ -18,6 +18,8 @@ const __dirname = path.dirname(__filename);
 const rl = readline.createInterface({ input, output });
 puppeteer.use(StealthPlugin());
 
+const rnd = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
 export class ChromeWorker extends BaseBrowser {
     constructor({ headless = false, targetUrl = EgPtrLoginURL, email, password, instanceData, inputMethod } = {}) {
         super();
@@ -103,10 +105,15 @@ export class ChromeWorker extends BaseBrowser {
                 endDelay: actionsConfig.appointmentDetails.endDelay,
                 dependencies: ['dashboard'],
                 method: async () => {
-                    // Already succeeded: Continue was clicked, just wait for the router to reach Your Details.
+                    // Already succeeded: Continue was clicked, wait for the router to reach Your Details.
+                    // If the page is still here after 20s, forget the success and run the check again.
                     if (this.completedActivities.has('appointmentDetails')) {
-                        await new Promise(r => setTimeout(r, 500));
-                        return;
+                        if (Date.now() - (this.appointmentCompletedAt || 0) < 20000) {
+                            await new Promise(r => setTimeout(r, 500));
+                            return;
+                        }
+                        this.completedActivities.delete('appointmentDetails');
+                        this.logWarning("appointmentDetails", "Still on Appointment Details 20s after Continue - checking again.");
                     }
 
                     let isAvailable = false;
@@ -170,6 +177,7 @@ export class ChromeWorker extends BaseBrowser {
 
                     if (isAvailable) {
                         this.completedActivities.add('appointmentDetails');
+                        this.appointmentCompletedAt = Date.now();
                         this.logStatus(`[Success] 🚨 TARGET AVAILABLE! Bringing browser window on-screen...`);
                         
                         // Dynamically pull the browser onto the screen if it was running headlessly
@@ -245,61 +253,84 @@ export class ChromeWorker extends BaseBrowser {
                 priority: actionsConfig.yourDetails.priority,
                 startDelay: actionsConfig.yourDetails.startDelay,
                 endDelay: actionsConfig.yourDetails.endDelay,
-                dependencies: ['appointmentDetails'],
+                dependencies: [], // the page itself proves we are at this stage, so a refresh can never block it
                 method: async () => {
-                    if (this.completedActivities.has('yourDetails')) return;
+                    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                    const st = await this.getYourDetailsState();
+                    if (!st.present) { await sleep(400); return; }
 
-                    this.logStatus("[Your Details] Waiting for the form to be ready...");
-                    try {
-                        await this.page.waitForSelector('#dateOfBirth', { visible: true, timeout: 20000 });
-                    } catch (e) {
-                        this.logWarning("yourDetails", "Form did not appear in time; will retry on the next scan.");
+                    const autoSave = this.instanceData.autoSave === undefined
+                        ? true
+                        : (this.instanceData.autoSave === true || String(this.instanceData.autoSave).toLowerCase() === 'true');
+
+                    const filled = st.invalid === 0 && (st.fillOk || st.empty === 0);
+
+                    // ---------- 1) FILL (also runs again after a refresh: the new form is empty) ----------
+                    if (!filled) {
+                        if (st.fillTries >= 3) {
+                            if (!st.warnFill) {
+                                this.logWarning("yourDetails", "Could not complete the form after 3 tries - please finish it manually.");
+                                await this.setYourDetailsFlag({ warnFill: true });
+                            }
+                            await sleep(3000);
+                            return;
+                        }
+
+                        await this.page.waitForFunction(() => {
+                            const l = document.querySelector('ngx-ui-loader .ngx-overlay');
+                            return !l || l.offsetHeight === 0 || window.getComputedStyle(l).display === 'none';
+                        }, { timeout: 15000 }).catch(() => {});
+
+                        await this.setYourDetailsFlag({ fillTries: st.fillTries + 1 });
+                        this.logStatus(`[Your Details] Filling form (try ${st.fillTries + 1}/3)...`);
+
+                        const payload = { ...this.instanceData, inputMethod: this.inputMethod };
+                        const res = await this.page.evaluate(fillYourDetails, payload)
+                            .catch((e) => ({ success: false, error: `injection-error: ${e.message}` }));
+
+                        if (res.success) {
+                            await this.setYourDetailsFlag({ fillOk: true });
+                            this.logStatus(`[Your Details] ✅ Filled: ${res.filled.join(', ')}`);
+                        } else {
+                            this.logWarning("yourDetails", `Not complete -> ${JSON.stringify(res)}`);
+                        }
                         return;
                     }
-                    await this.page.waitForFunction(() => {
-                        const l = document.querySelector('ngx-ui-loader .ngx-overlay');
-                        return !l || l.offsetHeight === 0 || window.getComputedStyle(l).display === 'none';
-                    }, { timeout: 15000 }).catch(() => {});
 
-                    const payload = { ...this.instanceData, inputMethod: this.inputMethod };
-                    let res = { success: false, error: 'not-run' };
-
-                    for (let attempt = 1; attempt <= 2 && !res.success; attempt++) {
-                        res = await this.page.evaluate(fillYourDetails, payload)
-                            .catch((e) => ({ success: false, error: `injection-error: ${e.message}` }));
-                        if (!res.success && attempt < 2) {
-                            this.logWarning("yourDetails", `Attempt ${attempt} incomplete: ${JSON.stringify(res)} - retrying...`);
-                            await new Promise(r => setTimeout(r, 1000));
+                    // ---------- 2) SAVE ----------
+                    if (!autoSave) {
+                        if (!st.warnManual) {
+                            this.logStatus("[Your Details] Form is filled. autoSave is off - press Save yourself.");
+                            await this.setYourDetailsFlag({ warnManual: true });
                         }
+                        await sleep(2000);
+                        return;
                     }
 
-                    this.completedActivities.add('yourDetails');
-
-                    if (res.success) {
-                        this.logStatus(`[Your Details] ✅ All fields filled: ${res.filled.join(', ')}`);
-                    } else {
-                        this.logWarning("yourDetails", `Some fields were NOT filled -> ${JSON.stringify(res)}`);
-                    }
-
-                    // The page asks to wait 7 seconds before saving. Saving is opt-in (instanceData.autoSave).
-                    const autoSave = this.instanceData.autoSave === true || String(this.instanceData.autoSave).toLowerCase() === 'true';
-                    if (res.success && autoSave) {
-                        this.logStatus("[Your Details] autoSave enabled: waiting 8s (page requires 7s) before Save...");
-                        await new Promise(r => setTimeout(r, 8000));
-                        try {
-                            await this.clickByDescriptor(Selectors.yourDetails.saveButton);
-                            this.logStatus("[Your Details] ✅ Save clicked.");
-                        } catch (e) {
-                            this.logWarning("yourDetails", `Could not click Save: ${e.message}`);
+                    if (st.saveTries >= 3) {
+                        if (!st.warnSave) {
+                            this.logWarning("yourDetails", "Save did not go through after 3 tries - please press Save manually.");
+                            await this.setYourDetailsFlag({ warnSave: true });
                         }
-                    } else {
-                        this.logStatus("[Your Details] Review the form, then press Save yourself.");
+                        await sleep(3000);
+                        return;
                     }
 
-                    if (this.headless) {
-                        await this.bringWindowOnScreen();
+                    // The page asks for a 7 second wait before saving; add a random human margin
+                    const waitMs = Math.max(0, 7500 - st.ageMs) + rnd(300, 1200);
+                    this.logStatus(`[Your Details] Saving in ${Math.round(waitMs / 1000)}s (try ${st.saveTries + 1}/3)...`);
+                    await sleep(waitMs);
+
+                    await this.setYourDetailsFlag({ saveTries: st.saveTries + 1 });
+                    const outcome = await this.clickSaveAndVerify();
+
+                    if (outcome.status === 'navigated') {
+                        this.completedActivities.add('yourDetails');
+                        this.logStatus("[Your Details] ✅ Saved - the portal moved on to the next step.");
+                        if (this.headless) await this.bringWindowOnScreen();
+                    } else {
+                        this.logWarning("yourDetails", `Save result: ${outcome.status}${outcome.message ? ' - ' + outcome.message : ''}`);
                     }
-                    this.isOrchestratorRunning = false; // park the bot for the user
                 }
             }
         };
@@ -413,6 +444,88 @@ export class ChromeWorker extends BaseBrowser {
         }
     }
 
+    /** Reads the Your Details form state. Progress flags live on the #dateOfBirth element itself,
+     *  so a refresh or a re-rendered form automatically starts again from zero. */
+    async getYourDetailsState() {
+        try {
+            return await this.page.evaluate(() => {
+                const dob = document.querySelector('#dateOfBirth');
+                if (!dob || dob.offsetHeight === 0) return { present: false };
+                if (!dob.__omni) {
+                    dob.__omni = { readyAt: Date.now(), fillTries: 0, saveTries: 0, fillOk: false, warnFill: false, warnSave: false, warnManual: false };
+                }
+                const vis = (el) => el.offsetHeight > 0;
+                const inputs = Array.from(document.querySelectorAll('input'))
+                    .filter(i => vis(i) && !['hidden', 'checkbox', 'radio', 'file'].includes((i.type || '').toLowerCase()));
+                const selects = Array.from(document.querySelectorAll('mat-select')).filter(vis);
+                const emptyInputs = inputs.filter(i => !String(i.value).trim()).length;
+                const emptySelects = selects.filter(s => !((s.querySelector('.mat-mdc-select-value-text') || {}).textContent || '').trim()).length;
+                return {
+                    present: true,
+                    ...dob.__omni,
+                    ageMs: Date.now() - dob.__omni.readyAt,
+                    empty: emptyInputs + emptySelects,
+                    invalid: inputs.filter(i => i.classList.contains('ng-invalid')).length
+                };
+            });
+        } catch (e) {
+            return { present: false };
+        }
+    }
+
+    async setYourDetailsFlag(patch) {
+        try {
+            await this.page.evaluate((p) => {
+                const dob = document.querySelector('#dateOfBirth');
+                if (dob && dob.__omni) Object.assign(dob.__omni, p);
+            }, patch);
+        } catch (e) {}
+    }
+
+    /** Real mouse click on Save, then checks that the page really moved on (or shows an error). */
+    async clickSaveAndVerify() {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        try {
+            const handle = await this.page.evaluateHandle(() =>
+                Array.from(document.querySelectorAll('button'))
+                    .find(b => b.offsetHeight > 0 && /^\s*save\s*$/i.test(b.textContent || '')) || null
+            );
+            const btn = handle.asElement();
+            if (!btn) return { status: 'no-button' };
+
+            await this.page.waitForFunction(
+                (b) => !b.disabled && !b.classList.contains('disabled') && b.getAttribute('aria-disabled') !== 'true',
+                { timeout: 15000 }, btn
+            ).catch(() => {});
+
+            await btn.evaluate((b) => b.scrollIntoView({ block: 'center', behavior: 'instant' }));
+            await sleep(rnd(250, 700));
+
+            try {
+                await btn.click({ delay: rnd(40, 120) }); // genuine mouse events
+            } catch (e) {
+                await btn.evaluate((b) => b.click());    // fallback
+            }
+
+            const result = await this.page.waitForFunction(() => {
+                if (!location.href.includes('/your-details')) return 'navigated';
+                const err = Array.from(document.querySelectorAll('.errorMessage, div[role="alert"], .alert-danger'))
+                    .find(e => e.offsetHeight > 0 && (e.textContent || '').trim());
+                if (err) return 'error: ' + err.textContent.trim().slice(0, 160);
+                return false;
+            }, { timeout: 20000, polling: 300 }).catch(() => null);
+
+            const value = result ? await result.jsonValue() : 'timeout';
+            if (value === 'navigated') return { status: 'navigated' };
+            if (String(value).startsWith('error:')) return { status: 'error', message: value };
+            return { status: 'timeout' };
+        } catch (e) {
+            // e.g. "Execution context was destroyed" because the page navigated right after the click
+            const stillThere = await this.isYourDetailsPage();
+            return stillThere ? { status: 'error', message: e.message } : { status: 'navigated' };
+        }
+    }
+
     async isYourDetailsPage() {
         if (!this.page) return false;
         try {
@@ -438,6 +551,14 @@ export class ChromeWorker extends BaseBrowser {
         if (await this.isPresent(Selectors.dashboard.startNewBooking)) detected.push('dashboard');
         if (await this.isPresent(Selectors.appointmentDetails.centerDropdown)) detected.push('appointmentDetails');
         if (onYourDetails) detected.push('yourDetails');
+
+        // Whenever an earlier stage is on screen again (refresh, session expired, user went back),
+        // forget the stages after it so the bot redoes them instead of waiting forever.
+        const stages = ['signIn', 'dashboard', 'appointmentDetails', 'yourDetails'];
+        const firstSeen = stages.findIndex(s => detected.includes(s));
+        if (firstSeen !== -1) {
+            for (const s of stages.slice(firstSeen + 1)) this.completedActivities.delete(s);
+        }
 
         detected.sort((a, b) => (this.mappedActions[a]?.priority ?? 99) - (this.mappedActions[b]?.priority ?? 99));
         this.currentOrderedDom = [...detected];

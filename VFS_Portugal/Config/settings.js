@@ -30,7 +30,13 @@ const allKeys = {
         "passportExpiry",
         "dialCode",
         "contactNumber",
-        "email"
+        "email",
+        // Your Details behaviour
+        "autoSave",
+        "dateFormat",
+        "dateOrder",
+        "fieldDelayMin",
+        "fieldDelayMax"
     ],
     keyConv: {
         password: ["passwords", "pass", "pwd"], 
@@ -57,7 +63,12 @@ const allKeys = {
         nationality: ["current nationality", "nationality"],
         gender: ["sex"],
         passportNumber: ["passport", "passport no", "passport no."],
-        email: ["email address", "contact email", "email id", "email"]
+        email: ["email address", "contact email", "email id", "email"],
+        autoSave: ["auto save", "autosave", "save automatically"],
+        dateFormat: ["date format"],
+        dateOrder: ["date order"],
+        fieldDelayMin: ["field delay min", "min field delay"],
+        fieldDelayMax: ["field delay max", "max field delay"]
     }
 };
 
@@ -85,7 +96,14 @@ const defaultBatchConfig = {
     passportExpiry: "",
     dialCode: "20",
     contactNumber: "",
-    email: ""
+    email: "",
+
+    // Your Details behaviour
+    autoSave: true,            // click Save (after the page's 7s wait) once the form is filled
+    dateFormat: "DD/MM/YYYY",  // format the portal's date fields accept
+    dateOrder: "DMY",          // how ambiguous dates like 4/1/1989 are read: DMY (4 Jan) or MDY (1 Apr)
+    fieldDelayMin: 400,        // random pause between fields (ms) - anti-bot-detection
+    fieldDelayMax: 1500
 };
 
 const terminationCmds = ["exit", "\\q", "q"];

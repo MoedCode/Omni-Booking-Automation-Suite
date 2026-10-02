@@ -125,7 +125,13 @@ const allKeys = {
         "passportExpiry",
         "dialCode",
         "contactNumber",
-        "email"
+        "email",
+        // Your Details behaviour
+        "autoSave",
+        "dateFormat",
+        "dateOrder",
+        "fieldDelayMin",
+        "fieldDelayMax"
     ],
     keyConv: {
         password: ["passwords", "pass", "pwd"], 
@@ -152,7 +158,12 @@ const allKeys = {
         nationality: ["current nationality", "nationality"],
         gender: ["sex"],
         passportNumber: ["passport", "passport no", "passport no."],
-        email: ["email address", "contact email", "email id", "email"]
+        email: ["email address", "contact email", "email id", "email"],
+        autoSave: ["auto save", "autosave", "save automatically"],
+        dateFormat: ["date format"],
+        dateOrder: ["date order"],
+        fieldDelayMin: ["field delay min", "min field delay"],
+        fieldDelayMax: ["field delay max", "max field delay"]
     }
 };
 
@@ -180,7 +191,14 @@ const defaultBatchConfig = {
     passportExpiry: "",
     dialCode: "20",
     contactNumber: "",
-    email: ""
+    email: "",
+
+    // Your Details behaviour
+    autoSave: true,            // click Save (after the page's 7s wait) once the form is filled
+    dateFormat: "DD/MM/YYYY",  // format the portal's date fields accept
+    dateOrder: "DMY",          // how ambiguous dates like 4/1/1989 are read: DMY (4 Jan) or MDY (1 Apr)
+    fieldDelayMin: 400,        // random pause between fields (ms) - anti-bot-detection
+    fieldDelayMax: 1500
 };
 
 const terminationCmds = ["exit", "\\q", "q"];
@@ -552,7 +570,7 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { EgPtrLoginURL, BROWSER_ARGS, CHANNEL, terminationCmds, debug, actionsConfig, cookiesAcceptant, defaultBatchConfig } from '../Config/settings.js';
 import Selectors from '../Config/Selectors.js';
-import { injectionSignIn, signInSelectors } from './injection.js';
+import { injectionSignIn, fillYourDetails, signInSelectors } from './injection.js';
 import { BaseBrowser } from './BaseBrowser.js';
 import { CaptchaHandler } from './captchaHandler.js';
 import readline from 'node:readline/promises';
@@ -566,6 +584,8 @@ const __dirname = path.dirname(__filename);
 const rl = readline.createInterface({ input, output });
 puppeteer.use(StealthPlugin());
 
+const rnd = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
 export class ChromeWorker extends BaseBrowser {
     constructor({ headless = false, targetUrl = EgPtrLoginURL, email, password, instanceData, inputMethod } = {}) {
         super();
@@ -577,11 +597,15 @@ export class ChromeWorker extends BaseBrowser {
         this.email = email;
         this.password = password;
 
-        this.instanceData = {
-            city: instanceData?.city || defaultBatchConfig.city,
-            appointmentCategory: instanceData?.appointmentCategory || defaultBatchConfig.appointmentCategory,
-            subCategory: instanceData?.subCategory || defaultBatchConfig.subCategory
-        };
+        // BUGFIX: the old code kept only city/appointmentCategory/subCategory, so firstName, lastName,
+        // dateOfBirth, passportNumber, ... never reached fillYourDetails. Merge everything; blank values
+        // fall back to defaultBatchConfig.
+        const mergedData = { ...defaultBatchConfig };
+        for (const [k, v] of Object.entries(instanceData || {})) {
+            if (v !== undefined && v !== null && String(v).trim() !== '') mergedData[k] = v;
+        }
+        if (!mergedData.account) mergedData.account = email; // contact email falls back to the login email
+        this.instanceData = mergedData;
         
         // Loop State & Constraints
         this.currentAttempt = 1;
@@ -647,6 +671,17 @@ export class ChromeWorker extends BaseBrowser {
                 endDelay: actionsConfig.appointmentDetails.endDelay,
                 dependencies: ['dashboard'],
                 method: async () => {
+                    // Already succeeded: Continue was clicked, wait for the router to reach Your Details.
+                    // If the page is still here after 20s, forget the success and run the check again.
+                    if (this.completedActivities.has('appointmentDetails')) {
+                        if (Date.now() - (this.appointmentCompletedAt || 0) < 20000) {
+                            await new Promise(r => setTimeout(r, 500));
+                            return;
+                        }
+                        this.completedActivities.delete('appointmentDetails');
+                        this.logWarning("appointmentDetails", "Still on Appointment Details 20s after Continue - checking again.");
+                    }
+
                     let isAvailable = false;
                     let currentSwitch = 0;
                     const maxSwitches = this.switches;
@@ -708,6 +743,7 @@ export class ChromeWorker extends BaseBrowser {
 
                     if (isAvailable) {
                         this.completedActivities.add('appointmentDetails');
+                        this.appointmentCompletedAt = Date.now();
                         this.logStatus(`[Success] 🚨 TARGET AVAILABLE! Bringing browser window on-screen...`);
                         
                         // Dynamically pull the browser onto the screen if it was running headlessly
@@ -715,7 +751,8 @@ export class ChromeWorker extends BaseBrowser {
                             await this.bringWindowOnScreen();
                         }
 
-                        this.isOrchestratorRunning = false; // Freeze bot, wait for user
+                        // BUGFIX: the bot used to freeze here, so Your Details was never filled.
+                        // Keep the orchestrator running; the 'yourDetails' action takes over.
                         return; 
                     }
 
@@ -775,6 +812,90 @@ export class ChromeWorker extends BaseBrowser {
                             this.logStatus(`[Finished] Max attempts reached. Auto-close disabled. Session parked.`);
                             this.isOrchestratorRunning = false; 
                         }
+                    }
+                }
+            },
+            yourDetails: {
+                priority: actionsConfig.yourDetails.priority,
+                startDelay: actionsConfig.yourDetails.startDelay,
+                endDelay: actionsConfig.yourDetails.endDelay,
+                dependencies: [], // the page itself proves we are at this stage, so a refresh can never block it
+                method: async () => {
+                    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                    const st = await this.getYourDetailsState();
+                    if (!st.present) { await sleep(400); return; }
+
+                    const autoSave = this.instanceData.autoSave === undefined
+                        ? true
+                        : (this.instanceData.autoSave === true || String(this.instanceData.autoSave).toLowerCase() === 'true');
+
+                    const filled = st.invalid === 0 && (st.fillOk || st.empty === 0);
+
+                    // ---------- 1) FILL (also runs again after a refresh: the new form is empty) ----------
+                    if (!filled) {
+                        if (st.fillTries >= 3) {
+                            if (!st.warnFill) {
+                                this.logWarning("yourDetails", "Could not complete the form after 3 tries - please finish it manually.");
+                                await this.setYourDetailsFlag({ warnFill: true });
+                            }
+                            await sleep(3000);
+                            return;
+                        }
+
+                        await this.page.waitForFunction(() => {
+                            const l = document.querySelector('ngx-ui-loader .ngx-overlay');
+                            return !l || l.offsetHeight === 0 || window.getComputedStyle(l).display === 'none';
+                        }, { timeout: 15000 }).catch(() => {});
+
+                        await this.setYourDetailsFlag({ fillTries: st.fillTries + 1 });
+                        this.logStatus(`[Your Details] Filling form (try ${st.fillTries + 1}/3)...`);
+
+                        const payload = { ...this.instanceData, inputMethod: this.inputMethod };
+                        const res = await this.page.evaluate(fillYourDetails, payload)
+                            .catch((e) => ({ success: false, error: `injection-error: ${e.message}` }));
+
+                        if (res.success) {
+                            await this.setYourDetailsFlag({ fillOk: true });
+                            this.logStatus(`[Your Details] ✅ Filled: ${res.filled.join(', ')}`);
+                        } else {
+                            this.logWarning("yourDetails", `Not complete -> ${JSON.stringify(res)}`);
+                        }
+                        return;
+                    }
+
+                    // ---------- 2) SAVE ----------
+                    if (!autoSave) {
+                        if (!st.warnManual) {
+                            this.logStatus("[Your Details] Form is filled. autoSave is off - press Save yourself.");
+                            await this.setYourDetailsFlag({ warnManual: true });
+                        }
+                        await sleep(2000);
+                        return;
+                    }
+
+                    if (st.saveTries >= 3) {
+                        if (!st.warnSave) {
+                            this.logWarning("yourDetails", "Save did not go through after 3 tries - please press Save manually.");
+                            await this.setYourDetailsFlag({ warnSave: true });
+                        }
+                        await sleep(3000);
+                        return;
+                    }
+
+                    // The page asks for a 7 second wait before saving; add a random human margin
+                    const waitMs = Math.max(0, 7500 - st.ageMs) + rnd(300, 1200);
+                    this.logStatus(`[Your Details] Saving in ${Math.round(waitMs / 1000)}s (try ${st.saveTries + 1}/3)...`);
+                    await sleep(waitMs);
+
+                    await this.setYourDetailsFlag({ saveTries: st.saveTries + 1 });
+                    const outcome = await this.clickSaveAndVerify();
+
+                    if (outcome.status === 'navigated') {
+                        this.completedActivities.add('yourDetails');
+                        this.logStatus("[Your Details] ✅ Saved - the portal moved on to the next step.");
+                        if (this.headless) await this.bringWindowOnScreen();
+                    } else {
+                        this.logWarning("yourDetails", `Save result: ${outcome.status}${outcome.message ? ' - ' + outcome.message : ''}`);
                     }
                 }
             }
@@ -889,17 +1010,121 @@ export class ChromeWorker extends BaseBrowser {
         }
     }
 
+    /** Reads the Your Details form state. Progress flags live on the #dateOfBirth element itself,
+     *  so a refresh or a re-rendered form automatically starts again from zero. */
+    async getYourDetailsState() {
+        try {
+            return await this.page.evaluate(() => {
+                const dob = document.querySelector('#dateOfBirth');
+                if (!dob || dob.offsetHeight === 0) return { present: false };
+                if (!dob.__omni) {
+                    dob.__omni = { readyAt: Date.now(), fillTries: 0, saveTries: 0, fillOk: false, warnFill: false, warnSave: false, warnManual: false };
+                }
+                const vis = (el) => el.offsetHeight > 0;
+                const inputs = Array.from(document.querySelectorAll('input'))
+                    .filter(i => vis(i) && !['hidden', 'checkbox', 'radio', 'file'].includes((i.type || '').toLowerCase()));
+                const selects = Array.from(document.querySelectorAll('mat-select')).filter(vis);
+                const emptyInputs = inputs.filter(i => !String(i.value).trim()).length;
+                const emptySelects = selects.filter(s => !((s.querySelector('.mat-mdc-select-value-text') || {}).textContent || '').trim()).length;
+                return {
+                    present: true,
+                    ...dob.__omni,
+                    ageMs: Date.now() - dob.__omni.readyAt,
+                    empty: emptyInputs + emptySelects,
+                    invalid: inputs.filter(i => i.classList.contains('ng-invalid')).length
+                };
+            });
+        } catch (e) {
+            return { present: false };
+        }
+    }
+
+    async setYourDetailsFlag(patch) {
+        try {
+            await this.page.evaluate((p) => {
+                const dob = document.querySelector('#dateOfBirth');
+                if (dob && dob.__omni) Object.assign(dob.__omni, p);
+            }, patch);
+        } catch (e) {}
+    }
+
+    /** Real mouse click on Save, then checks that the page really moved on (or shows an error). */
+    async clickSaveAndVerify() {
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        try {
+            const handle = await this.page.evaluateHandle(() =>
+                Array.from(document.querySelectorAll('button'))
+                    .find(b => b.offsetHeight > 0 && /^\s*save\s*$/i.test(b.textContent || '')) || null
+            );
+            const btn = handle.asElement();
+            if (!btn) return { status: 'no-button' };
+
+            await this.page.waitForFunction(
+                (b) => !b.disabled && !b.classList.contains('disabled') && b.getAttribute('aria-disabled') !== 'true',
+                { timeout: 15000 }, btn
+            ).catch(() => {});
+
+            await btn.evaluate((b) => b.scrollIntoView({ block: 'center', behavior: 'instant' }));
+            await sleep(rnd(250, 700));
+
+            try {
+                await btn.click({ delay: rnd(40, 120) }); // genuine mouse events
+            } catch (e) {
+                await btn.evaluate((b) => b.click());    // fallback
+            }
+
+            const result = await this.page.waitForFunction(() => {
+                if (!location.href.includes('/your-details')) return 'navigated';
+                const err = Array.from(document.querySelectorAll('.errorMessage, div[role="alert"], .alert-danger'))
+                    .find(e => e.offsetHeight > 0 && (e.textContent || '').trim());
+                if (err) return 'error: ' + err.textContent.trim().slice(0, 160);
+                return false;
+            }, { timeout: 20000, polling: 300 }).catch(() => null);
+
+            const value = result ? await result.jsonValue() : 'timeout';
+            if (value === 'navigated') return { status: 'navigated' };
+            if (String(value).startsWith('error:')) return { status: 'error', message: value };
+            return { status: 'timeout' };
+        } catch (e) {
+            // e.g. "Execution context was destroyed" because the page navigated right after the click
+            const stillThere = await this.isYourDetailsPage();
+            return stillThere ? { status: 'error', message: e.message } : { status: 'navigated' };
+        }
+    }
+
+    async isYourDetailsPage() {
+        if (!this.page) return false;
+        try {
+            if (this.page.url().includes('/your-details')) return true;
+            return !!(await this.page.$('#dateOfBirth'));
+        } catch (e) {
+            return false;
+        }
+    }
+
     async domScanner() {
         if (!this.page) return [];
         const detected = [];
+        const onYourDetails = await this.isYourDetailsPage();
 
         if (await this.isPresent(Selectors.common.cookieBanner.container)) detected.push('cookies');
         if (await this.captchaHandler.isPresent()) {
             if (!(await this.captchaHandler.isResolved())) detected.push('captcha');
         }
-        if (await this.isPresent(Selectors.signIn.email)) detected.push('signIn');
+        // BUGFIX: the "Email" field on Your Details matches the sign-in descriptor and used to re-trigger
+        // signIn (which would type the login email into the contact email field). Never detect it there.
+        if (!onYourDetails && await this.isPresent(Selectors.signIn.email)) detected.push('signIn');
         if (await this.isPresent(Selectors.dashboard.startNewBooking)) detected.push('dashboard');
         if (await this.isPresent(Selectors.appointmentDetails.centerDropdown)) detected.push('appointmentDetails');
+        if (onYourDetails) detected.push('yourDetails');
+
+        // Whenever an earlier stage is on screen again (refresh, session expired, user went back),
+        // forget the stages after it so the bot redoes them instead of waiting forever.
+        const stages = ['signIn', 'dashboard', 'appointmentDetails', 'yourDetails'];
+        const firstSeen = stages.findIndex(s => detected.includes(s));
+        if (firstSeen !== -1) {
+            for (const s of stages.slice(firstSeen + 1)) this.completedActivities.delete(s);
+        }
 
         detected.sort((a, b) => (this.mappedActions[a]?.priority ?? 99) - (this.mappedActions[b]?.priority ?? 99));
         this.currentOrderedDom = [...detected];
@@ -1203,10 +1428,10 @@ export class ChromeWorker extends BaseBrowser {
 ```javascript
 /* Omni-Booking-Automation-Suite/VFS_Portugal/Browsers/injection.js */
 
-export const signInSelectors = {}; 
+export const signInSelectors = {};
 
 /**
- * 1. Sign-In Form Filler 
+ * 1. Sign-In Form Filler (unchanged)
  */
 export async function injectionSignIn(config = {}) {
     const account = config.account || config.email || '';
@@ -1222,7 +1447,7 @@ export async function injectionSignIn(config = {}) {
 
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const randomDelay = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-    
+
     const getXPath = (xpath) => {
         const iter = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
         let node;
@@ -1270,7 +1495,7 @@ export async function injectionSignIn(config = {}) {
         if (!el || !val) return;
         el.focus();
         el.click();
-        
+
         const proto = window.HTMLInputElement.prototype;
         const desc = Object.getOwnPropertyDescriptor(proto, 'value');
         if (desc && desc.set) desc.set.call(el, '');
@@ -1292,7 +1517,7 @@ export async function injectionSignIn(config = {}) {
                 const dt = new DataTransfer();
                 dt.setData('text/plain', val);
                 el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
-            } catch(e) {}
+            } catch (e) {}
             if (desc && desc.set) desc.set.call(el, val);
             else el.value = val;
             el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1303,7 +1528,7 @@ export async function injectionSignIn(config = {}) {
             el.dispatchEvent(new Event('input', { bubbles: true }));
             await sleep(20);
         }
-        
+
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.dispatchEvent(new Event('blur', { bubbles: true }));
     };
@@ -1314,133 +1539,318 @@ export async function injectionSignIn(config = {}) {
     await sleep(randomDelay(200, 400));
 
     const submitBtn = getXPath('//button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "sign in") or contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "log in")] | //button[@type="submit"]');
-    
+
     if (!submitBtn) return { ok: false, reason: 'submit-button-not-found', captcha: captchaState, method };
 
     submitBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
     await sleep(300);
 
-    submitBtn.removeAttribute('disabled');
-    submitBtn.click();
-    
-    return { ok: true, captcha: captchaState, method };
-}
-
-/**
- * 2. Your Details Form Filler 
- * Uses Advanced Semantic "Deep-Node" locating to find inputs strictly by text labels.
+    submit
+ * 2. Your Details Form Filler
+ *
+ * Runs inside page.evaluate(fillYourDetails, data) so EVERYTHING must live inside this function.
+ *
+ * - Fields are filled in the same top-to-bottom order a person would use, with a RANDOM pause
+ *   (data.fieldDelayMin..fieldDelayMax ms, default 400..1500) after every field, plus an occasional
+ *   longer "thinking" pause. Typing speed per character is random as well.
+ * - Fields that already hold the right value are skipped (a retry only touches what failed).
+ * - Dates accept DD/MM/YYYY, D/M/YY, YYYY-MM-DD ... and are written as data.dateFormat (default DD/MM/YYYY).
+ * - Returns { success, filled, missing, empty, invalid, mismatched } - never fails silently.
+ *
+ * Data keys: firstName, lastName, gender, dateOfBirth, nationality, passportNumber, passportExpiry,
+ * dialCode, contactNumber, email|account, inputMethod, dateFormat, dateOrder ('DMY' | 'MDY'),
+ * fieldDelayMin, fieldDelayMax.
  */
 export async function fillYourDetails(data = {}) {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-    
-    let method = (data.inputMethod || 'fill').toLowerCase();
-    if (method === 'random') method = ['typing', 'paste', 'fill'][Math.floor(Math.random() * 3)];
+    const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+    const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-    const getXPath = (xpath) => {
-        const iter = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
-        let node;
-        while ((node = iter.iterateNext())) {
-            const style = window.getComputedStyle(node);
-            if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && node.offsetHeight > 0) {
-                return node;
-            }
+    let baseMethod = String(data.inputMethod || 'fill').toLowerCase();
+    if (!['typing', 'paste', 'fill', 'random'].includes(baseMethod)) baseMethod = 'fill';
+    const pickMethod = () => (baseMethod === 'random' ? ['typing', 'paste', 'fill'][rand(0, 2)] : baseMethod);
+
+    const dateFormat = String(data.dateFormat || 'DD/MM/YYYY').toUpperCase();
+    const dateOrder = String(data.dateOrder || 'DMY').toUpperCase();
+
+    const delayMin = Math.max(0, parseInt(data.fieldDelayMin, 10) || 400);
+    const delayMax = Math.max(delayMin, parseInt(data.fieldDelayMax, 10) || 1500);
+    const humanPause = async () => {
+        let ms = rand(delayMin, delayMax);
+        if (Math.random() < 0.15) ms += rand(400, 1200); // occasional "thinking" pause
+        await sleep(ms);
+    };
+
+    const report = { filled: [], missing: [], empty: [], invalid: [], mismatched: [] };
+
+    // ---------- helpers ----------
+    const isVisible = (el) => {
+        if (!el) return false;
+        const st = window.getComputedStyle(el);
+        return st.display !== 'none' && st.visibility !== 'hidden' && st.opacity !== '0' && el.offsetHeight > 0;
+    };
+
+    const waitFor = async (fn, timeout = 15000, step = 200) => {
+        const start = Date.now();
+        while (Date.now() - start < timeout) {
+            try { const r = fn(); if (r) return r; } catch (e) {}
+            await sleep(step);
         }
         return null;
     };
 
-    // Semantic Finder: Looks for any label/div containing the text, then hops to the requested input/select tag.
-    const getField = (labelText, tag = 'input', idx = 1) => {
-        const lower = labelText.toLowerCase();
-        return getXPath(`(//label[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${lower}')]/following::${tag} | //div[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${lower}')]/following::${tag} | //${tag}[contains(translate(@placeholder, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${lower}')])[${idx}]`);
+    // Text that belongs directly to the element (ignores child elements such as <span class="asterisk">*</span>)
+    const ownText = (n) => norm(
+        Array.from(n.childNodes).filter(c => c.nodeType === 3).map(c => c.textContent).join(' ')
+    ).replace(/\*/g, '').trim();
+
+    const findLabels = (labelText) => {
+        const t = norm(labelText);
+        return Array.from(document.querySelectorAll('label, div, span, p, legend, mat-label'))
+            .filter(n => isVisible(n) && ownText(n) === t);
     };
 
-    const dispatchInput = async (el, val) => {
-        if (!el || !val) return;
+    const SKIP_TYPES = ['hidden', 'checkbox', 'radio', 'file', 'button', 'submit'];
+
+    // First <tag> that appears AFTER the label in document order (idx is 1-based).
+    const getField = (labelText, tag = 'input', idx = 1) => {
+        const all = Array.from(document.querySelectorAll(tag)).filter(el =>
+            isVisible(el) && !(tag === 'input' && SKIP_TYPES.includes((el.type || '').toLowerCase()))
+        );
+        for (const label of findLabels(labelText)) {
+            const after = all.filter(el =>
+                !label.contains(el) && (label.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
+            );
+            if (after[idx - 1]) return after[idx - 1];
+        }
+        const t = norm(labelText);
+        const byPlaceholder = all.filter(el => norm(el.getAttribute('placeholder')).includes(t));
+        return byPlaceholder[idx - 1] || null;
+    };
+
+    const setNativeValue = (el, v) => {
+        const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+        if (desc && desc.set) desc.set.call(el, v);
+        else el.value = v;
+    };
+    const fire = (el, type) => el.dispatchEvent(new Event(type, { bubbles: true }));
+
+    /**
+     * Turns many date spellings into data.dateFormat. Returns null if it cannot be understood.
+     *  - 4-digit year first (YYYY-MM-DD) is unambiguous
+     *  - 2-digit years are expanded: DOB  -> 89 = 1989, 05 = 2005 ; expiry -> always 20xx
+     *  - if one part is > 12 the day/month order is inferred, otherwise data.dateOrder (default DMY) is used
+     */
+    const normalizeDate = (raw, kind) => {
+        const s = String(raw ?? '').trim();
+        let d, m, y, mt;
+        if ((mt = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/))) {
+            y = +mt[1]; m = +mt[2]; d = +mt[3];
+        } else if ((mt = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2}|\d{4})$/))) {
+            let a = +mt[1], b = +mt[2];
+            y = +mt[3];
+            if (mt[3].length === 2) {
+                const cur = new Date().getFullYear() % 100;
+                if (kind === 'dob') y += (y <= cur ? 2000 : 1900);
+                else y += 2000;
+            }
+            if (a > 12 && b <= 12) { d = a; m = b; }
+            else if (b > 12 && a <= 12) { m = a; d = b; }
+            else if (dateOrder === 'MDY') { m = a; d = b; }
+            else { d = a; m = b; }
+        } else return null;
+        const probe = new Date(y, m - 1, d);
+        if (probe.getFullYear() !== y || probe.getMonth() !== m - 1 || probe.getDate() !== d) return null;
+        const dd = String(d).padStart(2, '0');
+        const mm = String(m).padStart(2, '0');
+        const sep = dateFormat.includes('-') ? '-' : (dateFormat.includes('.') ? '.' : '/');
+        return dateFormat.startsWith('YYYY') ? `${y}${sep}${mm}${sep}${dd}` : `${dd}${sep}${mm}${sep}${y}`;
+    };
+
+    const dispatchInput = async (el, rawVal, key, isDate = false) => {
+        const val = String(rawVal ?? '').trim();
+        if (!val) { report.empty.push(key); return false; }
+        if (!el) { report.missing.push(key); return false; }
+
+        // Already correct (e.g. on a retry): leave it alone
+        if (norm(el.value) === norm(val) && !el.classList.contains('ng-invalid')) {
+            report.filled.push(key);
+            return true;
+        }
+
+        const method = pickMethod();
+        el.scrollIntoView({ behavior: 'instant', block: 'center' });
         el.focus();
         el.click();
-        
-        const proto = window.HTMLInputElement.prototype;
-        const desc = Object.getOwnPropertyDescriptor(proto, 'value');
-        if (desc && desc.set) desc.set.call(el, '');
-        else el.value = '';
-        el.dispatchEvent(new Event('input', { bubbles: true }));
+        await sleep(rand(80, 250));
+
+        setNativeValue(el, '');
+        fire(el, 'input');
 
         if (method === 'typing') {
             for (const char of val) {
                 el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
                 el.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
-                if (desc && desc.set) desc.set.call(el, el.value + char);
-                else el.value += char;
-                el.dispatchEvent(new Event('input', { bubbles: true }));
+                setNativeValue(el, el.value + char);
+                fire(el, 'input');
                 el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
-                await sleep(Math.floor(Math.random() * (120 - 40 + 1)) + 40);
+                await sleep(rand(40, 140));
             }
         } else if (method === 'paste') {
             try {
                 const dt = new DataTransfer();
                 dt.setData('text/plain', val);
                 el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
-            } catch(e) {}
-            if (desc && desc.set) desc.set.call(el, val);
-            else el.value = val;
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            await sleep(50);
-        } else { // fill (browser)
-            if (desc && desc.set) desc.set.call(el, val);
-            else el.value = val;
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            await sleep(20);
+            } catch (e) {}
+            setNativeValue(el, val);
+            fire(el, 'input');
+            await sleep(rand(30, 90));
+        } else { // fill
+            setNativeValue(el, val);
+            fire(el, 'input');
+            await sleep(rand(20, 60));
         }
-        
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.dispatchEvent(new Event('blur', { bubbles: true }));
-        
-        // Force dismissal of datepicker if it popped up
-        document.body.click(); 
+
+        fire(el, 'change');
+        fire(el, 'blur');
+        el.blur();
+        if (isDate) {
+            document.body.click(); // dismiss the ngb datepicker popup if it opened
+            await sleep(250);
+        } else {
+            await sleep(120);
+        }
+
+        let ok = true;
+        if (norm(el.value) !== norm(val)) {
+            report.mismatched.push(`${key} (wanted "${val}", got "${el.value}")`);
+            ok = false;
+        } else if (el.classList.contains('ng-invalid')) {
+            report.invalid.push(key);
+            ok = false;
+        } else {
+            report.filled.push(key);
+        }
+
+        await humanPause(); // random gap before the next field
+        return ok;
     };
 
-    const selectDropdown = async (labelText, targetValue) => {
-        if (!targetValue) return;
+    const selectDropdown = async (labelText, rawTarget, key) => {
+        const target = norm(rawTarget);
+        if (!target) { report.empty.push(key); return false; }
+
         const trigger = getField(labelText, 'mat-select');
-        
-        if (!trigger) return;
-        if (trigger.textContent.toLowerCase().includes(targetValue.toLowerCase())) return;
+        if (!trigger) { report.missing.push(key); return false; }
 
-        trigger.click();
-        await sleep(600);
+        const readValue = () => norm(trigger.querySelector('.mat-mdc-select-value-text')?.textContent);
+        if (readValue() === target) { report.filled.push(key); return true; }
 
-        const panel = getXPath(`//div[@role='listbox']`);
-        if (panel) {
-            const optXpath = `.//mat-option//*[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${targetValue.toLowerCase()}')]`;
-            const opt = document.evaluate(optXpath, panel, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-            
-            if (opt) opt.click();
-            else document.body.click(); 
-            
-            await sleep(500);
+        trigger.scrollIntoView({ behavior: 'instant', block: 'center' });
+        await sleep(rand(80, 250));
+        (trigger.querySelector('.mat-mdc-select-trigger') || trigger).click();
+
+        let panel = null;
+        for (let i = 0; i < 20 && !panel; i++) {
+            await sleep(150);
+            const id = trigger.getAttribute('aria-controls');
+            panel = (id && document.getElementById(id))
+                || Array.from(document.querySelectorAll('.mat-mdc-select-panel, [role="listbox"]')).find(isVisible)
+                || null;
         }
+        if (!panel) { report.missing.push(`${key} (dropdown did not open)`); return false; }
+
+        await sleep(rand(250, 600)); // "looking" at the list
+        const options = Array.from(panel.querySelectorAll('mat-option'));
+        let opt = options.find(o => norm(o.textContent) === target)
+            || options.find(o => norm(o.textContent).startsWith(target));
+        if (!opt) {
+            const partial = options.filter(o => norm(o.textContent).includes(target));
+            if (partial.length === 1) opt = partial[0];
+        }
+
+        if (!opt) {
+            document.body.click();
+            await sleep(400);
+            report.missing.push(`${key} (option "${rawTarget}" not in list)`);
+            return false;
+        }
+
+        opt.scrollIntoView({ behavior: 'instant', block: 'center' });
+        opt.click();
+        await sleep(500);
+
+        let ok = true;
+        if (readValue() !== norm(opt.textContent)) {
+            report.mismatched.push(`${key} (wanted "${rawTarget}", got "${readValue()}")`);
+            ok = false;
+        } else {
+            report.filled.push(key);
+        }
+        await humanPause();
+        return ok;
     };
 
+    // ---------- main ----------
     try {
-        await dispatchInput(getField('first name', 'input'), data.firstName);
-        await dispatchInput(getField('last name', 'input'), data.lastName);
-        await dispatchInput(getField('passport number', 'input'), data.passportNumber);
-        await dispatchInput(getField('email', 'input'), data.email || data.account);
-        
-        // Contact number uses index to jump to the right input fields (1 for Code, 2 for Phone)
-        await dispatchInput(getField('contact number', 'input', 1), data.dialCode);
-        await dispatchInput(getField('contact number', 'input', 2), data.contactNumber);
+        const ready = await waitFor(() => document.querySelector('#dateOfBirth') || findLabels('first name').length, 20000);
+        if (!ready) return { success: false, error: 'your-details-form-not-found', ...report };
 
-        // Date Pickers populated directly to avoid calendar overhead
-        await dispatchInput(getField('date of birth', 'input'), data.dateOfBirth);
-        await dispatchInput(getField('passport expiry', 'input'), data.passportExpiry);
+        await waitFor(() => {
+            const l = document.querySelector('ngx-ui-loader .ngx-overlay');
+            return !l || !isVisible(l);
+        }, 15000);
+        await sleep(rand(300, 900));
 
-        await selectDropdown('gender', data.gender);
-        await selectDropdown('current nationality', data.nationality);
+        const digits = (v) => String(v ?? '').replace(/\D/g, '');
+        const dialCode = digits(data.dialCode).slice(0, 3);
+        const phone = digits(data.contactNumber);
 
-        return { success: true };
+        const genderAliases = { m: 'male', f: 'female', 'ذكر': 'male', 'أنثى': 'female', 'انثى': 'female' };
+        const gender = genderAliases[norm(data.gender)] || data.gender;
+
+        const dob = data.dateOfBirth ? normalizeDate(data.dateOfBirth, 'dob') : '';
+        const expiry = data.passportExpiry ? normalizeDate(data.passportExpiry, 'expiry') : '';
+        if (data.dateOfBirth && !dob) report.invalid.push(`dateOfBirth (unrecognized date "${data.dateOfBirth}")`);
+        if (data.passportExpiry && !expiry) report.invalid.push(`passportExpiry (unrecognized date "${data.passportExpiry}")`);
+
+        const dobEl = () => document.querySelector('#dateOfBirth') || getField('date of birth', 'input');
+        const expiryEl = () => getField('passport expiry date', 'input') || getField('passport expiry', 'input');
+
+        // Same order as the page, top to bottom
+        await dispatchInput(getField('first name', 'input'), data.firstName, 'firstName');
+        await dispatchInput(getField('last name', 'input'), data.lastName, 'lastName');
+        await selectDropdown('gender', gender, 'gender');
+
+        if (dob) await dispatchInput(dobEl(), dob, 'dateOfBirth', true);
+        else if (!data.dateOfBirth) report.empty.push('dateOfBirth');
+
+        await selectDropdown('current nationality', data.nationality, 'nationality');
+        await dispatchInput(getField('passport number', 'input'), data.passportNumber, 'passportNumber');
+
+        if (expiry) await dispatchInput(expiryEl(), expiry, 'passportExpiry', true);
+        else if (!data.passportExpiry) report.empty.push('passportExpiry');
+
+        // Contact number: 1st input = dial code, 2nd input = phone
+        await dispatchInput(getField('contact number', 'input', 1), dialCode, 'dialCode');
+        await dispatchInput(getField('contact number', 'input', 2), phone, 'contactNumber');
+        await dispatchInput(getField('email', 'input'), data.email || data.account, 'email');
+
+        const success = !report.missing.length && !report.empty.length
+            && !report.invalid.length && !report.mismatched.length;
+        return { success, ...report };
     } catch (error) {
-        return { success: false, error: error.message };
+        return { success: false, error: error.message, ...report };
+    }
+}
+'gender');
+        await selectDropdown('current nationality', data.nationality, 'nationality');
+
+        const success = !report.missing.length && !report.empty.length
+            && !report.invalid.length && !report.mismatched.length;
+        return { success, ...report };
+    } catch (error) {
+        return { success: false, error: error.message, ...report };
     }
 }
 ```
@@ -1468,6 +1878,21 @@ class SheetHandler {
         this.hasMandatory = this.mandatoryKeys.size > 0;
         this.hasAllowed = this.allowedKeys.size > 0;
         this.allValidKeys = new Set([...this.mandatoryKeys, ...this.allowedKeys]);
+    }
+
+    /**
+     * Excel date cells would otherwise be printed with SheetJS's US default (m/d/yy -> "4/1/89").
+     * Force an unambiguous 4-digit-year day-first format instead.
+     */
+    _forceDateFormat(sheet) {
+        for (const addr of Object.keys(sheet)) {
+            if (addr[0] === '!') continue;
+            const cell = sheet[addr];
+            if (cell && cell.t === 'n' && cell.z && XLSX.SSF.is_date(cell.z)) {
+                cell.z = 'dd/mm/yyyy';
+                delete cell.w;
+            }
+        }
     }
 
     resolveFilePath(customPath) {
@@ -1599,12 +2024,13 @@ class SheetHandler {
     loadFromExcel(customPath, sheetName) {
         try {
             const validPath = this.resolveFilePath(customPath);
-            const workbook = XLSX.readFile(validPath);
+            const workbook = XLSX.readFile(validPath, { cellNF: true });
             const targetSheetName = sheetName || workbook.SheetNames[0];
             const sheet = workbook.Sheets[targetSheetName];
 
             if (!sheet) return this._createErrorResult(`Sheet "${targetSheetName}" was not found in the Excel workbook.`);
 
+            this._forceDateFormat(sheet);
             const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
             return this.sanitizeParsing(rawRows);
         } catch (error) {
@@ -1615,7 +2041,7 @@ class SheetHandler {
     loadFromCsv(customPath) {
         try {
             const validPath = this.resolveFilePath(customPath);
-            const workbook = XLSX.readFile(validPath, { type: 'file' });
+            const workbook = XLSX.readFile(validPath, { type: 'file', raw: true });
             const firstSheetName = workbook.SheetNames[0];
             const sheet = workbook.Sheets[firstSheetName];
 
@@ -1657,7 +2083,8 @@ class SheetHandler {
                 throw new Error("Access Denied by Google. The sheet is private. Please change sharing settings to 'Anyone with the link'.");
             }
 
-            const workbook = XLSX.read(csvText, { type: 'string' });
+            // raw:true keeps every cell as typed. Without it SheetJS guesses US dates: "4/1/1989" -> "4/1/89".
+            const workbook = XLSX.read(csvText, { type: 'string', raw: true });
             const sheetName = workbook.SheetNames[0];
             const sheet = workbook.Sheets[sheetName];
 

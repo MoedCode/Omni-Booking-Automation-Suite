@@ -18,6 +18,21 @@ class SheetHandler {
         this.allValidKeys = new Set([...this.mandatoryKeys, ...this.allowedKeys]);
     }
 
+    /**
+     * Excel date cells would otherwise be printed with SheetJS's US default (m/d/yy -> "4/1/89").
+     * Force an unambiguous 4-digit-year day-first format instead.
+     */
+    _forceDateFormat(sheet) {
+        for (const addr of Object.keys(sheet)) {
+            if (addr[0] === '!') continue;
+            const cell = sheet[addr];
+            if (cell && cell.t === 'n' && cell.z && XLSX.SSF.is_date(cell.z)) {
+                cell.z = 'dd/mm/yyyy';
+                delete cell.w;
+            }
+        }
+    }
+
     resolveFilePath(customPath) {
         const targetPath = customPath || this.defaultFilePath;
         if (!targetPath) throw new Error("[File Error] No file path provided and no default path is set.");
@@ -147,12 +162,13 @@ class SheetHandler {
     loadFromExcel(customPath, sheetName) {
         try {
             const validPath = this.resolveFilePath(customPath);
-            const workbook = XLSX.readFile(validPath);
+            const workbook = XLSX.readFile(validPath, { cellNF: true });
             const targetSheetName = sheetName || workbook.SheetNames[0];
             const sheet = workbook.Sheets[targetSheetName];
 
             if (!sheet) return this._createErrorResult(`Sheet "${targetSheetName}" was not found in the Excel workbook.`);
 
+            this._forceDateFormat(sheet);
             const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
             return this.sanitizeParsing(rawRows);
         } catch (error) {
@@ -163,7 +179,7 @@ class SheetHandler {
     loadFromCsv(customPath) {
         try {
             const validPath = this.resolveFilePath(customPath);
-            const workbook = XLSX.readFile(validPath, { type: 'file' });
+            const workbook = XLSX.readFile(validPath, { type: 'file', raw: true });
             const firstSheetName = workbook.SheetNames[0];
             const sheet = workbook.Sheets[firstSheetName];
 
@@ -205,7 +221,8 @@ class SheetHandler {
                 throw new Error("Access Denied by Google. The sheet is private. Please change sharing settings to 'Anyone with the link'.");
             }
 
-            const workbook = XLSX.read(csvText, { type: 'string' });
+            // raw:true keeps every cell as typed. Without it SheetJS guesses US dates: "4/1/1989" -> "4/1/89".
+            const workbook = XLSX.read(csvText, { type: 'string', raw: true });
             const sheetName = workbook.SheetNames[0];
             const sheet = workbook.Sheets[sheetName];
 
