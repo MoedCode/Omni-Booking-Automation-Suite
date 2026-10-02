@@ -4,7 +4,7 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { EgPtrLoginURL, BROWSER_ARGS, CHANNEL, terminationCmds, debug, actionsConfig, cookiesAcceptant, defaultBatchConfig } from '../Config/settings.js';
 import Selectors from '../Config/Selectors.js';
-import { injectionSignIn, signInSelectors } from './injection.js';
+import { injectionSignIn, fillYourDetails, signInSelectors } from './injection.js';
 import { BaseBrowser } from './BaseBrowser.js';
 import { CaptchaHandler } from './captchaHandler.js';
 import readline from 'node:readline/promises';
@@ -29,11 +29,15 @@ export class ChromeWorker extends BaseBrowser {
         this.email = email;
         this.password = password;
 
-        this.instanceData = {
-            city: instanceData?.city || defaultBatchConfig.city,
-            appointmentCategory: instanceData?.appointmentCategory || defaultBatchConfig.appointmentCategory,
-            subCategory: instanceData?.subCategory || defaultBatchConfig.subCategory
-        };
+        // BUGFIX: the old code kept only city/appointmentCategory/subCategory, so firstName, lastName,
+        // dateOfBirth, passportNumber, ... never reached fillYourDetails. Merge everything; blank values
+        // fall back to defaultBatchConfig.
+        const mergedData = { ...defaultBatchConfig };
+        for (const [k, v] of Object.entries(instanceData || {})) {
+            if (v !== undefined && v !== null && String(v).trim() !== '') mergedData[k] = v;
+        }
+        if (!mergedData.account) mergedData.account = email; // contact email falls back to the login email
+        this.instanceData = mergedData;
         
         // Loop State & Constraints
         this.currentAttempt = 1;
@@ -99,6 +103,12 @@ export class ChromeWorker extends BaseBrowser {
                 endDelay: actionsConfig.appointmentDetails.endDelay,
                 dependencies: ['dashboard'],
                 method: async () => {
+                    // Already succeeded: Continue was clicked, just wait for the router to reach Your Details.
+                    if (this.completedActivities.has('appointmentDetails')) {
+                        await new Promise(r => setTimeout(r, 500));
+                        return;
+                    }
+
                     let isAvailable = false;
                     let currentSwitch = 0;
                     const maxSwitches = this.switches;
@@ -167,7 +177,8 @@ export class ChromeWorker extends BaseBrowser {
                             await this.bringWindowOnScreen();
                         }
 
-                        this.isOrchestratorRunning = false; // Freeze bot, wait for user
+                        // BUGFIX: the bot used to freeze here, so Your Details was never filled.
+                        // Keep the orchestrator running; the 'yourDetails' action takes over.
                         return; 
                     }
 
@@ -228,6 +239,67 @@ export class ChromeWorker extends BaseBrowser {
                             this.isOrchestratorRunning = false; 
                         }
                     }
+                }
+            },
+            yourDetails: {
+                priority: actionsConfig.yourDetails.priority,
+                startDelay: actionsConfig.yourDetails.startDelay,
+                endDelay: actionsConfig.yourDetails.endDelay,
+                dependencies: ['appointmentDetails'],
+                method: async () => {
+                    if (this.completedActivities.has('yourDetails')) return;
+
+                    this.logStatus("[Your Details] Waiting for the form to be ready...");
+                    try {
+                        await this.page.waitForSelector('#dateOfBirth', { visible: true, timeout: 20000 });
+                    } catch (e) {
+                        this.logWarning("yourDetails", "Form did not appear in time; will retry on the next scan.");
+                        return;
+                    }
+                    await this.page.waitForFunction(() => {
+                        const l = document.querySelector('ngx-ui-loader .ngx-overlay');
+                        return !l || l.offsetHeight === 0 || window.getComputedStyle(l).display === 'none';
+                    }, { timeout: 15000 }).catch(() => {});
+
+                    const payload = { ...this.instanceData, inputMethod: this.inputMethod };
+                    let res = { success: false, error: 'not-run' };
+
+                    for (let attempt = 1; attempt <= 2 && !res.success; attempt++) {
+                        res = await this.page.evaluate(fillYourDetails, payload)
+                            .catch((e) => ({ success: false, error: `injection-error: ${e.message}` }));
+                        if (!res.success && attempt < 2) {
+                            this.logWarning("yourDetails", `Attempt ${attempt} incomplete: ${JSON.stringify(res)} - retrying...`);
+                            await new Promise(r => setTimeout(r, 1000));
+                        }
+                    }
+
+                    this.completedActivities.add('yourDetails');
+
+                    if (res.success) {
+                        this.logStatus(`[Your Details] ✅ All fields filled: ${res.filled.join(', ')}`);
+                    } else {
+                        this.logWarning("yourDetails", `Some fields were NOT filled -> ${JSON.stringify(res)}`);
+                    }
+
+                    // The page asks to wait 7 seconds before saving. Saving is opt-in (instanceData.autoSave).
+                    const autoSave = this.instanceData.autoSave === true || String(this.instanceData.autoSave).toLowerCase() === 'true';
+                    if (res.success && autoSave) {
+                        this.logStatus("[Your Details] autoSave enabled: waiting 8s (page requires 7s) before Save...");
+                        await new Promise(r => setTimeout(r, 8000));
+                        try {
+                            await this.clickByDescriptor(Selectors.yourDetails.saveButton);
+                            this.logStatus("[Your Details] ✅ Save clicked.");
+                        } catch (e) {
+                            this.logWarning("yourDetails", `Could not click Save: ${e.message}`);
+                        }
+                    } else {
+                        this.logStatus("[Your Details] Review the form, then press Save yourself.");
+                    }
+
+                    if (this.headless) {
+                        await this.bringWindowOnScreen();
+                    }
+                    this.isOrchestratorRunning = false; // park the bot for the user
                 }
             }
         };
@@ -341,17 +413,31 @@ export class ChromeWorker extends BaseBrowser {
         }
     }
 
+    async isYourDetailsPage() {
+        if (!this.page) return false;
+        try {
+            if (this.page.url().includes('/your-details')) return true;
+            return !!(await this.page.$('#dateOfBirth'));
+        } catch (e) {
+            return false;
+        }
+    }
+
     async domScanner() {
         if (!this.page) return [];
         const detected = [];
+        const onYourDetails = await this.isYourDetailsPage();
 
         if (await this.isPresent(Selectors.common.cookieBanner.container)) detected.push('cookies');
         if (await this.captchaHandler.isPresent()) {
             if (!(await this.captchaHandler.isResolved())) detected.push('captcha');
         }
-        if (await this.isPresent(Selectors.signIn.email)) detected.push('signIn');
+        // BUGFIX: the "Email" field on Your Details matches the sign-in descriptor and used to re-trigger
+        // signIn (which would type the login email into the contact email field). Never detect it there.
+        if (!onYourDetails && await this.isPresent(Selectors.signIn.email)) detected.push('signIn');
         if (await this.isPresent(Selectors.dashboard.startNewBooking)) detected.push('dashboard');
         if (await this.isPresent(Selectors.appointmentDetails.centerDropdown)) detected.push('appointmentDetails');
+        if (onYourDetails) detected.push('yourDetails');
 
         detected.sort((a, b) => (this.mappedActions[a]?.priority ?? 99) - (this.mappedActions[b]?.priority ?? 99));
         this.currentOrderedDom = [...detected];

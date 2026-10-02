@@ -1203,12 +1203,15 @@ export class ChromeWorker extends BaseBrowser {
 ```javascript
 /* Omni-Booking-Automation-Suite/VFS_Portugal/Browsers/injection.js */
 
-export const signInSelectors = {}; // Deprecated: Replaced entirely by semantic XPaths
+export const signInSelectors = {}; 
 
+/**
+ * 1. Sign-In Form Filler 
+ */
 export async function injectionSignIn(config = {}) {
     const account = config.account || config.email || '';
     const password = config.password || '';
-    let rawMethod = (config.inputMethod || config.fillMode || config.typingMode || 'fill').toLowerCase();
+    let rawMethod = (config.inputMethod || 'fill').toLowerCase();
     const validMethods = ['typing', 'paste', 'fill', 'random'];
     if (!validMethods.includes(rawMethod)) rawMethod = 'fill';
 
@@ -1257,36 +1260,30 @@ export async function injectionSignIn(config = {}) {
         }
     } catch (e) {}
 
-    const fireInputEvents = (el) => {
-        el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
-        el.dispatchEvent(new Event('blur', { bubbles: true }));
-    };
-
-    const setNativeValue = (el, value) => {
-        el.focus();
-        const proto = window.HTMLInputElement.prototype;
-        const desc = Object.getOwnPropertyDescriptor(proto, 'value');
-        if (desc && desc.set) desc.set.call(el, value);
-        else el.value = value;
-        fireInputEvents(el);
-    };
-
-    const emailEl = getXPath('//input[@type="email"] | //label[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "email")]/following::input[1]');
+    const emailEl = getXPath('//input[@type="email" or contains(@name, "email") or contains(@placeholder, "email")] | //label[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "email")]/following::input[1]');
     const passEl = getXPath('//input[@type="password"] | //label[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "password")]/following::input[1]');
 
     if (!emailEl) return { ok: false, reason: 'email-input-not-found', captcha: captchaState, method };
     if (!passEl) return { ok: false, reason: 'password-input-not-found', captcha: captchaState, method };
 
     const dispatchInput = async (el, val) => {
+        if (!el || !val) return;
         el.focus();
         el.click();
-        setNativeValue(el, '');
+        
+        const proto = window.HTMLInputElement.prototype;
+        const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+        if (desc && desc.set) desc.set.call(el, '');
+        else el.value = '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+
         if (method === 'typing') {
             for (const char of val) {
                 el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
                 el.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
-                setNativeValue(el, (el.value || '') + char);
+                if (desc && desc.set) desc.set.call(el, el.value + char);
+                else el.value += char;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
                 el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
                 await sleep(randomDelay(40, 120));
             }
@@ -1295,15 +1292,20 @@ export async function injectionSignIn(config = {}) {
                 const dt = new DataTransfer();
                 dt.setData('text/plain', val);
                 el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
-                setNativeValue(el, val);
-            } catch {
-                setNativeValue(el, val);
-            }
-            await sleep(60);
-        } else {
-            setNativeValue(el, val);
+            } catch(e) {}
+            if (desc && desc.set) desc.set.call(el, val);
+            else el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
             await sleep(50);
+        } else { // fill (browser)
+            if (desc && desc.set) desc.set.call(el, val);
+            else el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            await sleep(20);
         }
+        
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
     };
 
     await dispatchInput(emailEl, account);
@@ -1325,12 +1327,15 @@ export async function injectionSignIn(config = {}) {
 }
 
 /**
- * 2. Your Details Form Filler
- * Relies exclusively on Deep-Node text targeting to find labels across any UI layout.
+ * 2. Your Details Form Filler 
+ * Uses Advanced Semantic "Deep-Node" locating to find inputs strictly by text labels.
  */
 export async function fillYourDetails(data = {}) {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     
+    let method = (data.inputMethod || 'fill').toLowerCase();
+    if (method === 'random') method = ['typing', 'paste', 'fill'][Math.floor(Math.random() * 3)];
+
     const getXPath = (xpath) => {
         const iter = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
         let node;
@@ -1343,53 +1348,62 @@ export async function fillYourDetails(data = {}) {
         return null;
     };
 
-    const fireInputEvents = (el) => {
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.dispatchEvent(new Event('blur', { bubbles: true }));
+    // Semantic Finder: Looks for any label/div containing the text, then hops to the requested input/select tag.
+    const getField = (labelText, tag = 'input', idx = 1) => {
+        const lower = labelText.toLowerCase();
+        return getXPath(`(//label[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${lower}')]/following::${tag} | //div[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${lower}')]/following::${tag} | //${tag}[contains(translate(@placeholder, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${lower}')])[${idx}]`);
     };
 
-    // Advanced Deep-Node locator: Finds the absolute lowest node containing the text, then hops to the input
-    const pasteIntoInput = async (labelText, val, index = 1) => {
-        if (!val) return;
+    const dispatchInput = async (el, val) => {
+        if (!el || !val) return;
+        el.focus();
+        el.click();
         
-        // This query isolates the exact text node containing the string (ignores parent nodes), ensuring a clean jump.
-        const xpath = `(//*[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${labelText.toLowerCase()}') and not(.//*[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${labelText.toLowerCase()}')])])/following::input[${index}]`;
-        
-        const el = getXPath(xpath);
-        if (el) {
-            el.focus();
-            el.click();
-            await sleep(50);
-            
+        const proto = window.HTMLInputElement.prototype;
+        const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+        if (desc && desc.set) desc.set.call(el, '');
+        else el.value = '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+
+        if (method === 'typing') {
+            for (const char of val) {
+                el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+                el.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
+                if (desc && desc.set) desc.set.call(el, el.value + char);
+                else el.value += char;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+                await sleep(Math.floor(Math.random() * (120 - 40 + 1)) + 40);
+            }
+        } else if (method === 'paste') {
             try {
                 const dt = new DataTransfer();
                 dt.setData('text/plain', val);
                 el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
-            } catch (e) {}
-            
-            // Fallback forced native setter bypasses Angular UI components
-            const proto = window.HTMLInputElement.prototype;
-            const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+            } catch(e) {}
             if (desc && desc.set) desc.set.call(el, val);
             else el.value = val;
-            
-            fireInputEvents(el);
+            el.dispatchEvent(new Event('input', { bubbles: true }));
             await sleep(50);
-            
-            // Force dismissal of datepicker if it popped up
-            document.body.click(); 
+        } else { // fill (browser)
+            if (desc && desc.set) desc.set.call(el, val);
+            else el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            await sleep(20);
         }
+        
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
+        
+        // Force dismissal of datepicker if it popped up
+        document.body.click(); 
     };
 
     const selectDropdown = async (labelText, targetValue) => {
         if (!targetValue) return;
+        const trigger = getField(labelText, 'mat-select');
         
-        const xpath = `(//*[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${labelText.toLowerCase()}') and not(.//*[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${labelText.toLowerCase()}')])])/following::mat-select[1]`;
-        
-        const trigger = getXPath(xpath);
         if (!trigger) return;
-        
         if (trigger.textContent.toLowerCase().includes(targetValue.toLowerCase())) return;
 
         trigger.click();
@@ -1400,28 +1414,26 @@ export async function fillYourDetails(data = {}) {
             const optXpath = `.//mat-option//*[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${targetValue.toLowerCase()}')]`;
             const opt = document.evaluate(optXpath, panel, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
             
-            if (opt) {
-                opt.click();
-            } else {
-                document.body.click(); 
-            }
+            if (opt) opt.click();
+            else document.body.click(); 
+            
             await sleep(500);
         }
     };
 
     try {
-        await pasteIntoInput("first name", data.firstName);
-        await pasteIntoInput("last name", data.lastName);
-        await pasteIntoInput("passport number", data.passportNumber);
-        await pasteIntoInput("email", data.email || data.account);
+        await dispatchInput(getField('first name', 'input'), data.firstName);
+        await dispatchInput(getField('last name', 'input'), data.lastName);
+        await dispatchInput(getField('passport number', 'input'), data.passportNumber);
+        await dispatchInput(getField('email', 'input'), data.email || data.account);
         
-        // Contact number uses index to jump to the right input fields (Dial Code vs Phone Number)
-        await pasteIntoInput("contact number", data.dialCode, 1);
-        await pasteIntoInput("contact number", data.contactNumber, 2);
+        // Contact number uses index to jump to the right input fields (1 for Code, 2 for Phone)
+        await dispatchInput(getField('contact number', 'input', 1), data.dialCode);
+        await dispatchInput(getField('contact number', 'input', 2), data.contactNumber);
 
-        // Date Pickers explicitly populated directly via paste to avoid calendar overhead
-        await pasteIntoInput("date of birth", data.dateOfBirth);
-        await pasteIntoInput("passport expiry", data.passportExpiry);
+        // Date Pickers populated directly to avoid calendar overhead
+        await dispatchInput(getField('date of birth', 'input'), data.dateOfBirth);
+        await dispatchInput(getField('passport expiry', 'input'), data.passportExpiry);
 
         await selectDropdown('gender', data.gender);
         await selectDropdown('current nationality', data.nationality);
@@ -3364,6 +3376,18 @@ export default function App() {
 
                             {/* SECTION 4 */}
                             <div className="section-header">Section 4: Configuration</div>
+                            
+                            {/* Individual Account Typing Override */}
+                            <div className="form-group">
+                                <label>Login Typing Override</label>
+                                <select value={editForm.inputMethod || 'fill'} onChange={e => setEditForm({...editForm, inputMethod: e.target.value})}>
+                                    <option value="fill">Fill (browser)</option>
+                                    <option value="typing">Typing (keyboard)</option>
+                                    <option value="paste">Paste (clipboard)</option>
+                                    <option value="random">Random</option>
+                                </select>
+                            </div>
+
                             <div className="form-group"><label>Total Bot Attempts</label><input type="number" min="1" value={editForm.attempts || 1} onChange={e => setEditForm({...editForm, attempts: e.target.value})} /></div>
                             
                             {(() => {
