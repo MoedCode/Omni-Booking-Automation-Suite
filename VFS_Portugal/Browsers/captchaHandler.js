@@ -102,6 +102,26 @@ export class CaptchaHandler {
             }, { timeout }, inputSelector);
 
             this.worker.logStatus("[Captcha] ✅ Token successfully received.");
+
+            // Wait a moment and check if there is a submit button in a modal
+            await new Promise(r => setTimeout(r, 1000));
+            const submitBtnClicked = await this.page.evaluate(async () => {
+                const modal = document.querySelector('mat-dialog-container');
+                if (modal) {
+                    const btn = Array.from(modal.querySelectorAll('button')).find(b => (b.innerText || '').toLowerCase().includes('submit') && !b.disabled);
+                    if (btn) {
+                        btn.click();
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+            if (submitBtnClicked) {
+                this.worker.logStatus("[Captcha] ✅ Modal Submit button clicked.");
+                await new Promise(r => setTimeout(r, 1500));
+            }
+
             return true;
 
         } catch (error) {

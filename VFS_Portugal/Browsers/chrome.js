@@ -343,10 +343,30 @@ export class ChromeWorker extends BaseBrowser {
                     this.logStatus("[Your Details Summary] Executing native click on Continue...");
                     
                     try {
-                        await this.clickByDescriptor(Selectors.yourDetailsSummary.submitButton);
-                        this.logStatus("[Your Details Summary] ✅ Clicked Continue natively.");
-                        await sleep(1500);
-                        this.completedActivities.add('yourDetailsSummary');
+                        const clicked = await this.page.evaluate(async () => {
+                            const sleep = ms => new Promise(res => setTimeout(res, ms));
+                            for (let i = 0; i < 15; i++) {
+                                const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                    const txt = (b.innerText || '').toLowerCase();
+                                    return txt.includes('continue') && b.offsetHeight > 0;
+                                });
+                                if (btn && !btn.disabled && !btn.classList.contains('disabled') && btn.getAttribute('aria-disabled') !== 'true') {
+                                    btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                    btn.click();
+                                    return true;
+                                }
+                                await sleep(500);
+                            }
+                            return false;
+                        });
+
+                        if (clicked) {
+                            this.logStatus("[Your Details Summary] ✅ Clicked Continue.");
+                            await sleep(1500);
+                            this.completedActivities.add('yourDetailsSummary');
+                        } else {
+                            this.logWarning("yourDetailsSummary", `Failed to natively click Continue: Button not found or disabled.`);
+                        }
                     } catch (e) {
                         this.logWarning("yourDetailsSummary", `Failed to natively click Continue: ${e.message}`);
                     }
@@ -374,14 +394,17 @@ export class ChromeWorker extends BaseBrowser {
                         const str = JSON.stringify(this.lastCalendarResponse);
                         const dates = str.match(/\d{4}-\d{2}-\d{2}/g);
                         if (dates && dates.length > 0) {
-                            targetDate = dates.sort()[0];
+                            const futureDates = dates.filter(d => parseInt(d.split('-')[0]) >= 2026);
+                            if (futureDates.length > 0) {
+                                targetDate = futureDates.sort()[0];
+                            }
                         }
                     }
 
                     // Fallback to DOM parsing
                     if (!targetDate) {
                         targetDate = await this.page.evaluate(() => {
-                            const avail = document.querySelector('td.date-availiable[data-date]');
+                            const avail = document.querySelector('td.date-availiable[data-date], td.fc-day-future.date-availiable[data-date]');
                             return avail ? avail.getAttribute('data-date') : null;
                         });
                     }
@@ -390,7 +413,10 @@ export class ChromeWorker extends BaseBrowser {
                         this.logStatus(`[Book Appointment] Earliest available date found: ${targetDate}. Clicking...`);
                         await this.page.evaluate((date) => {
                             const td = document.querySelector(`td[data-date="${date}"]`);
-                            if (td) td.click();
+                            if (td) {
+                                const clickable = td.querySelector('a.fc-event') || td.querySelector('.fc-daygrid-day-frame') || td;
+                                clickable.click();
+                            }
                         }, targetDate);
                         await sleep(1500);
 
@@ -405,8 +431,16 @@ export class ChromeWorker extends BaseBrowser {
                                 timePref = 'All'; // Fallback to All
                             }
 
-                            // Click time dropdown if it exists
-                            const timeDropdown = document.querySelector('mat-select[formcontrolname="time"]');
+                            // Find the time dropdown (it is usually the last mat-select on the page if there are multiple)
+                            const timeDropdowns = Array.from(document.querySelectorAll('mat-select'));
+                            let timeDropdown = timeDropdowns.find(el => {
+                                const parent = el.closest('div.row, div.col-12, div.form-group');
+                                return parent && parent.innerText && parent.innerText.includes('time');
+                            });
+                            if (!timeDropdown && timeDropdowns.length > 0) {
+                                timeDropdown = timeDropdowns[timeDropdowns.length - 1];
+                            }
+
                             if (timeDropdown) {
                                 timeDropdown.click();
                                 await sleep(800);
@@ -428,24 +462,49 @@ export class ChromeWorker extends BaseBrowser {
                                 }
                             }
 
-                            // Find and click the slot radio based on preference (we just click first one for now)
-                            const slots = Array.from(document.querySelectorAll('.ba-slot-radio, input[name="timeSlot"], input[type="radio"]'));
-                            // Filter out the 'Choose a slot' radio which has value="0"
-                            const validSlots = slots.filter(r => r.value !== "0");
-                            if (validSlots.length > 0) {
-                                validSlots[0].click();
+                            // Find and click the slot radio based on preference
+                            // Note: VFS uses mat-radio-button. The top one is "Choose a slot" (value="0")
+                            const radios = Array.from(document.querySelectorAll('mat-radio-button'));
+                            const slotRadios = radios.filter(r => {
+                                const input = r.querySelector('input[type="radio"]');
+                                return input && input.value !== "0";
+                            });
+
+                            if (slotRadios.length > 0) {
+                                // Click the label inside the radio for Angular to register
+                                const label = slotRadios[0].querySelector('label') || slotRadios[0];
+                                label.click();
+                            } else {
+                                // Fallback
+                                const slots = Array.from(document.querySelectorAll('.ba-slot-radio, input[name="timeSlot"], input[type="radio"]'));
+                                const validSlots = slots.filter(r => r.value !== "0");
+                                if (validSlots.length > 0) {
+                                    validSlots[0].click();
+                                }
                             }
                         }, targetTime);
                         await sleep(1500);
 
-                        // Click continue
-                        const btn = await this.page.evaluateHandle(() => {
-                            return Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('Continue') && b.offsetHeight > 0);
+                        // Click continue safely waiting for it to be enabled
+                        const continueClicked = await this.page.evaluate(async () => {
+                            const sleep = ms => new Promise(res => setTimeout(res, ms));
+                            for (let i = 0; i < 15; i++) {
+                                const btn = Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('Continue') && b.offsetHeight > 0);
+                                if (btn && !btn.disabled && !btn.classList.contains('disabled') && btn.getAttribute('aria-disabled') !== 'true') {
+                                    btn.click();
+                                    return true;
+                                }
+                                await sleep(500);
+                            }
+                            return false;
                         });
-                        if (btn) {
-                            await btn.click();
+                        
+                        if (continueClicked) {
+                            this.logStatus("[Book Appointment] ✅ Clicked Continue.");
                             await sleep(1500);
                             this.completedActivities.add('bookAppointment');
+                        } else {
+                            this.logWarning("bookAppointment", "Continue button remained disabled or not found.");
                         }
                     } else {
                         this.logStatus("[Book Appointment] No dates found. Clicking Next Month...");
@@ -483,26 +542,46 @@ export class ChromeWorker extends BaseBrowser {
                     const sleep = ms => new Promise(r => setTimeout(r, ms));
                     this.logStatus("[Review] Accepting Terms and Conditions...");
                     
-                    // Click T&C checkbox
+                    // Click T&C checkbox safely
                     await this.page.evaluate(() => {
-                        const checkbox = document.querySelector('input[type="checkbox"]');
-                        if (checkbox && !checkbox.checked) {
-                            checkbox.click();
+                        const checkboxes = Array.from(document.querySelectorAll('mat-checkbox input[type="checkbox"]'));
+                        for (const checkboxInput of checkboxes) {
+                            if (!checkboxInput.checked) {
+                                const label = document.querySelector(`label[for="${checkboxInput.id}"]`);
+                                if (label) {
+                                    label.click();
+                                } else {
+                                    checkboxInput.click();
+                                }
+                            }
                         }
                     });
                     await sleep(1000);
 
                     // Click Pay Online / Continue
-                    const btn = await this.page.evaluateHandle(() => {
-                        return Array.from(document.querySelectorAll('button')).find(b => {
-                            const text = (b.innerText || '');
-                            return (text.includes('Pay Online') || text.includes('Continue')) && b.offsetHeight > 0;
-                        });
+                    this.logStatus("[Review] Clicking Pay Online...");
+                    const clicked = await this.page.evaluate(async () => {
+                        const sleep = ms => new Promise(res => setTimeout(res, ms));
+                        for (let i = 0; i < 15; i++) {
+                            const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                const text = (b.innerText || '').toLowerCase();
+                                return (text.includes('pay online') || text.includes('continue')) && b.offsetHeight > 0;
+                            });
+                            if (btn && !btn.disabled && !btn.classList.contains('disabled') && btn.getAttribute('aria-disabled') !== 'true') {
+                                btn.click();
+                                return true;
+                            }
+                            await sleep(500);
+                        }
+                        return false;
                     });
-                    if (btn) {
-                        await btn.click();
+
+                    if (clicked) {
+                        this.logStatus("[Review] ✅ Proceeded to payment.");
                         await sleep(1500);
                         this.completedActivities.add('review');
+                    } else {
+                        this.logWarning("review", "Pay Online button not found or remained disabled.");
                     }
                 }
             },
@@ -611,7 +690,7 @@ export class ChromeWorker extends BaseBrowser {
             this.page.on('response', async (response) => {
                 try {
                     const url = response.url();
-                    if (url.includes('availability') || url.includes('appointment')) {
+                    if (!url.includes('/applicants') && (url.includes('availability') || url.includes('appointment/slots') || url.includes('appointment'))) {
                         const contentType = response.headers()['content-type'] || '';
                         if (contentType.includes('application/json')) {
                             const data = await response.json();

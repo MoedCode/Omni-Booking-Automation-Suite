@@ -184,6 +184,7 @@ const Selectors = {
 };
 
 module.exports = Selectors;
+module.exports = Selectors;
 ```
 ## *settings.js*
 ```javascript
@@ -364,13 +365,17 @@ export class BaseBrowser {
 
     logWarning(key, message) {
         this.warnings[key] = message;
+        // Format as blinking yellow for the Operational State display
+        const coloredMessage = `\x1b[5;33m⚠️ [Warning - ${key}]: ${message}\x1b[0m`;
+        this.operationalStatus.push(coloredMessage);
         if (debug?.warnings) {
-            console.warn(`[${new Date().toLocaleTimeString()}] ⚠️ [Warning - ${key}]: ${message}`);
+            console.warn(`[${new Date().toLocaleTimeString()}] ${coloredMessage}`);
         }
     }
 
     logError(key, message) {
         this.errors[key] = message;
+        this.operationalStatus.push(`❌ [Error - ${key}]: ${message}`);
         if (debug?.errors) {
             console.error(`[${new Date().toLocaleTimeString()}] ❌ [Error - ${key}]: ${message}`);
         }
@@ -482,6 +487,21 @@ export class BaseBrowser {
         if (!this.page) return false;
 
         try {
+            if (descriptor.elementType === 'Heading') {
+                const isVisible = await this.page.evaluate((desc) => {
+                    const clean = (str) => (str || '').toLowerCase().replace(/[*_:\s\-]/g, ' ').trim();
+                    const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+                    for (const h of headings) {
+                        const hText = clean(h.innerText || h.textContent);
+                        const matched = desc.text.some(t => hText.includes(clean(t)));
+                        if (matched && window.getComputedStyle(h).display !== 'none' && window.getComputedStyle(h).visibility !== 'hidden' && h.offsetHeight > 0) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }, descriptor);
+                return Boolean(isVisible);
+            }
             if (descriptor.elementType === 'TextInput') {
                 const el = await this.findInput(descriptor);
                 return el !== null;
@@ -1009,14 +1029,15 @@ export class ChromeWorker extends BaseBrowser {
                 dependencies: [],
                 method: async () => {
                     const sleep = ms => new Promise(r => setTimeout(r, ms));
-                    this.logStatus("[Your Details Summary] Clicking Continue...");
-                    const btn = await this.page.evaluateHandle(() => {
-                        return Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('Continue') && b.offsetHeight > 0);
-                    });
-                    if (btn) {
-                        await btn.click();
+                    this.logStatus("[Your Details Summary] Executing native click on Continue...");
+                    
+                    try {
+                        await this.clickByDescriptor(Selectors.yourDetailsSummary.submitButton);
+                        this.logStatus("[Your Details Summary] ✅ Clicked Continue natively.");
                         await sleep(1500);
                         this.completedActivities.add('yourDetailsSummary');
+                    } catch (e) {
+                        this.logWarning("yourDetailsSummary", `Failed to natively click Continue: ${e.message}`);
                     }
                 }
             },
@@ -1444,7 +1465,26 @@ export class ChromeWorker extends BaseBrowser {
         const stages = ['signIn', 'dashboard', 'appointmentDetails', 'yourDetails', 'yourDetailsSummary', 'bookAppointment', 'services', 'review', 'paymentDisclaimer'];
         const firstSeen = stages.findIndex(s => detected.includes(s));
         if (firstSeen !== -1) {
-            for (const s of stages.slice(firstSeen + 1)) this.completedActivities.delete(s);
+            for (const s of stages.slice(firstSeen + 1)) {
+                this.completedActivities.delete(s);
+                if (this.warnedBypasses) this.warnedBypasses.delete(s);
+            }
+        }
+
+        // Logic to track sequence and detect skipped (bypassed) operations
+        if (!this.warnedBypasses) this.warnedBypasses = new Set();
+        const detectedStages = detected.filter(s => stages.includes(s));
+        if (detectedStages.length > 0) {
+            const highestDetectedIdx = Math.max(...detectedStages.map(s => stages.indexOf(s)));
+            // Check if any previous stages were skipped (not in completedActivities)
+            for (let i = 0; i < highestDetectedIdx; i++) {
+                const stage = stages[i];
+                // 'yourDetails' is sometimes genuinely skipped if the portal bypasses it, we can still warn.
+                if (!this.completedActivities.has(stage) && !this.warnedBypasses.has(stage)) {
+                    this.warnedBypasses.add(stage);
+                    this.logWarning("sequence_bypass", `Bypassed operation: '${stage}' was skipped or incomplete before reaching '${stages[highestDetectedIdx]}'.`);
+                }
+            }
         }
 
         detected.sort((a, b) => (this.mappedActions[a]?.priority ?? 99) - (this.mappedActions[b]?.priority ?? 99));
@@ -2323,6 +2363,37 @@ export async function bookAnAppointment(config = {}) {
 
     // Step 14: click on continue button
     const continueBtnXPath = '//button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "continue")]';
+    const continueBtn = getXPath(continueBtnXPath);
+    if (continueBtn) {
+        continueBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+        await sleep(300);
+        continueBtn.removeAttribute('disabled');
+        continueBtn.click();
+        return { ok: true };
+    }
+    
+    return { ok: false, reason: 'continue-button-not-found' };
+}
+
+/**
+ * 4. Your Details Summary Handler
+ */
+export async function yourDetailsSummary(config = {}) {
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    
+    const getXPath = (xpath) => {
+        const iter = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+        let node;
+        while ((node = iter.iterateNext())) {
+            const style = window.getComputedStyle(node);
+            if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && node.offsetHeight > 0) {
+                return node;
+            }
+        }
+        return null;
+    };
+
+    const continueBtnXPath = '//button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "continue") or contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "add another applicant")]/ancestor::mat-card//button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "continue")] | //button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "continue")]';
     const continueBtn = getXPath(continueBtnXPath);
     if (continueBtn) {
         continueBtn.scrollIntoView({ behavior: 'instant', block: 'center' });

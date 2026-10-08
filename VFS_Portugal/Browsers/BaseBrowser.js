@@ -149,7 +149,11 @@ export class BaseBrowser {
                     const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6'));
                     for (const h of headings) {
                         const hText = clean(h.innerText || h.textContent);
-                        const matched = desc.text.some(t => hText.includes(clean(t)));
+                        const matched = desc.text.some(t => {
+                            const cT = clean(t);
+                            if (cT === 'your details') return hText === cT;
+                            return hText.includes(cT);
+                        });
                         if (matched && window.getComputedStyle(h).display !== 'none' && window.getComputedStyle(h).visibility !== 'hidden' && h.offsetHeight > 0) {
                             return true;
                         }
