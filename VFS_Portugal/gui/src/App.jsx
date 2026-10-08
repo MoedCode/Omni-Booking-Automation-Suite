@@ -102,7 +102,8 @@ export default function App() {
         passportExpiry: '',
         dialCode: '20',
         contactNumber: '',
-        email: ''
+        email: '',
+        appointmentTime: 'All'
     });
     
     const [editingId, setEditingId] = useState(null);
@@ -115,7 +116,17 @@ export default function App() {
     useEffect(() => {
         if (window.electronAPI) {
             window.electronAPI.onBotStatusUpdate(({ id, status }) => {
-                setInstances(prev => prev.map(inst => inst.id === id ? { ...inst, status: status } : inst));
+                setInstances(prev => prev.map(inst => {
+                    if (inst.id === id) {
+                        const isClosed = status === 'Closed' || status === 'Idle' || status.toLowerCase().includes('error');
+                        return {
+                            ...inst,
+                            status: status,
+                            ...(isClosed ? { aptStatus: 'idle' } : {})
+                        };
+                    }
+                    return inst;
+                }));
             });
             window.electronAPI.onAppointmentResult(({ id, result, message }) => {
                 if (result === 'error') {
@@ -223,7 +234,8 @@ export default function App() {
             passportExpiry: inst.data.passportExpiry,
             dialCode: inst.data.dialCode,
             contactNumber: inst.data.contactNumber,
-            email: inst.data.email
+            email: inst.data.email,
+            appointmentTime: inst.data.appointmentTime || 'All'
         }));
 
         const result = await window.electronAPI.exportData(dataToExport);
@@ -607,6 +619,18 @@ export default function App() {
                             <div style={{display: 'flex', gap: '10px'}}>
                                 <div className="form-group" style={{width: '90px'}}><label>Dial Code</label><input type="text" value={editForm.dialCode || '20'} onChange={e => setEditForm({...editForm, dialCode: e.target.value})} /></div>
                                 <div className="form-group" style={{flex: 1}}><label>Contact Number</label><input type="text" value={editForm.contactNumber || ''} onChange={e => setEditForm({...editForm, contactNumber: e.target.value})} /></div>
+                            </div>
+
+                            {/* SECTION: Book an Appointment */}
+                            <div className="section-header">Section: Book an Appointment</div>
+                            <div className="form-group">
+                                <label>Choose an appointment time</label>
+                                <select value={editForm.appointmentTime || 'All'} onChange={e => setEditForm({...editForm, appointmentTime: e.target.value})}>
+                                    <option value="All">All</option>
+                                    <option value="Morning">Morning</option>
+                                    <option value="Afternoon">Afternoon</option>
+                                    <option value="Evening">Evening</option>
+                                </select>
                             </div>
 
                             {/* SECTION 4 */}

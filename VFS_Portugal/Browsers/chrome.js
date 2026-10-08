@@ -332,6 +332,201 @@ export class ChromeWorker extends BaseBrowser {
                         this.logWarning("yourDetails", `Save result: ${outcome.status}${outcome.message ? ' - ' + outcome.message : ''}`);
                     }
                 }
+            },
+            yourDetailsSummary: {
+                priority: actionsConfig.yourDetailsSummary.priority,
+                startDelay: actionsConfig.yourDetailsSummary.startDelay,
+                endDelay: actionsConfig.yourDetailsSummary.endDelay,
+                dependencies: [],
+                method: async () => {
+                    const sleep = ms => new Promise(r => setTimeout(r, ms));
+                    this.logStatus("[Your Details Summary] Executing native click on Continue...");
+                    
+                    try {
+                        await this.clickByDescriptor(Selectors.yourDetailsSummary.submitButton);
+                        this.logStatus("[Your Details Summary] ✅ Clicked Continue natively.");
+                        await sleep(1500);
+                        this.completedActivities.add('yourDetailsSummary');
+                    } catch (e) {
+                        this.logWarning("yourDetailsSummary", `Failed to natively click Continue: ${e.message}`);
+                    }
+                }
+            },
+            bookAppointment: {
+                priority: actionsConfig.bookAppointment.priority,
+                startDelay: actionsConfig.bookAppointment.startDelay,
+                endDelay: actionsConfig.bookAppointment.endDelay,
+                dependencies: [],
+                method: async () => {
+                    const sleep = ms => new Promise(r => setTimeout(r, ms));
+                    this.logStatus("[Book Appointment] Handling calendar and slots...");
+                    
+                    // Click "Choose a slot" radio if not selected
+                    await this.page.evaluate(() => {
+                        const radio = document.querySelector('input[type="radio"][value="0"]');
+                        if (radio && !radio.checked) radio.click();
+                    });
+                    await sleep(1000);
+
+                    // Network interception logic fallback to DOM
+                    let targetDate = null;
+                    if (this.lastCalendarResponse) {
+                        const str = JSON.stringify(this.lastCalendarResponse);
+                        const dates = str.match(/\d{4}-\d{2}-\d{2}/g);
+                        if (dates && dates.length > 0) {
+                            targetDate = dates.sort()[0];
+                        }
+                    }
+
+                    // Fallback to DOM parsing
+                    if (!targetDate) {
+                        targetDate = await this.page.evaluate(() => {
+                            const avail = document.querySelector('td.date-availiable[data-date]');
+                            return avail ? avail.getAttribute('data-date') : null;
+                        });
+                    }
+
+                    if (targetDate) {
+                        this.logStatus(`[Book Appointment] Earliest available date found: ${targetDate}. Clicking...`);
+                        await this.page.evaluate((date) => {
+                            const td = document.querySelector(`td[data-date="${date}"]`);
+                            if (td) td.click();
+                        }, targetDate);
+                        await sleep(1500);
+
+                        // Select time slot from dropdown
+                        const targetTime = this.instanceData.appointmentTime || 'All';
+                        await this.page.evaluate(async (timePref) => {
+                            const sleep = ms => new Promise(res => setTimeout(res, ms));
+                            
+                            // Check for No Slots Available
+                            const alertBox = document.querySelector('.card-body');
+                            if (alertBox && alertBox.innerText.includes('No Slots Available')) {
+                                timePref = 'All'; // Fallback to All
+                            }
+
+                            // Click time dropdown if it exists
+                            const timeDropdown = document.querySelector('mat-select[formcontrolname="time"]');
+                            if (timeDropdown) {
+                                timeDropdown.click();
+                                await sleep(800);
+                                const panelId = timeDropdown.getAttribute('aria-controls');
+                                const panel = document.getElementById(panelId) || document.querySelector('.mat-mdc-select-panel');
+                                if (panel) {
+                                    const options = Array.from(panel.querySelectorAll('mat-option'));
+                                    let targetOption = options.find(opt => opt.innerText && opt.innerText.toLowerCase().includes(timePref.toLowerCase()));
+                                    if (!targetOption && timePref !== 'All') {
+                                        targetOption = options.find(opt => opt.innerText && opt.innerText.toLowerCase().includes('all'));
+                                    }
+                                    if (targetOption) {
+                                        targetOption.click();
+                                        await sleep(1000);
+                                    } else {
+                                        document.body.click();
+                                        await sleep(500);
+                                    }
+                                }
+                            }
+
+                            // Find and click the slot radio based on preference (we just click first one for now)
+                            const slots = Array.from(document.querySelectorAll('.ba-slot-radio, input[name="timeSlot"], input[type="radio"]'));
+                            // Filter out the 'Choose a slot' radio which has value="0"
+                            const validSlots = slots.filter(r => r.value !== "0");
+                            if (validSlots.length > 0) {
+                                validSlots[0].click();
+                            }
+                        }, targetTime);
+                        await sleep(1500);
+
+                        // Click continue
+                        const btn = await this.page.evaluateHandle(() => {
+                            return Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('Continue') && b.offsetHeight > 0);
+                        });
+                        if (btn) {
+                            await btn.click();
+                            await sleep(1500);
+                            this.completedActivities.add('bookAppointment');
+                        }
+                    } else {
+                        this.logStatus("[Book Appointment] No dates found. Clicking Next Month...");
+                        await this.page.evaluate(() => {
+                            const next = document.querySelector('.fc-next-button');
+                            if (next && !next.disabled) next.click();
+                        });
+                    }
+                }
+            },
+            services: {
+                priority: actionsConfig.services.priority,
+                startDelay: actionsConfig.services.startDelay,
+                endDelay: actionsConfig.services.endDelay,
+                dependencies: [],
+                method: async () => {
+                    const sleep = ms => new Promise(r => setTimeout(r, ms));
+                    this.logStatus("[Services] Proceeding without adding services...");
+                    const btn = await this.page.evaluateHandle(() => {
+                        return Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('Continue') && b.offsetHeight > 0);
+                    });
+                    if (btn) {
+                        await btn.click();
+                        await sleep(1500);
+                        this.completedActivities.add('services');
+                    }
+                }
+            },
+            review: {
+                priority: actionsConfig.review.priority,
+                startDelay: actionsConfig.review.startDelay,
+                endDelay: actionsConfig.review.endDelay,
+                dependencies: [],
+                method: async () => {
+                    const sleep = ms => new Promise(r => setTimeout(r, ms));
+                    this.logStatus("[Review] Accepting Terms and Conditions...");
+                    
+                    // Click T&C checkbox
+                    await this.page.evaluate(() => {
+                        const checkbox = document.querySelector('input[type="checkbox"]');
+                        if (checkbox && !checkbox.checked) {
+                            checkbox.click();
+                        }
+                    });
+                    await sleep(1000);
+
+                    // Click Pay Online / Continue
+                    const btn = await this.page.evaluateHandle(() => {
+                        return Array.from(document.querySelectorAll('button')).find(b => {
+                            const text = (b.innerText || '');
+                            return (text.includes('Pay Online') || text.includes('Continue')) && b.offsetHeight > 0;
+                        });
+                    });
+                    if (btn) {
+                        await btn.click();
+                        await sleep(1500);
+                        this.completedActivities.add('review');
+                    }
+                }
+            },
+            paymentDisclaimer: {
+                priority: actionsConfig.paymentDisclaimer.priority,
+                startDelay: actionsConfig.paymentDisclaimer.startDelay,
+                endDelay: actionsConfig.paymentDisclaimer.endDelay,
+                dependencies: [],
+                method: async () => {
+                    const sleep = ms => new Promise(r => setTimeout(r, ms));
+                    this.logStatus("[Payment Disclaimer] Accepting disclaimer...");
+                    const btn = await this.page.evaluateHandle(() => {
+                        return Array.from(document.querySelectorAll('button')).find(b => {
+                            const text = (b.innerText || '');
+                            return (text.includes('Continue') || text.includes('Accept')) && b.offsetHeight > 0;
+                        });
+                    });
+                    if (btn) {
+                        await btn.click();
+                        await sleep(1500);
+                        this.completedActivities.add('paymentDisclaimer');
+                        this.logStatus("[PayFort] 🚨 Reached payment portal! Manual payment required.");
+                    }
+                }
             }
         };
         this.currentOrderedDom = [];
@@ -411,6 +606,24 @@ export class ChromeWorker extends BaseBrowser {
             this.page = pages.length > 0 ? pages[0] : await this.browser.newPage();
 
             await this.page.setBypassCSP(true);
+
+            // Set up network interceptor for calendar availability
+            this.page.on('response', async (response) => {
+                try {
+                    const url = response.url();
+                    if (url.includes('availability') || url.includes('appointment')) {
+                        const contentType = response.headers()['content-type'] || '';
+                        if (contentType.includes('application/json')) {
+                            const data = await response.json();
+                            if (data) {
+                                this.lastCalendarResponse = data;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Ignore errors for interceptor
+                }
+            });
 
             await this.page.evaluateOnNewDocument((accountEmail) => {
                 const prefix = `[${accountEmail}] `;
@@ -545,19 +758,44 @@ export class ChromeWorker extends BaseBrowser {
         if (await this.captchaHandler.isPresent()) {
             if (!(await this.captchaHandler.isResolved())) detected.push('captcha');
         }
-        // BUGFIX: the "Email" field on Your Details matches the sign-in descriptor and used to re-trigger
-        // signIn (which would type the login email into the contact email field). Never detect it there.
         if (!onYourDetails && await this.isPresent(Selectors.signIn.email)) detected.push('signIn');
         if (await this.isPresent(Selectors.dashboard.startNewBooking)) detected.push('dashboard');
         if (await this.isPresent(Selectors.appointmentDetails.centerDropdown)) detected.push('appointmentDetails');
-        if (onYourDetails) detected.push('yourDetails');
+        
+        const hasSummary = await this.isPresent(Selectors.yourDetailsSummary.pageHeader);
+        if (onYourDetails && !hasSummary) detected.push('yourDetails');
+        if (hasSummary) detected.push('yourDetailsSummary');
+        
+        if (await this.isPresent(Selectors.bookAppointment.pageHeader)) detected.push('bookAppointment');
+        if (await this.isPresent(Selectors.services.pageHeader)) detected.push('services');
+        if (await this.isPresent(Selectors.review.pageHeader)) detected.push('review');
+        if (await this.isPresent(Selectors.paymentDisclaimer.pageHeader)) detected.push('paymentDisclaimer');
 
         // Whenever an earlier stage is on screen again (refresh, session expired, user went back),
         // forget the stages after it so the bot redoes them instead of waiting forever.
-        const stages = ['signIn', 'dashboard', 'appointmentDetails', 'yourDetails'];
+        const stages = ['signIn', 'dashboard', 'appointmentDetails', 'yourDetails', 'yourDetailsSummary', 'bookAppointment', 'services', 'review', 'paymentDisclaimer'];
         const firstSeen = stages.findIndex(s => detected.includes(s));
         if (firstSeen !== -1) {
-            for (const s of stages.slice(firstSeen + 1)) this.completedActivities.delete(s);
+            for (const s of stages.slice(firstSeen + 1)) {
+                this.completedActivities.delete(s);
+                if (this.warnedBypasses) this.warnedBypasses.delete(s);
+            }
+        }
+
+        // Logic to track sequence and detect skipped (bypassed) operations
+        if (!this.warnedBypasses) this.warnedBypasses = new Set();
+        const detectedStages = detected.filter(s => stages.includes(s));
+        if (detectedStages.length > 0) {
+            const highestDetectedIdx = Math.max(...detectedStages.map(s => stages.indexOf(s)));
+            // Check if any previous stages were skipped (not in completedActivities)
+            for (let i = 0; i < highestDetectedIdx; i++) {
+                const stage = stages[i];
+                // 'yourDetails' is sometimes genuinely skipped if the portal bypasses it, we can still warn.
+                if (!this.completedActivities.has(stage) && !this.warnedBypasses.has(stage)) {
+                    this.warnedBypasses.add(stage);
+                    this.logWarning("sequence_bypass", `Bypassed operation: '${stage}' was skipped or incomplete before reaching '${stages[highestDetectedIdx]}'.`);
+                }
+            }
         }
 
         detected.sort((a, b) => (this.mappedActions[a]?.priority ?? 99) - (this.mappedActions[b]?.priority ?? 99));

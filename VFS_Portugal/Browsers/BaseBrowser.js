@@ -21,13 +21,17 @@ export class BaseBrowser {
 
     logWarning(key, message) {
         this.warnings[key] = message;
+        // Format as blinking yellow for the Operational State display
+        const coloredMessage = `\x1b[5;33m⚠️ [Warning - ${key}]: ${message}\x1b[0m`;
+        this.operationalStatus.push(coloredMessage);
         if (debug?.warnings) {
-            console.warn(`[${new Date().toLocaleTimeString()}] ⚠️ [Warning - ${key}]: ${message}`);
+            console.warn(`[${new Date().toLocaleTimeString()}] ${coloredMessage}`);
         }
     }
 
     logError(key, message) {
         this.errors[key] = message;
+        this.operationalStatus.push(`❌ [Error - ${key}]: ${message}`);
         if (debug?.errors) {
             console.error(`[${new Date().toLocaleTimeString()}] ❌ [Error - ${key}]: ${message}`);
         }
@@ -139,6 +143,21 @@ export class BaseBrowser {
         if (!this.page) return false;
 
         try {
+            if (descriptor.elementType === 'Heading') {
+                const isVisible = await this.page.evaluate((desc) => {
+                    const clean = (str) => (str || '').toLowerCase().replace(/[*_:\s\-]/g, ' ').trim();
+                    const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+                    for (const h of headings) {
+                        const hText = clean(h.innerText || h.textContent);
+                        const matched = desc.text.some(t => hText.includes(clean(t)));
+                        if (matched && window.getComputedStyle(h).display !== 'none' && window.getComputedStyle(h).visibility !== 'hidden' && h.offsetHeight > 0) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }, descriptor);
+                return Boolean(isVisible);
+            }
             if (descriptor.elementType === 'TextInput') {
                 const el = await this.findInput(descriptor);
                 return el !== null;

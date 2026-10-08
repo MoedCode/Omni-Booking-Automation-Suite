@@ -421,3 +421,199 @@ export async function fillYourDetails(data = {}) {
         return { success: false, error: error.message, ...report };
     }
 }
+
+/**
+ * 3. Book an Appointment Handler
+ */
+export async function bookAnAppointment(config = {}) {
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    
+    // Helpers
+    const getXPath = (xpath) => {
+        const iter = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+        let node;
+        while ((node = iter.iterateNext())) {
+            const style = window.getComputedStyle(node);
+            if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && node.offsetHeight > 0) {
+                return node;
+            }
+        }
+        return null;
+    };
+    
+    const clickAvailableDate = async () => {
+        // Look for available dates in current month view
+        const dateCells = Array.from(document.querySelectorAll('.fc-daygrid-day, td[data-date], td.mat-calendar-body-cell'));
+        
+        for (const day of dateCells) {
+            const text = (day.textContent || '').toLowerCase().trim();
+            const ariaLabel = (day.getAttribute('aria-label') || '').toLowerCase();
+            const classes = day.className.toLowerCase();
+            
+            // If it's explicitly marked unavailable or disabled, skip
+            if (classes.includes('unavailable') || classes.includes('disabled') || day.getAttribute('aria-disabled') === 'true') continue;
+            
+            // Check for explicit 'available' markers
+            let isAvailable = false;
+            if (text.includes('availiable') || text.includes('available')) isAvailable = true;
+            if (ariaLabel.includes('availiable') || ariaLabel.includes('available')) isAvailable = true;
+            if (classes.includes('availiable') || classes.includes('available')) isAvailable = true;
+            
+            // If no explicit text, assume any non-disabled date cell with a number is available in VFS Angular Material calendar
+            // But we must ensure the inner button is not disabled
+            const innerBtn = day.querySelector('button, a');
+            if (innerBtn) {
+                if (innerBtn.disabled || innerBtn.getAttribute('aria-disabled') === 'true' || innerBtn.className.toLowerCase().includes('disabled')) continue;
+            }
+            
+            if (!isAvailable && text.length > 0 && !isNaN(parseInt(text))) {
+                // Valid day number, not disabled. Let's consider it available.
+                isAvailable = true;
+            }
+            
+            if (isAvailable) {
+                const clickable = innerBtn || day;
+                clickable.scrollIntoView({ behavior: 'instant', block: 'center' });
+                await sleep(300);
+                clickable.click();
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Step 11: select first appointment available. Scroll month if not in current month.
+    let foundDate = false;
+    for (let i = 0; i < 6; i++) { // Max 6 months ahead
+        foundDate = await clickAvailableDate();
+        if (foundDate) break;
+        
+        // click next month
+        const nextMonthBtn = getXPath('//button[@aria-label="next month" or @title="Next month"]');
+        if (nextMonthBtn) {
+            nextMonthBtn.click();
+            await sleep(1000);
+        } else {
+            break;
+        }
+    }
+    
+    if (!foundDate) {
+        return { ok: false, reason: 'no-available-dates-found' };
+    }
+    await sleep(1500);
+
+    // Step 12: Select from "Choose an appointment time"
+    const preferredTime = config.appointmentTime || 'All';
+    let timeSelected = false;
+
+    const selectTimeOption = async (timeString) => {
+        const timeDropdownHeading = getXPath('//*[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "choose an appointment time")]');
+        let dropdownTrigger;
+        if (timeDropdownHeading) {
+            // Find mat-select after this heading
+            let nextEl = timeDropdownHeading.nextElementSibling;
+            while (nextEl) {
+                dropdownTrigger = nextEl.querySelector('mat-select');
+                if (dropdownTrigger) break;
+                nextEl = nextEl.nextElementSibling;
+            }
+        }
+        if (!dropdownTrigger) {
+            dropdownTrigger = getXPath('//mat-select');
+        }
+
+        if (dropdownTrigger) {
+            dropdownTrigger.scrollIntoView({ behavior: 'instant', block: 'center' });
+            await sleep(300);
+            dropdownTrigger.click();
+            await sleep(500);
+            
+            const optionXPath = `//mat-option[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "${timeString.toLowerCase()}")]`;
+            const optionEl = getXPath(optionXPath);
+            if (optionEl) {
+                optionEl.click();
+                await sleep(1000);
+                return true;
+            } else {
+                // close dropdown if option not found
+                document.body.click();
+            }
+        }
+        return false;
+    };
+
+    timeSelected = await selectTimeOption(preferredTime);
+
+    // Check if No Slots Available
+    const noSlotsAlert = getXPath('//div[contains(@class, "card-body") and contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "no slots available")]');
+    if (noSlotsAlert && preferredTime.toLowerCase() !== 'all') {
+        // switch to 'All' again
+        await selectTimeOption('All');
+    }
+
+    // Step 13: click on 'select' input radio
+    await sleep(1000);
+    const selectRadioXPath = '//*[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "select")]/ancestor-or-self::label | //input[@type="radio"]';
+    let selectRadio = getXPath(selectRadioXPath);
+    if (!selectRadio) {
+        // Just find the first visible radio button
+        selectRadio = getXPath('//input[@type="radio"]');
+    }
+    if (selectRadio) {
+        selectRadio.scrollIntoView({ behavior: 'instant', block: 'center' });
+        await sleep(300);
+        // If it's an input, click it. If it's a label, click it.
+        // Some Angular Material radios use a div wrapper, clicking it works.
+        const clickable = selectRadio.querySelector('input') || selectRadio;
+        clickable.click();
+        await sleep(500);
+    } else {
+        return { ok: false, reason: 'time-slot-radio-not-found' };
+    }
+
+    // Step 14: click on continue button
+    const continueBtnXPath = '//button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "continue")]';
+    const continueBtn = getXPath(continueBtnXPath);
+    if (continueBtn) {
+        continueBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+        await sleep(300);
+        continueBtn.removeAttribute('disabled');
+        continueBtn.click();
+        return { ok: true };
+    }
+    
+    return { ok: false, reason: 'continue-button-not-found' };
+}
+
+/**
+ * 4. Your Details Summary Handler
+ */
+export async function yourDetailsSummary(config = {}) {
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    
+    const getXPath = (xpath) => {
+        const iter = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+        let node;
+        while ((node = iter.iterateNext())) {
+            const style = window.getComputedStyle(node);
+            if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && node.offsetHeight > 0) {
+                return node;
+            }
+        }
+        return null;
+    };
+
+    const continueBtnXPath = '//button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "continue") or contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "add another applicant")]/ancestor::mat-card//button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "continue")] | //button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "continue")]';
+    const continueBtn = getXPath(continueBtnXPath);
+    if (continueBtn) {
+        continueBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+        await sleep(300);
+        continueBtn.removeAttribute('disabled');
+        continueBtn.click();
+        return { ok: true };
+    }
+    
+    return { ok: false, reason: 'continue-button-not-found' };
+}
+

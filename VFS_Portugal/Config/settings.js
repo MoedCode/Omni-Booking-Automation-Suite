@@ -31,6 +31,7 @@ const allKeys = {
         "dialCode",
         "contactNumber",
         "email",
+        "appointmentTime",
         // Your Details behaviour
         "autoSave",
         "dateFormat",
@@ -64,6 +65,7 @@ const allKeys = {
         gender: ["sex"],
         passportNumber: ["passport", "passport no", "passport no."],
         email: ["email address", "contact email", "email id", "email"],
+        appointmentTime: ["appointment time", "time", "choose an appointment time"],
         autoSave: ["auto save", "autosave", "save automatically"],
         dateFormat: ["date format"],
         dateOrder: ["date order"],
@@ -97,6 +99,7 @@ const defaultBatchConfig = {
     dialCode: "20",
     contactNumber: "",
     email: "",
+    appointmentTime: "All",
 
     // Your Details behaviour
     autoSave: true,            // click Save (after the page's 7s wait) once the form is filled
@@ -118,7 +121,13 @@ const actionsConfig = {
     signIn: { priority: 3, startDelay: 300, endDelay: 0 },
     dashboard: { priority: 4, startDelay: 2000, endDelay: 2000 },
     appointmentDetails: { priority: 5, startDelay: 1500, endDelay: 2000 },
-    yourDetails: { priority: 6, startDelay: 2000, endDelay: 2000 }, // Added Your Details Action Node
+    yourDetails: { priority: 7, startDelay: 2000, endDelay: 2000 }, // Added Your Details Action Node
+    yourDetailsSummary: { priority: 6, startDelay: 2000, endDelay: 2000 },
+    bookAppointment: { priority: 8, startDelay: 2000, endDelay: 2000 },
+    services: { priority: 9, startDelay: 2000, endDelay: 2000 },
+    review: { priority: 10, startDelay: 2000, endDelay: 2000 },
+    paymentDisclaimer: { priority: 11, startDelay: 2000, endDelay: 2000 },
+    payFort: { priority: 12, startDelay: 2000, endDelay: 2000 },
     default: { priority: 99, startDelay: 100, endDelay: 100 }
 };
 

@@ -86,6 +86,100 @@ const Selectors = {
             elementType: "Button", 
             text: ["Save", "Continue"] 
         }
+    },
+
+    yourDetailsSummary: {
+        pageHeader: {
+            elementType: "Heading",
+            text: ["Your Details Summary", "Your Details Summary ", " Your Details Summary "]
+        },
+        submitButton: {
+            elementType: "Button",
+            text: ["Continue", " Continue ", "Continue "]
+        }
+    },
+
+    bookAppointment: {
+        pageHeader: {
+            elementType: "Heading",
+            text: ["Book an Appointment", "Book an Appointment ", " Book an Appointment "]
+        },
+        appointmentTypeRadio: {
+            elementType: "Radio",
+            label: ["Choose a slot"]
+        },
+        calendarDates: {
+            elementType: "Button",
+            text: ["availiable", "available"]
+        },
+        timeDropdown: {
+            elementType: "Dropdown",
+            label: ["Choose an appointment time"]
+        },
+        timeOption: {
+            elementType: "Option",
+            text: ["All", "Morning", "Afternoon", "Evening"]
+        },
+        slotRadio: {
+            elementType: "Radio",
+            label: ["Select"]
+        },
+        noSlotsAlert: {
+            elementType: "Alert",
+            text: ["No Slots Available"]
+        },
+        submitButton: {
+            elementType: "Button",
+            text: ["Continue", " Continue ", "Continue "]
+        }
+    },
+
+    services: {
+        pageHeader: {
+            elementType: "Heading",
+            text: ["Services"]
+        },
+        submitButton: {
+            elementType: "Button",
+            text: ["Continue", " Continue ", "Continue "]
+        }
+    },
+
+    review: {
+        pageHeader: {
+            elementType: "Heading",
+            text: ["Review"]
+        },
+        termsCheckbox: {
+            elementType: "Checkbox",
+            label: ["I accept theTerms and Conditions", "I accept the Terms and Conditions"]
+        },
+        submitButton: {
+            elementType: "Button",
+            text: ["Pay Online", " Pay Online ", "Continue", " Continue "]
+        }
+    },
+
+    paymentDisclaimer: {
+        pageHeader: {
+            elementType: "Heading",
+            text: ["Payment Disclaimer"]
+        },
+        submitButton: {
+            elementType: "Button",
+            text: ["Continue", " Continue ", "I Accept", " I Accept "]
+        }
+    },
+
+    payFort: {
+        pageHeader: {
+            elementType: "Heading",
+            text: ["Payment Amount", "VFS Global"]
+        },
+        cardNumber: {
+            elementType: "TextInput",
+            label: ["Card Number"]
+        }
     }
 };
 
@@ -126,6 +220,7 @@ const allKeys = {
         "dialCode",
         "contactNumber",
         "email",
+        "appointmentTime",
         // Your Details behaviour
         "autoSave",
         "dateFormat",
@@ -159,6 +254,7 @@ const allKeys = {
         gender: ["sex"],
         passportNumber: ["passport", "passport no", "passport no."],
         email: ["email address", "contact email", "email id", "email"],
+        appointmentTime: ["appointment time", "time", "choose an appointment time"],
         autoSave: ["auto save", "autosave", "save automatically"],
         dateFormat: ["date format"],
         dateOrder: ["date order"],
@@ -192,6 +288,7 @@ const defaultBatchConfig = {
     dialCode: "20",
     contactNumber: "",
     email: "",
+    appointmentTime: "All",
 
     // Your Details behaviour
     autoSave: true,            // click Save (after the page's 7s wait) once the form is filled
@@ -213,7 +310,13 @@ const actionsConfig = {
     signIn: { priority: 3, startDelay: 300, endDelay: 0 },
     dashboard: { priority: 4, startDelay: 2000, endDelay: 2000 },
     appointmentDetails: { priority: 5, startDelay: 1500, endDelay: 2000 },
-    yourDetails: { priority: 6, startDelay: 2000, endDelay: 2000 }, // Added Your Details Action Node
+    yourDetails: { priority: 7, startDelay: 2000, endDelay: 2000 }, // Added Your Details Action Node
+    yourDetailsSummary: { priority: 6, startDelay: 2000, endDelay: 2000 },
+    bookAppointment: { priority: 8, startDelay: 2000, endDelay: 2000 },
+    services: { priority: 9, startDelay: 2000, endDelay: 2000 },
+    review: { priority: 10, startDelay: 2000, endDelay: 2000 },
+    paymentDisclaimer: { priority: 11, startDelay: 2000, endDelay: 2000 },
+    payFort: { priority: 12, startDelay: 2000, endDelay: 2000 },
     default: { priority: 99, startDelay: 100, endDelay: 100 }
 };
 
@@ -898,6 +1001,200 @@ export class ChromeWorker extends BaseBrowser {
                         this.logWarning("yourDetails", `Save result: ${outcome.status}${outcome.message ? ' - ' + outcome.message : ''}`);
                     }
                 }
+            },
+            yourDetailsSummary: {
+                priority: actionsConfig.yourDetailsSummary.priority,
+                startDelay: actionsConfig.yourDetailsSummary.startDelay,
+                endDelay: actionsConfig.yourDetailsSummary.endDelay,
+                dependencies: [],
+                method: async () => {
+                    const sleep = ms => new Promise(r => setTimeout(r, ms));
+                    this.logStatus("[Your Details Summary] Clicking Continue...");
+                    const btn = await this.page.evaluateHandle(() => {
+                        return Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('Continue') && b.offsetHeight > 0);
+                    });
+                    if (btn) {
+                        await btn.click();
+                        await sleep(1500);
+                        this.completedActivities.add('yourDetailsSummary');
+                    }
+                }
+            },
+            bookAppointment: {
+                priority: actionsConfig.bookAppointment.priority,
+                startDelay: actionsConfig.bookAppointment.startDelay,
+                endDelay: actionsConfig.bookAppointment.endDelay,
+                dependencies: [],
+                method: async () => {
+                    const sleep = ms => new Promise(r => setTimeout(r, ms));
+                    this.logStatus("[Book Appointment] Handling calendar and slots...");
+                    
+                    // Click "Choose a slot" radio if not selected
+                    await this.page.evaluate(() => {
+                        const radio = document.querySelector('input[type="radio"][value="0"]');
+                        if (radio && !radio.checked) radio.click();
+                    });
+                    await sleep(1000);
+
+                    // Network interception logic fallback to DOM
+                    let targetDate = null;
+                    if (this.lastCalendarResponse) {
+                        const str = JSON.stringify(this.lastCalendarResponse);
+                        const dates = str.match(/\d{4}-\d{2}-\d{2}/g);
+                        if (dates && dates.length > 0) {
+                            targetDate = dates.sort()[0];
+                        }
+                    }
+
+                    // Fallback to DOM parsing
+                    if (!targetDate) {
+                        targetDate = await this.page.evaluate(() => {
+                            const avail = document.querySelector('td.date-availiable[data-date]');
+                            return avail ? avail.getAttribute('data-date') : null;
+                        });
+                    }
+
+                    if (targetDate) {
+                        this.logStatus(`[Book Appointment] Earliest available date found: ${targetDate}. Clicking...`);
+                        await this.page.evaluate((date) => {
+                            const td = document.querySelector(`td[data-date="${date}"]`);
+                            if (td) td.click();
+                        }, targetDate);
+                        await sleep(1500);
+
+                        // Select time slot from dropdown
+                        const targetTime = this.instanceData.appointmentTime || 'All';
+                        await this.page.evaluate(async (timePref) => {
+                            const sleep = ms => new Promise(res => setTimeout(res, ms));
+                            
+                            // Check for No Slots Available
+                            const alertBox = document.querySelector('.card-body');
+                            if (alertBox && alertBox.innerText.includes('No Slots Available')) {
+                                timePref = 'All'; // Fallback to All
+                            }
+
+                            // Click time dropdown if it exists
+                            const timeDropdown = document.querySelector('mat-select[formcontrolname="time"]');
+                            if (timeDropdown) {
+                                timeDropdown.click();
+                                await sleep(800);
+                                const panelId = timeDropdown.getAttribute('aria-controls');
+                                const panel = document.getElementById(panelId) || document.querySelector('.mat-mdc-select-panel');
+                                if (panel) {
+                                    const options = Array.from(panel.querySelectorAll('mat-option'));
+                                    let targetOption = options.find(opt => opt.innerText && opt.innerText.toLowerCase().includes(timePref.toLowerCase()));
+                                    if (!targetOption && timePref !== 'All') {
+                                        targetOption = options.find(opt => opt.innerText && opt.innerText.toLowerCase().includes('all'));
+                                    }
+                                    if (targetOption) {
+                                        targetOption.click();
+                                        await sleep(1000);
+                                    } else {
+                                        document.body.click();
+                                        await sleep(500);
+                                    }
+                                }
+                            }
+
+                            // Find and click the slot radio based on preference (we just click first one for now)
+                            const slots = Array.from(document.querySelectorAll('.ba-slot-radio, input[name="timeSlot"], input[type="radio"]'));
+                            // Filter out the 'Choose a slot' radio which has value="0"
+                            const validSlots = slots.filter(r => r.value !== "0");
+                            if (validSlots.length > 0) {
+                                validSlots[0].click();
+                            }
+                        }, targetTime);
+                        await sleep(1500);
+
+                        // Click continue
+                        const btn = await this.page.evaluateHandle(() => {
+                            return Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('Continue') && b.offsetHeight > 0);
+                        });
+                        if (btn) {
+                            await btn.click();
+                            await sleep(1500);
+                            this.completedActivities.add('bookAppointment');
+                        }
+                    } else {
+                        this.logStatus("[Book Appointment] No dates found. Clicking Next Month...");
+                        await this.page.evaluate(() => {
+                            const next = document.querySelector('.fc-next-button');
+                            if (next && !next.disabled) next.click();
+                        });
+                    }
+                }
+            },
+            services: {
+                priority: actionsConfig.services.priority,
+                startDelay: actionsConfig.services.startDelay,
+                endDelay: actionsConfig.services.endDelay,
+                dependencies: [],
+                method: async () => {
+                    const sleep = ms => new Promise(r => setTimeout(r, ms));
+                    this.logStatus("[Services] Proceeding without adding services...");
+                    const btn = await this.page.evaluateHandle(() => {
+                        return Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('Continue') && b.offsetHeight > 0);
+                    });
+                    if (btn) {
+                        await btn.click();
+                        await sleep(1500);
+                        this.completedActivities.add('services');
+                    }
+                }
+            },
+            review: {
+                priority: actionsConfig.review.priority,
+                startDelay: actionsConfig.review.startDelay,
+                endDelay: actionsConfig.review.endDelay,
+                dependencies: [],
+                method: async () => {
+                    const sleep = ms => new Promise(r => setTimeout(r, ms));
+                    this.logStatus("[Review] Accepting Terms and Conditions...");
+                    
+                    // Click T&C checkbox
+                    await this.page.evaluate(() => {
+                        const checkbox = document.querySelector('input[type="checkbox"]');
+                        if (checkbox && !checkbox.checked) {
+                            checkbox.click();
+                        }
+                    });
+                    await sleep(1000);
+
+                    // Click Pay Online / Continue
+                    const btn = await this.page.evaluateHandle(() => {
+                        return Array.from(document.querySelectorAll('button')).find(b => {
+                            const text = (b.innerText || '');
+                            return (text.includes('Pay Online') || text.includes('Continue')) && b.offsetHeight > 0;
+                        });
+                    });
+                    if (btn) {
+                        await btn.click();
+                        await sleep(1500);
+                        this.completedActivities.add('review');
+                    }
+                }
+            },
+            paymentDisclaimer: {
+                priority: actionsConfig.paymentDisclaimer.priority,
+                startDelay: actionsConfig.paymentDisclaimer.startDelay,
+                endDelay: actionsConfig.paymentDisclaimer.endDelay,
+                dependencies: [],
+                method: async () => {
+                    const sleep = ms => new Promise(r => setTimeout(r, ms));
+                    this.logStatus("[Payment Disclaimer] Accepting disclaimer...");
+                    const btn = await this.page.evaluateHandle(() => {
+                        return Array.from(document.querySelectorAll('button')).find(b => {
+                            const text = (b.innerText || '');
+                            return (text.includes('Continue') || text.includes('Accept')) && b.offsetHeight > 0;
+                        });
+                    });
+                    if (btn) {
+                        await btn.click();
+                        await sleep(1500);
+                        this.completedActivities.add('paymentDisclaimer');
+                        this.logStatus("[PayFort] 🚨 Reached payment portal! Manual payment required.");
+                    }
+                }
             }
         };
         this.currentOrderedDom = [];
@@ -977,6 +1274,24 @@ export class ChromeWorker extends BaseBrowser {
             this.page = pages.length > 0 ? pages[0] : await this.browser.newPage();
 
             await this.page.setBypassCSP(true);
+
+            // Set up network interceptor for calendar availability
+            this.page.on('response', async (response) => {
+                try {
+                    const url = response.url();
+                    if (url.includes('availability') || url.includes('appointment')) {
+                        const contentType = response.headers()['content-type'] || '';
+                        if (contentType.includes('application/json')) {
+                            const data = await response.json();
+                            if (data) {
+                                this.lastCalendarResponse = data;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Ignore errors for interceptor
+                }
+            });
 
             await this.page.evaluateOnNewDocument((accountEmail) => {
                 const prefix = `[${accountEmail}] `;
@@ -1111,16 +1426,22 @@ export class ChromeWorker extends BaseBrowser {
         if (await this.captchaHandler.isPresent()) {
             if (!(await this.captchaHandler.isResolved())) detected.push('captcha');
         }
-        // BUGFIX: the "Email" field on Your Details matches the sign-in descriptor and used to re-trigger
-        // signIn (which would type the login email into the contact email field). Never detect it there.
         if (!onYourDetails && await this.isPresent(Selectors.signIn.email)) detected.push('signIn');
         if (await this.isPresent(Selectors.dashboard.startNewBooking)) detected.push('dashboard');
         if (await this.isPresent(Selectors.appointmentDetails.centerDropdown)) detected.push('appointmentDetails');
-        if (onYourDetails) detected.push('yourDetails');
+        
+        const hasSummary = await this.isPresent(Selectors.yourDetailsSummary.pageHeader);
+        if (onYourDetails && !hasSummary) detected.push('yourDetails');
+        if (hasSummary) detected.push('yourDetailsSummary');
+        
+        if (await this.isPresent(Selectors.bookAppointment.pageHeader)) detected.push('bookAppointment');
+        if (await this.isPresent(Selectors.services.pageHeader)) detected.push('services');
+        if (await this.isPresent(Selectors.review.pageHeader)) detected.push('review');
+        if (await this.isPresent(Selectors.paymentDisclaimer.pageHeader)) detected.push('paymentDisclaimer');
 
         // Whenever an earlier stage is on screen again (refresh, session expired, user went back),
         // forget the stages after it so the bot redoes them instead of waiting forever.
-        const stages = ['signIn', 'dashboard', 'appointmentDetails', 'yourDetails'];
+        const stages = ['signIn', 'dashboard', 'appointmentDetails', 'yourDetails', 'yourDetailsSummary', 'bookAppointment', 'services', 'review', 'paymentDisclaimer'];
         const firstSeen = stages.findIndex(s => detected.includes(s));
         if (firstSeen !== -1) {
             for (const s of stages.slice(firstSeen + 1)) this.completedActivities.delete(s);
@@ -1545,7 +1866,13 @@ export async function injectionSignIn(config = {}) {
     submitBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
     await sleep(300);
 
-    submit
+    submitBtn.removeAttribute('disabled');
+    submitBtn.click();
+
+    return { ok: true, captcha: captchaState, method };
+}
+
+/**
  * 2. Your Details Form Filler
  *
  * Runs inside page.evaluate(fillYourDetails, data) so EVERYTHING must live inside this function.
@@ -1843,15 +2170,169 @@ export async function fillYourDetails(data = {}) {
         return { success: false, error: error.message, ...report };
     }
 }
-'gender');
-        await selectDropdown('current nationality', data.nationality, 'nationality');
 
-        const success = !report.missing.length && !report.empty.length
-            && !report.invalid.length && !report.mismatched.length;
-        return { success, ...report };
-    } catch (error) {
-        return { success: false, error: error.message, ...report };
+/**
+ * 3. Book an Appointment Handler
+ */
+export async function bookAnAppointment(config = {}) {
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    
+    // Helpers
+    const getXPath = (xpath) => {
+        const iter = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+        let node;
+        while ((node = iter.iterateNext())) {
+            const style = window.getComputedStyle(node);
+            if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && node.offsetHeight > 0) {
+                return node;
+            }
+        }
+        return null;
+    };
+    
+    const clickAvailableDate = async () => {
+        // Look for available dates in current month view
+        const dateCells = Array.from(document.querySelectorAll('.fc-daygrid-day, td[data-date], td.mat-calendar-body-cell'));
+        
+        for (const day of dateCells) {
+            const text = (day.textContent || '').toLowerCase().trim();
+            const ariaLabel = (day.getAttribute('aria-label') || '').toLowerCase();
+            const classes = day.className.toLowerCase();
+            
+            // If it's explicitly marked unavailable or disabled, skip
+            if (classes.includes('unavailable') || classes.includes('disabled') || day.getAttribute('aria-disabled') === 'true') continue;
+            
+            // Check for explicit 'available' markers
+            let isAvailable = false;
+            if (text.includes('availiable') || text.includes('available')) isAvailable = true;
+            if (ariaLabel.includes('availiable') || ariaLabel.includes('available')) isAvailable = true;
+            if (classes.includes('availiable') || classes.includes('available')) isAvailable = true;
+            
+            // If no explicit text, assume any non-disabled date cell with a number is available in VFS Angular Material calendar
+            // But we must ensure the inner button is not disabled
+            const innerBtn = day.querySelector('button, a');
+            if (innerBtn) {
+                if (innerBtn.disabled || innerBtn.getAttribute('aria-disabled') === 'true' || innerBtn.className.toLowerCase().includes('disabled')) continue;
+            }
+            
+            if (!isAvailable && text.length > 0 && !isNaN(parseInt(text))) {
+                // Valid day number, not disabled. Let's consider it available.
+                isAvailable = true;
+            }
+            
+            if (isAvailable) {
+                const clickable = innerBtn || day;
+                clickable.scrollIntoView({ behavior: 'instant', block: 'center' });
+                await sleep(300);
+                clickable.click();
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Step 11: select first appointment available. Scroll month if not in current month.
+    let foundDate = false;
+    for (let i = 0; i < 6; i++) { // Max 6 months ahead
+        foundDate = await clickAvailableDate();
+        if (foundDate) break;
+        
+        // click next month
+        const nextMonthBtn = getXPath('//button[@aria-label="next month" or @title="Next month"]');
+        if (nextMonthBtn) {
+            nextMonthBtn.click();
+            await sleep(1000);
+        } else {
+            break;
+        }
     }
+    
+    if (!foundDate) {
+        return { ok: false, reason: 'no-available-dates-found' };
+    }
+    await sleep(1500);
+
+    // Step 12: Select from "Choose an appointment time"
+    const preferredTime = config.appointmentTime || 'All';
+    let timeSelected = false;
+
+    const selectTimeOption = async (timeString) => {
+        const timeDropdownHeading = getXPath('//*[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "choose an appointment time")]');
+        let dropdownTrigger;
+        if (timeDropdownHeading) {
+            // Find mat-select after this heading
+            let nextEl = timeDropdownHeading.nextElementSibling;
+            while (nextEl) {
+                dropdownTrigger = nextEl.querySelector('mat-select');
+                if (dropdownTrigger) break;
+                nextEl = nextEl.nextElementSibling;
+            }
+        }
+        if (!dropdownTrigger) {
+            dropdownTrigger = getXPath('//mat-select');
+        }
+
+        if (dropdownTrigger) {
+            dropdownTrigger.scrollIntoView({ behavior: 'instant', block: 'center' });
+            await sleep(300);
+            dropdownTrigger.click();
+            await sleep(500);
+            
+            const optionXPath = `//mat-option[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "${timeString.toLowerCase()}")]`;
+            const optionEl = getXPath(optionXPath);
+            if (optionEl) {
+                optionEl.click();
+                await sleep(1000);
+                return true;
+            } else {
+                // close dropdown if option not found
+                document.body.click();
+            }
+        }
+        return false;
+    };
+
+    timeSelected = await selectTimeOption(preferredTime);
+
+    // Check if No Slots Available
+    const noSlotsAlert = getXPath('//div[contains(@class, "card-body") and contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "no slots available")]');
+    if (noSlotsAlert && preferredTime.toLowerCase() !== 'all') {
+        // switch to 'All' again
+        await selectTimeOption('All');
+    }
+
+    // Step 13: click on 'select' input radio
+    await sleep(1000);
+    const selectRadioXPath = '//*[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "select")]/ancestor-or-self::label | //input[@type="radio"]';
+    let selectRadio = getXPath(selectRadioXPath);
+    if (!selectRadio) {
+        // Just find the first visible radio button
+        selectRadio = getXPath('//input[@type="radio"]');
+    }
+    if (selectRadio) {
+        selectRadio.scrollIntoView({ behavior: 'instant', block: 'center' });
+        await sleep(300);
+        // If it's an input, click it. If it's a label, click it.
+        // Some Angular Material radios use a div wrapper, clicking it works.
+        const clickable = selectRadio.querySelector('input') || selectRadio;
+        clickable.click();
+        await sleep(500);
+    } else {
+        return { ok: false, reason: 'time-slot-radio-not-found' };
+    }
+
+    // Step 14: click on continue button
+    const continueBtnXPath = '//button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "continue")]';
+    const continueBtn = getXPath(continueBtnXPath);
+    if (continueBtn) {
+        continueBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+        await sleep(300);
+        continueBtn.removeAttribute('disabled');
+        continueBtn.click();
+        return { ok: true };
+    }
+    
+    return { ok: false, reason: 'continue-button-not-found' };
 }
 ```
 
@@ -3294,7 +3775,8 @@ export default function App() {
         passportExpiry: '',
         dialCode: '20',
         contactNumber: '',
-        email: ''
+        email: '',
+        appointmentTime: 'All'
     });
     
     const [editingId, setEditingId] = useState(null);
@@ -3307,7 +3789,17 @@ export default function App() {
     useEffect(() => {
         if (window.electronAPI) {
             window.electronAPI.onBotStatusUpdate(({ id, status }) => {
-                setInstances(prev => prev.map(inst => inst.id === id ? { ...inst, status: status } : inst));
+                setInstances(prev => prev.map(inst => {
+                    if (inst.id === id) {
+                        const isClosed = status === 'Closed' || status === 'Idle' || status.toLowerCase().includes('error');
+                        return {
+                            ...inst,
+                            status: status,
+                            ...(isClosed ? { aptStatus: 'idle' } : {})
+                        };
+                    }
+                    return inst;
+                }));
             });
             window.electronAPI.onAppointmentResult(({ id, result, message }) => {
                 if (result === 'error') {
@@ -3415,7 +3907,8 @@ export default function App() {
             passportExpiry: inst.data.passportExpiry,
             dialCode: inst.data.dialCode,
             contactNumber: inst.data.contactNumber,
-            email: inst.data.email
+            email: inst.data.email,
+            appointmentTime: inst.data.appointmentTime || 'All'
         }));
 
         const result = await window.electronAPI.exportData(dataToExport);
@@ -3799,6 +4292,18 @@ export default function App() {
                             <div style={{display: 'flex', gap: '10px'}}>
                                 <div className="form-group" style={{width: '90px'}}><label>Dial Code</label><input type="text" value={editForm.dialCode || '20'} onChange={e => setEditForm({...editForm, dialCode: e.target.value})} /></div>
                                 <div className="form-group" style={{flex: 1}}><label>Contact Number</label><input type="text" value={editForm.contactNumber || ''} onChange={e => setEditForm({...editForm, contactNumber: e.target.value})} /></div>
+                            </div>
+
+                            {/* SECTION: Book an Appointment */}
+                            <div className="section-header">Section: Book an Appointment</div>
+                            <div className="form-group">
+                                <label>Choose an appointment time</label>
+                                <select value={editForm.appointmentTime || 'All'} onChange={e => setEditForm({...editForm, appointmentTime: e.target.value})}>
+                                    <option value="All">All</option>
+                                    <option value="Morning">Morning</option>
+                                    <option value="Afternoon">Afternoon</option>
+                                    <option value="Evening">Evening</option>
+                                </select>
                             </div>
 
                             {/* SECTION 4 */}
