@@ -346,8 +346,9 @@ export class ChromeWorker extends BaseBrowser {
                         const clicked = await this.page.evaluate(async () => {
                             const sleep = ms => new Promise(res => setTimeout(res, ms));
                             for (let i = 0; i < 15; i++) {
-                                const btn = Array.from(document.querySelectorAll('button')).find(b => {
-                                    const txt = (b.innerText || '').toLowerCase();
+                                const btns = Array.from(document.querySelectorAll('button, a[role="button"], input[type="submit"]'));
+                                const btn = btns.find(b => {
+                                    const txt = (b.innerText || b.value || b.textContent || '').toLowerCase();
                                     return txt.includes('continue') && b.offsetHeight > 0;
                                 });
                                 if (btn && !btn.disabled && !btn.classList.contains('disabled') && btn.getAttribute('aria-disabled') !== 'true') {
@@ -388,37 +389,56 @@ export class ChromeWorker extends BaseBrowser {
                     });
                     await sleep(1000);
 
-                    // Network interception logic fallback to DOM
-                    let targetDate = null;
-                    if (this.lastCalendarResponse) {
-                        const str = JSON.stringify(this.lastCalendarResponse);
-                        const dates = str.match(/\d{4}-\d{2}-\d{2}/g);
-                        if (dates && dates.length > 0) {
-                            const futureDates = dates.filter(d => parseInt(d.split('-')[0]) >= 2026);
-                            if (futureDates.length > 0) {
-                                targetDate = futureDates.sort()[0];
-                            }
-                        }
-                    }
-
-                    // Fallback to DOM parsing
-                    if (!targetDate) {
-                        targetDate = await this.page.evaluate(() => {
-                            const avail = document.querySelector('td.date-availiable[data-date], td.fc-day-future.date-availiable[data-date]');
-                            return avail ? avail.getAttribute('data-date') : null;
-                        });
-                    }
+                    // Find available date strictly from the DOM to avoid clicking unavailable dates
+                    let targetDate = await this.page.evaluate(() => {
+                        // VFS often has a typo in their class name: 'date-availiable' or 'date-available'
+                        const avail = document.querySelector('td.date-availiable[data-date], td.date-available[data-date]');
+                        return avail ? avail.getAttribute('data-date') : null;
+                    });
 
                     if (targetDate) {
                         this.logStatus(`[Book Appointment] Earliest available date found: ${targetDate}. Clicking...`);
-                        await this.page.evaluate((date) => {
-                            const td = document.querySelector(`td[data-date="${date}"]`);
-                            if (td) {
-                                const clickable = td.querySelector('a.fc-event') || td.querySelector('.fc-daygrid-day-frame') || td;
-                                clickable.click();
+                        
+                        try {
+                            const dateSelector = `td[data-date="${targetDate}"] .fc-daygrid-day-frame`;
+                            const dateEl = await this.page.$(dateSelector);
+                            if (dateEl) {
+                                await dateEl.evaluate(el => el.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+                                await sleep(500);
+                                await dateEl.click();
+                            } else {
+                                await this.page.evaluate((date) => {
+                                    const td = document.querySelector(`td[data-date="${date}"]`);
+                                    if (td) {
+                                        const clickable = td.querySelector('a.fc-event') || td.querySelector('.fc-daygrid-day-frame') || td;
+                                        clickable.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                                    }
+                                }, targetDate);
                             }
-                        }, targetDate);
-                        await sleep(1500);
+                        } catch (e) {
+                            this.logWarning("bookAppointment", `Failed to natively click date, falling back to DOM click: ${e.message}`);
+                            await this.page.evaluate((date) => {
+                                const td = document.querySelector(`td[data-date="${date}"]`);
+                                if (td) {
+                                    const clickable = td.querySelector('a.fc-event') || td.querySelector('.fc-daygrid-day-frame') || td;
+                                    clickable.click();
+                                }
+                            }, targetDate);
+                        }
+                        
+                        // Wait for loader after clicking date
+                        await this.page.evaluate(async () => {
+                            const sleep = ms => new Promise(res => setTimeout(res, ms));
+                            await sleep(1000);
+                            let loader = document.querySelector('ngx-ui-loader .ngx-overlay');
+                            let attempts = 0;
+                            while (loader && window.getComputedStyle(loader).display !== 'none' && loader.offsetHeight > 0 && attempts < 20) {
+                                await sleep(500);
+                                attempts++;
+                                loader = document.querySelector('ngx-ui-loader .ngx-overlay');
+                            }
+                        });
+                        await sleep(1000);
 
                         // Select time slot from dropdown
                         const targetTime = this.instanceData.appointmentTime || 'All';
@@ -435,7 +455,7 @@ export class ChromeWorker extends BaseBrowser {
                             const timeDropdowns = Array.from(document.querySelectorAll('mat-select'));
                             let timeDropdown = timeDropdowns.find(el => {
                                 const parent = el.closest('div.row, div.col-12, div.form-group');
-                                return parent && parent.innerText && parent.innerText.includes('time');
+                                return parent && parent.innerText && parent.innerText.toLowerCase().includes('time');
                             });
                             if (!timeDropdown && timeDropdowns.length > 0) {
                                 timeDropdown = timeDropdowns[timeDropdowns.length - 1];
@@ -455,6 +475,14 @@ export class ChromeWorker extends BaseBrowser {
                                     if (targetOption) {
                                         targetOption.click();
                                         await sleep(1000);
+                                        // Wait for loader after time dropdown
+                                        let loader = document.querySelector('ngx-ui-loader .ngx-overlay');
+                                        let attempts = 0;
+                                        while (loader && window.getComputedStyle(loader).display !== 'none' && loader.offsetHeight > 0 && attempts < 10) {
+                                            await sleep(500);
+                                            attempts++;
+                                            loader = document.querySelector('ngx-ui-loader .ngx-overlay');
+                                        }
                                     } else {
                                         document.body.click();
                                         await sleep(500);
@@ -462,24 +490,24 @@ export class ChromeWorker extends BaseBrowser {
                                 }
                             }
 
-                            // Find and click the slot radio based on preference
-                            // Note: VFS uses mat-radio-button. The top one is "Choose a slot" (value="0")
-                            const radios = Array.from(document.querySelectorAll('mat-radio-button'));
-                            const slotRadios = radios.filter(r => {
-                                const input = r.querySelector('input[type="radio"]');
-                                return input && input.value !== "0";
-                            });
-
-                            if (slotRadios.length > 0) {
-                                // Click the label inside the radio for Angular to register
-                                const label = slotRadios[0].querySelector('label') || slotRadios[0];
-                                label.click();
+                            // Find all radio inputs on the page
+                            const allRadios = Array.from(document.querySelectorAll('input[type="radio"]'));
+                            const validRadios = allRadios.filter(r => r.value !== "0" && r.value !== "");
+                            
+                            if (validRadios.length > 0) {
+                                const targetRadio = validRadios[0];
+                                // Attempt to click the label associated with it
+                                const label = document.querySelector(`label[for="${targetRadio.id}"]`) || targetRadio.closest('label') || targetRadio.closest('mat-radio-button');
+                                if (label) {
+                                    label.click();
+                                } else {
+                                    targetRadio.click();
+                                }
                             } else {
-                                // Fallback
-                                const slots = Array.from(document.querySelectorAll('.ba-slot-radio, input[name="timeSlot"], input[type="radio"]'));
-                                const validSlots = slots.filter(r => r.value !== "0");
-                                if (validSlots.length > 0) {
-                                    validSlots[0].click();
+                                // Sometimes it's a div with a specific class that acts as a radio
+                                const slotDivs = Array.from(document.querySelectorAll('.slot-time, .time-slot, .radio-button-container, .ba-slot-radio'));
+                                if (slotDivs.length > 0) {
+                                    slotDivs[0].click();
                                 }
                             }
                         }, targetTime);

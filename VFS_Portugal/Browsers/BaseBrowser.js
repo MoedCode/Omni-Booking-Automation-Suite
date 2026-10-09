@@ -146,7 +146,7 @@ export class BaseBrowser {
             if (descriptor.elementType === 'Heading') {
                 const isVisible = await this.page.evaluate((desc) => {
                     const clean = (str) => (str || '').toLowerCase().replace(/[*_:\s\-]/g, ' ').trim();
-                    const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+                    const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6, .page-header, .title'));
                     for (const h of headings) {
                         const hText = clean(h.innerText || h.textContent);
                         const matched = desc.text.some(t => {
@@ -154,7 +154,9 @@ export class BaseBrowser {
                             if (cT === 'your details') return hText === cT;
                             return hText.includes(cT);
                         });
-                        if (matched && window.getComputedStyle(h).display !== 'none' && window.getComputedStyle(h).visibility !== 'hidden' && h.offsetHeight > 0) {
+                        // Removed strict visibility check for headings to ensure domScanner detects pages
+                        // even if the heading is hidden behind a responsive utility class like d-none d-lg-block
+                        if (matched) {
                             return true;
                         }
                     }
