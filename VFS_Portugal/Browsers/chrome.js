@@ -551,13 +551,30 @@ export class ChromeWorker extends BaseBrowser {
                 method: async () => {
                     const sleep = ms => new Promise(r => setTimeout(r, ms));
                     this.logStatus("[Services] Proceeding without adding services...");
-                    const btn = await this.page.evaluateHandle(() => {
-                        return Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('Continue') && b.offsetHeight > 0);
+                    
+                    const clicked = await this.page.evaluate(async () => {
+                        const sleep = ms => new Promise(res => setTimeout(res, ms));
+                        for (let i = 0; i < 15; i++) {
+                            const btn = Array.from(document.querySelectorAll('button, a[role="button"], input[type="submit"]')).find(b => {
+                                const text = (b.innerText || b.textContent || '').toLowerCase();
+                                return text.includes('continue') && b.offsetHeight > 0;
+                            });
+                            if (btn && !btn.disabled && !btn.classList.contains('disabled') && btn.getAttribute('aria-disabled') !== 'true') {
+                                btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                btn.click();
+                                return true;
+                            }
+                            await sleep(500);
+                        }
+                        return false;
                     });
-                    if (btn) {
-                        await btn.click();
+                    
+                    if (clicked) {
+                        this.logStatus("[Services] ✅ Clicked Continue.");
                         await sleep(1500);
                         this.completedActivities.add('services');
+                    } else {
+                        this.logWarning("services", "Continue button not found or remained disabled.");
                     }
                 }
             },
@@ -572,14 +589,16 @@ export class ChromeWorker extends BaseBrowser {
                     
                     // Click T&C checkbox safely
                     await this.page.evaluate(() => {
-                        const checkboxes = Array.from(document.querySelectorAll('mat-checkbox input[type="checkbox"]'));
-                        for (const checkboxInput of checkboxes) {
-                            if (!checkboxInput.checked) {
-                                const label = document.querySelector(`label[for="${checkboxInput.id}"]`);
+                        const checkboxes = Array.from(document.querySelectorAll('mat-checkbox'));
+                        for (const matCb of checkboxes) {
+                            const input = matCb.querySelector('input[type="checkbox"]');
+                            if (input && !input.checked) {
+                                const label = matCb.querySelector('label');
                                 if (label) {
                                     label.click();
                                 } else {
-                                    checkboxInput.click();
+                                    const touchTarget = matCb.querySelector('.mat-mdc-checkbox-touch-target') || matCb;
+                                    touchTarget.click();
                                 }
                             }
                         }
@@ -591,11 +610,13 @@ export class ChromeWorker extends BaseBrowser {
                     const clicked = await this.page.evaluate(async () => {
                         const sleep = ms => new Promise(res => setTimeout(res, ms));
                         for (let i = 0; i < 15; i++) {
-                            const btn = Array.from(document.querySelectorAll('button')).find(b => {
-                                const text = (b.innerText || '').toLowerCase();
+                            const btns = Array.from(document.querySelectorAll('button, a[role="button"], input[type="submit"]'));
+                            const btn = btns.find(b => {
+                                const text = (b.innerText || b.textContent || '').toLowerCase();
                                 return (text.includes('pay online') || text.includes('continue')) && b.offsetHeight > 0;
                             });
                             if (btn && !btn.disabled && !btn.classList.contains('disabled') && btn.getAttribute('aria-disabled') !== 'true') {
+                                btn.scrollIntoView({ behavior: 'instant', block: 'center' });
                                 btn.click();
                                 return true;
                             }
@@ -621,17 +642,31 @@ export class ChromeWorker extends BaseBrowser {
                 method: async () => {
                     const sleep = ms => new Promise(r => setTimeout(r, ms));
                     this.logStatus("[Payment Disclaimer] Accepting disclaimer...");
-                    const btn = await this.page.evaluateHandle(() => {
-                        return Array.from(document.querySelectorAll('button')).find(b => {
-                            const text = (b.innerText || '');
-                            return (text.includes('Continue') || text.includes('Accept')) && b.offsetHeight > 0;
-                        });
+                    
+                    const clicked = await this.page.evaluate(async () => {
+                        const sleep = ms => new Promise(res => setTimeout(res, ms));
+                        for (let i = 0; i < 15; i++) {
+                            const btn = Array.from(document.querySelectorAll('button, a[role="button"], input[type="submit"]')).find(b => {
+                                const text = (b.innerText || b.textContent || '').toLowerCase();
+                                return (text.includes('continue') || text.includes('accept')) && b.offsetHeight > 0;
+                            });
+                            if (btn && !btn.disabled && !btn.classList.contains('disabled') && btn.getAttribute('aria-disabled') !== 'true') {
+                                btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                btn.click();
+                                return true;
+                            }
+                            await sleep(500);
+                        }
+                        return false;
                     });
-                    if (btn) {
-                        await btn.click();
+                    
+                    if (clicked) {
+                        this.logStatus("[Payment Disclaimer] ✅ Accepted disclaimer.");
                         await sleep(1500);
                         this.completedActivities.add('paymentDisclaimer');
                         this.logStatus("[PayFort] 🚨 Reached payment portal! Manual payment required.");
+                    } else {
+                        this.logWarning("paymentDisclaimer", "Continue/Accept button not found.");
                     }
                 }
             }
@@ -874,8 +909,14 @@ export class ChromeWorker extends BaseBrowser {
         if (hasSummary) detected.push('yourDetailsSummary');
         
         if (await this.isPresent(Selectors.bookAppointment.pageHeader)) detected.push('bookAppointment');
-        if (await this.isPresent(Selectors.services.pageHeader)) detected.push('services');
-        if (await this.isPresent(Selectors.review.pageHeader)) detected.push('review');
+        
+        const hasReview = await this.isPresent(Selectors.review.pageHeader);
+        if (hasReview) {
+            detected.push('review');
+        } else if (await this.isPresent(Selectors.services.pageHeader)) {
+            detected.push('services');
+        }
+        
         if (await this.isPresent(Selectors.paymentDisclaimer.pageHeader)) detected.push('paymentDisclaimer');
 
         // Whenever an earlier stage is on screen again (refresh, session expired, user went back),
