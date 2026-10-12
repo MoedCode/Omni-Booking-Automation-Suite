@@ -134,7 +134,7 @@ export class BaseBrowser {
         while (Date.now() - startTime < timeout) {
             const el = type === 'Button' ? await this.findButton(descriptor) : await this.findInput(descriptor);
             if (el) return el;
-            await new Promise(r => setTimeout(r, 500)); // Poll every 500ms
+            await new Promise(r => setTimeout(r, 250)); // Poll every 250ms
         }
         return null;
     }
@@ -188,9 +188,8 @@ export class BaseBrowser {
 
     /**
      * Safely clears and types text. 
-     * Delay increased to 120ms to prevent Angular from dropping fast keystrokes.
      */
-    async typeByDescriptor(descriptor, text, delay = 120) {
+    async typeByDescriptor(descriptor, text, delay = 60) {
         // Safely wait for the input to render before interacting
         const input = await this.waitForDescriptor(descriptor, 'TextInput');
         if (!input) {
@@ -204,7 +203,7 @@ export class BaseBrowser {
         // Physical clearing is safer for framework tracking
         await input.click({ clickCount: 3 });
         await this.page.keyboard.press('Backspace');
-        await new Promise(r => setTimeout(r, 200)); 
+        await new Promise(r => setTimeout(r, 100)); 
         
         await input.type(text, { delay });
     }

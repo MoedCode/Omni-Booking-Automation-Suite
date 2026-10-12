@@ -1,5 +1,6 @@
 {
   "name": "vfs_portugal",
+  "type": "module",
   "private": true,
   "devDependencies": {
     "@types/bun": "latest"

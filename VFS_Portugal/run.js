@@ -29,13 +29,15 @@ if (accounts && accounts.length > 0) {
     workers = accounts.map((acc, index) => {
         const worker = new ChromeWorker({
             headless: false,
-            email: acc.account,
-            password: acc.password
+            email: acc.account || acc.email,
+            password: acc.password,
+            instanceData: acc,
+            inputMethod: acc.inputMethod || 'fill'
         });
         
         // Tag worker logs with instance index and account email
         worker.logStatus = (msg) => {
-            console.log(`[Worker-${index + 1} | ${acc.email}] ${msg}`);
+            console.log(`[Worker-${index + 1} | ${acc.account || acc.email}] ${msg}`);
         };
         
         return worker;

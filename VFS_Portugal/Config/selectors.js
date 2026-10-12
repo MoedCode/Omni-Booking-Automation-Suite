@@ -179,5 +179,4 @@ const Selectors = {
     }
 };
 
-module.exports = Selectors;
-module.exports = Selectors;
+export default Selectors;

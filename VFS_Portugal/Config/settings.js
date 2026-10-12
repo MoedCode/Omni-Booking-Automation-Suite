@@ -1,5 +1,8 @@
-/* Omni-Booking-Automation-Suite/VFS_Portugal/Config/Settings.js */
-const path = require('path');
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const FILE_PATH = path.resolve(__dirname, '../VFS_accounts.xlsx');
 const EgPtrLoginURL = "https://visa.vfsglobal.com/egy/en/prt/login";
 
@@ -54,17 +57,17 @@ const allKeys = {
         attemptSeparator: ["separator", "attempt separator", "between attempts", "action between attempts"],
         inputMethod: ["login typing", "input method", "fill mode"],
         
-        // Your Details Aliases
-        firstName: ["first name", "given name", "firstname"],
-        lastName: ["last name", "surname", "lastname"],
-        dateOfBirth: ["dob", "date of birth", "birth date", "birthdate"],
-        passportExpiry: ["passport expiry", "expiry date", "passport expiry date", "passportexpirydate"],
-        contactNumber: ["phone", "phone number", "contact", "mobile", "contactnumber"],
-        dialCode: ["dial code", "dialcode", "phone code"],
-        nationality: ["current nationality", "nationality"],
-        gender: ["sex"],
-        passportNumber: ["passport", "passport no", "passport no."],
-        email: ["email address", "contact email", "email id", "email"],
+        // Your Details Aliases (supports with/without asterisks, spaces, colons)
+        firstName: ["first name", "given name", "firstname", "first name*", "firstname*", "name", "givenname"],
+        lastName: ["last name", "surname", "lastname", "last name*", "lastname*", "family name", "familyname"],
+        dateOfBirth: ["dob", "date of birth", "birth date", "birthdate", "date of birth*", "dob*"],
+        passportExpiry: ["passport expiry", "expiry date", "passport expiry date", "passportexpirydate", "passport expiry dat", "passport expiry date*", "expiry date*"],
+        contactNumber: ["phone", "phone number", "contact", "mobile", "contactnumber", "contact number*", "phone*", "mobile*"],
+        dialCode: ["dial code", "dialcode", "phone code", "dial code*", "country code"],
+        nationality: ["current nationality", "nationality", "current nationality*"],
+        gender: ["sex", "gender*"],
+        passportNumber: ["passport", "passport no", "passport no.", "passport number", "passport number*", "passport#"],
+        email: ["email address", "contact email", "email id", "email", "email*"],
         appointmentTime: ["appointment time", "time", "choose an appointment time"],
         autoSave: ["auto save", "autosave", "save automatically"],
         dateFormat: ["date format"],
@@ -83,30 +86,30 @@ const defaultBatchConfig = {
     attempts: 1,
     attemptDelay: "00/00/05/00", 
     switches: 1,
-    switchDelay: 3000,
+    switchDelay: 1500,
     autoClose: true,
     attemptSeparator: "Refresh Current Page",
     inputMethod: "fill",
     
-    // Default Empty Profile
-    firstName: "",
-    lastName: "",
+    // Default Profile Fallbacks (Used if not provided in sheet or GUI)
+    firstName: "MOHAMED",
+    lastName: "HASSAN",
     gender: "Male",
-    dateOfBirth: "",
+    dateOfBirth: "01/01/1990",
     nationality: "EGYPT",
-    passportNumber: "",
-    passportExpiry: "",
+    passportNumber: "A12345678",
+    passportExpiry: "01/01/2030",
     dialCode: "20",
-    contactNumber: "",
+    contactNumber: "1000000000",
     email: "",
     appointmentTime: "All",
 
     // Your Details behaviour
-    autoSave: true,            // click Save (after the page's 7s wait) once the form is filled
+    autoSave: true,            // click Save (after the page's wait) once the form is filled
     dateFormat: "DD/MM/YYYY",  // format the portal's date fields accept
     dateOrder: "DMY",          // how ambiguous dates like 4/1/1989 are read: DMY (4 Jan) or MDY (1 Apr)
-    fieldDelayMin: 400,        // random pause between fields (ms) - anti-bot-detection
-    fieldDelayMax: 1500
+    fieldDelayMin: 200,        // random pause between fields (ms) - anti-bot-detection
+    fieldDelayMax: 750
 };
 
 const terminationCmds = ["exit", "\\q", "q"];
@@ -116,24 +119,37 @@ const CHANNEL = '';
 const debug = { operationalStatus: true, warnings: true, errors: true };
 
 const actionsConfig = {
-    cookies: { priority: 1, startDelay: 300, endDelay: 500 },
-    captcha: { priority: 2, startDelay: 300, endDelay: 500 },
-    signIn: { priority: 3, startDelay: 300, endDelay: 0 },
-    dashboard: { priority: 4, startDelay: 2000, endDelay: 2000 },
-    appointmentDetails: { priority: 5, startDelay: 1500, endDelay: 2000 },
-    yourDetails: { priority: 7, startDelay: 2000, endDelay: 2000 }, // Added Your Details Action Node
-    yourDetailsSummary: { priority: 6, startDelay: 2000, endDelay: 2000 },
-    bookAppointment: { priority: 8, startDelay: 2000, endDelay: 2000 },
-    services: { priority: 9, startDelay: 2000, endDelay: 2000 },
-    review: { priority: 10, startDelay: 2000, endDelay: 2000 },
-    paymentDisclaimer: { priority: 11, startDelay: 2000, endDelay: 2000 },
-    payFort: { priority: 12, startDelay: 2000, endDelay: 2000 },
-    default: { priority: 99, startDelay: 100, endDelay: 100 }
+    cookies: { priority: 1, startDelay: 150, endDelay: 250 },
+    captcha: { priority: 2, startDelay: 150, endDelay: 250 },
+    signIn: { priority: 3, startDelay: 150, endDelay: 0 },
+    dashboard: { priority: 4, startDelay: 1000, endDelay: 1000 },
+    appointmentDetails: { priority: 5, startDelay: 750, endDelay: 1000 },
+    yourDetails: { priority: 7, startDelay: 1000, endDelay: 1000 }, // Added Your Details Action Node
+    yourDetailsSummary: { priority: 6, startDelay: 1000, endDelay: 1000 },
+    bookAppointment: { priority: 8, startDelay: 1000, endDelay: 1000 },
+    services: { priority: 9, startDelay: 1000, endDelay: 1000 },
+    review: { priority: 10, startDelay: 1000, endDelay: 1000 },
+    paymentDisclaimer: { priority: 11, startDelay: 1000, endDelay: 1000 },
+    payFort: { priority: 12, startDelay: 1000, endDelay: 1000 },
+    default: { priority: 99, startDelay: 50, endDelay: 50 }
 };
 
 const cookiesAcceptant = "Accept All"; 
 
-module.exports = {
+export {
+    allKeys,
+    defaultBatchConfig,
+    FILE_PATH,
+    EgPtrLoginURL,
+    BROWSER_ARGS, 
+    CHANNEL,
+    terminationCmds,
+    debug,
+    actionsConfig,
+    cookiesAcceptant
+};
+
+export default {
     allKeys,
     defaultBatchConfig,
     FILE_PATH,

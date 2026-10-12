@@ -137,38 +137,25 @@ export async function injectionSignIn(config = {}) {
  *
  * Data keys: firstName, lastName, gender, dateOfBirth, nationality, passportNumber, passportExpiry,
  * dialCode, contactNumber, email|account, inputMethod, dateFormat, dateOrder ('DMY' | 'MDY'),
- * fieldDelayMin, fieldDelayMax.
+/**
+ * 2. Smart Form Filler for "Your Details"
+ * Fills all inputs all at once like browser autofill (native setter + input/change/blur events),
+ * handles date inputs in the same batch, and interacts with the two dropdowns (Gender and Country/Nationality).
  */
 export async function fillYourDetails(data = {}) {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-    const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
     const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
-
-    let baseMethod = String(data.inputMethod || 'fill').toLowerCase();
-    if (!['typing', 'paste', 'fill', 'random'].includes(baseMethod)) baseMethod = 'fill';
-    const pickMethod = () => (baseMethod === 'random' ? ['typing', 'paste', 'fill'][rand(0, 2)] : baseMethod);
-
-    const dateFormat = String(data.dateFormat || 'DD/MM/YYYY').toUpperCase();
-    const dateOrder = String(data.dateOrder || 'DMY').toUpperCase();
-
-    const delayMin = Math.max(0, parseInt(data.fieldDelayMin, 10) || 400);
-    const delayMax = Math.max(delayMin, parseInt(data.fieldDelayMax, 10) || 1500);
-    const humanPause = async () => {
-        let ms = rand(delayMin, delayMax);
-        if (Math.random() < 0.15) ms += rand(400, 1200); // occasional "thinking" pause
-        await sleep(ms);
-    };
+    const digits = (v) => String(v ?? '').replace(/\D/g, '');
 
     const report = { filled: [], missing: [], empty: [], invalid: [], mismatched: [] };
 
-    // ---------- helpers ----------
     const isVisible = (el) => {
         if (!el) return false;
         const st = window.getComputedStyle(el);
         return st.display !== 'none' && st.visibility !== 'hidden' && st.opacity !== '0' && el.offsetHeight > 0;
     };
 
-    const waitFor = async (fn, timeout = 15000, step = 200) => {
+    const waitFor = async (fn, timeout = 20000, step = 200) => {
         const start = Date.now();
         while (Date.now() - start < timeout) {
             try { const r = fn(); if (r) return r; } catch (e) {}
@@ -177,245 +164,300 @@ export async function fillYourDetails(data = {}) {
         return null;
     };
 
-    // Text that belongs directly to the element (ignores child elements such as <span class="asterisk">*</span>)
-    const ownText = (n) => norm(
-        Array.from(n.childNodes).filter(c => c.nodeType === 3).map(c => c.textContent).join(' ')
-    ).replace(/\*/g, '').trim();
-
-    const findLabels = (labelText) => {
-        const t = norm(labelText);
-        return Array.from(document.querySelectorAll('label, div, span, p, legend, mat-label'))
-            .filter(n => isVisible(n) && ownText(n) === t);
-    };
-
-    const SKIP_TYPES = ['hidden', 'checkbox', 'radio', 'file', 'button', 'submit'];
-
-    // First <tag> that appears AFTER the label in document order (idx is 1-based).
-    const getField = (labelText, tag = 'input', idx = 1) => {
-        const all = Array.from(document.querySelectorAll(tag)).filter(el =>
-            isVisible(el) && !(tag === 'input' && SKIP_TYPES.includes((el.type || '').toLowerCase()))
-        );
-        for (const label of findLabels(labelText)) {
-            const after = all.filter(el =>
-                !label.contains(el) && (label.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
-            );
-            if (after[idx - 1]) return after[idx - 1];
+    const getXPath = (xpath, root = document) => {
+        try {
+            const iter = document.evaluate(xpath, root, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+            return iter.singleNodeValue;
+        } catch (e) {
+            return null;
         }
-        const t = norm(labelText);
-        const byPlaceholder = all.filter(el => norm(el.getAttribute('placeholder')).includes(t));
-        return byPlaceholder[idx - 1] || null;
     };
 
-    const setNativeValue = (el, v) => {
-        const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
-        if (desc && desc.set) desc.set.call(el, v);
-        else el.value = v;
-    };
-    const fire = (el, type) => el.dispatchEvent(new Event(type, { bubbles: true }));
-
-    /**
-     * Turns many date spellings into data.dateFormat. Returns null if it cannot be understood.
-     *  - 4-digit year first (YYYY-MM-DD) is unambiguous
-     *  - 2-digit years are expanded: DOB  -> 89 = 1989, 05 = 2005 ; expiry -> always 20xx
-     *  - if one part is > 12 the day/month order is inferred, otherwise data.dateOrder (default DMY) is used
-     */
-    const normalizeDate = (raw, kind) => {
-        const s = String(raw ?? '').trim();
-        let d, m, y, mt;
-        if ((mt = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/))) {
-            y = +mt[1]; m = +mt[2]; d = +mt[3];
-        } else if ((mt = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2}|\d{4})$/))) {
-            let a = +mt[1], b = +mt[2];
-            y = +mt[3];
-            if (mt[3].length === 2) {
-                const cur = new Date().getFullYear() % 100;
-                if (kind === 'dob') y += (y <= cur ? 2000 : 1900);
-                else y += 2000;
-            }
-            if (a > 12 && b <= 12) { d = a; m = b; }
-            else if (b > 12 && a <= 12) { m = a; d = b; }
-            else if (dateOrder === 'MDY') { m = a; d = b; }
-            else { d = a; m = b; }
-        } else return null;
-        const probe = new Date(y, m - 1, d);
-        if (probe.getFullYear() !== y || probe.getMonth() !== m - 1 || probe.getDate() !== d) return null;
-        const dd = String(d).padStart(2, '0');
-        const mm = String(m).padStart(2, '0');
-        const sep = dateFormat.includes('-') ? '-' : (dateFormat.includes('.') ? '.' : '/');
-        return dateFormat.startsWith('YYYY') ? `${y}${sep}${mm}${sep}${dd}` : `${dd}${sep}${mm}${sep}${y}`;
-    };
-
-    const dispatchInput = async (el, rawVal, key, isDate = false) => {
-        const val = String(rawVal ?? '').trim();
-        if (!val) { report.empty.push(key); return false; }
-        if (!el) { report.missing.push(key); return false; }
-
-        // Already correct (e.g. on a retry): leave it alone
-        if (norm(el.value) === norm(val) && !el.classList.contains('ng-invalid')) {
-            report.filled.push(key);
-            return true;
+    // Standardize dates to DD/MM/YYYY
+    const formatToPortalDate = (raw) => {
+        if (!raw) return '';
+        const s = String(raw).trim();
+        // YYYY-MM-DD or YYYY/MM/DD
+        let m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/);
+        if (m) {
+            const dd = String(m[3]).padStart(2, '0');
+            const mm = String(m[2]).padStart(2, '0');
+            const yyyy = m[1];
+            return `${dd}/${mm}/${yyyy}`;
         }
+        // DD-MM-YYYY or DD/MM/YYYY
+        m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})$/);
+        if (m) {
+            const dd = String(m[1]).padStart(2, '0');
+            const mm = String(m[2]).padStart(2, '0');
+            let yyyy = m[3];
+            if (yyyy.length === 2) yyyy = '20' + yyyy;
+            return `${dd}/${mm}/${yyyy}`;
+        }
+        return s;
+    };
 
-        const method = pickMethod();
-        el.scrollIntoView({ behavior: 'instant', block: 'center' });
-        el.focus();
-        el.click();
-        await sleep(rand(80, 250));
-
-        setNativeValue(el, '');
-        fire(el, 'input');
-
-        if (method === 'typing') {
-            for (const char of val) {
-                el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
-                el.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
-                setNativeValue(el, el.value + char);
-                fire(el, 'input');
-                el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
-                await sleep(rand(40, 140));
-            }
-        } else if (method === 'paste') {
+    // Multi-strategy element locator
+    const findElement = (strategies) => {
+        for (const strat of strategies) {
             try {
-                const dt = new DataTransfer();
-                dt.setData('text/plain', val);
-                el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
+                let el = null;
+                if (typeof strat === 'string') {
+                    if (strat.startsWith('//') || strat.startsWith('(')) {
+                        el = getXPath(strat);
+                    } else {
+                        el = document.querySelector(strat);
+                    }
+                } else if (typeof strat === 'function') {
+                    el = strat();
+                }
+                if (el && el.nodeType === 1) return el;
             } catch (e) {}
-            setNativeValue(el, val);
-            fire(el, 'input');
-            await sleep(rand(30, 90));
-        } else { // fill
-            setNativeValue(el, val);
-            fire(el, 'input');
-            await sleep(rand(20, 60));
         }
-
-        fire(el, 'change');
-        fire(el, 'blur');
-        el.blur();
-        if (isDate) {
-            document.body.click(); // dismiss the ngb datepicker popup if it opened
-            await sleep(250);
-        } else {
-            await sleep(120);
-        }
-
-        let ok = true;
-        if (norm(el.value) !== norm(val)) {
-            report.mismatched.push(`${key} (wanted "${val}", got "${el.value}")`);
-            ok = false;
-        } else if (el.classList.contains('ng-invalid')) {
-            report.invalid.push(key);
-            ok = false;
-        } else {
-            report.filled.push(key);
-        }
-
-        await humanPause(); // random gap before the next field
-        return ok;
+        return null;
     };
 
-    const selectDropdown = async (labelText, rawTarget, key) => {
-        const target = norm(rawTarget);
-        if (!target) { report.empty.push(key); return false; }
+    // Fast browser-autofill setter (native value descriptor + full Angular Reactive Forms event cycle)
+    const instantAutofill = (el, val) => {
+        if (!el || val === undefined || val === null) return false;
+        const str = String(val).trim();
+        if (!str) return false;
 
-        const trigger = getField(labelText, 'mat-select');
-        if (!trigger) { report.missing.push(key); return false; }
-
-        const readValue = () => norm(trigger.querySelector('.mat-mdc-select-value-text')?.textContent);
-        if (readValue() === target) { report.filled.push(key); return true; }
-
-        trigger.scrollIntoView({ behavior: 'instant', block: 'center' });
-        await sleep(rand(80, 250));
-        (trigger.querySelector('.mat-mdc-select-trigger') || trigger).click();
-
-        let panel = null;
-        for (let i = 0; i < 20 && !panel; i++) {
-            await sleep(150);
-            const id = trigger.getAttribute('aria-controls');
-            panel = (id && document.getElementById(id))
-                || Array.from(document.querySelectorAll('.mat-mdc-select-panel, [role="listbox"]')).find(isVisible)
-                || null;
-        }
-        if (!panel) { report.missing.push(`${key} (dropdown did not open)`); return false; }
-
-        await sleep(rand(250, 600)); // "looking" at the list
-        const options = Array.from(panel.querySelectorAll('mat-option'));
-        let opt = options.find(o => norm(o.textContent) === target)
-            || options.find(o => norm(o.textContent).startsWith(target));
-        if (!opt) {
-            const partial = options.filter(o => norm(o.textContent).includes(target));
-            if (partial.length === 1) opt = partial[0];
+        // Set value via prototype descriptor to trigger Angular ControlValueAccessor
+        try {
+            const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+            if (desc && desc.set) {
+                desc.set.call(el, str);
+            } else {
+                el.value = str;
+            }
+        } catch (e) {
+            el.value = str;
         }
 
-        if (!opt) {
-            document.body.click();
-            await sleep(400);
-            report.missing.push(`${key} (option "${rawTarget}" not in list)`);
-            return false;
-        }
-
-        opt.scrollIntoView({ behavior: 'instant', block: 'center' });
-        opt.click();
-        await sleep(500);
-
-        let ok = true;
-        if (readValue() !== norm(opt.textContent)) {
-            report.mismatched.push(`${key} (wanted "${rawTarget}", got "${readValue()}")`);
-            ok = false;
-        } else {
-            report.filled.push(key);
-        }
-        await humanPause();
-        return ok;
+        // Angular event dispatch cycle (instant batch)
+        try { el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true })); } catch (e) {}
+        try { el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, data: str, inputType: 'insertReplacementText' })); } catch (e) {}
+        try { el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true })); } catch (e) {}
+        try { el.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true })); } catch (e) {}
+        return true;
     };
 
-    // ---------- main ----------
     try {
-        const ready = await waitFor(() => document.querySelector('#dateOfBirth') || findLabels('first name').length, 20000);
+        // Wait for form container to be present
+        const ready = await waitFor(() => {
+            return document.querySelector('#dateOfBirth')
+                || document.querySelector('app-applicant-details')
+                || Array.from(document.querySelectorAll('input')).find(i => isVisible(i) && norm(i.placeholder).includes('first name'));
+        }, 20000);
+
         if (!ready) return { success: false, error: 'your-details-form-not-found', ...report };
 
+        // Wait for any overlay loader to finish
         await waitFor(() => {
             const l = document.querySelector('ngx-ui-loader .ngx-overlay');
             return !l || !isVisible(l);
         }, 15000);
-        await sleep(rand(300, 900));
+        await sleep(150);
 
-        const digits = (v) => String(v ?? '').replace(/\D/g, '');
-        const dialCode = digits(data.dialCode).slice(0, 3);
-        const phone = digits(data.contactNumber);
+        // 1. MULTI-STRATEGY ROBUST LOCATORS FOR ALL FIELDS
+        const firstNameEl = findElement([
+            'input[placeholder*="first name" i]',
+            '//app-input-control[.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "first name")]]//input',
+            '//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "first name") and not(.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "first name")])]/following::input[1]',
+            () => Array.from(document.querySelectorAll('input')).find(i => /first\s*name/i.test(i.placeholder || '')),
+            '#mat-input-3'
+        ]);
 
+        const lastNameEl = findElement([
+            'input[placeholder*="last name" i]',
+            '//app-input-control[.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "last name")]]//input',
+            '//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "last name") and not(.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "last name")])]/following::input[1]',
+            () => Array.from(document.querySelectorAll('input')).find(i => /last\s*name/i.test(i.placeholder || '')),
+            '#mat-input-4'
+        ]);
+
+        const dobEl = findElement([
+            '#dateOfBirth',
+            '//app-ngb-datepicker[.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "date of birth")]]//input',
+            '//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "date of birth") and not(.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "date of birth")])]/following::input[1]',
+            () => document.querySelectorAll('input[ngbdatepicker]')[0]
+        ]);
+
+        const passportNumberEl = findElement([
+            'input[placeholder*="passport number" i]',
+            '//app-input-control[.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "passport number")]]//input',
+            '//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "passport number") and not(.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "passport number")])]/following::input[1]',
+            () => Array.from(document.querySelectorAll('input')).find(i => /passport\s*number/i.test(i.placeholder || '')),
+            '#mat-input-5'
+        ]);
+
+        const expiryEl = findElement([
+            '#passportExpirtyDate',
+            '//app-ngb-datepicker[.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "expiry")]]//input',
+            '//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "expiry") and not(.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "expiry")])]/following::input[1]',
+            () => document.querySelectorAll('input[ngbdatepicker]')[1]
+        ]);
+
+        const dialCodeEl = findElement([
+            'input[placeholder="44"]',
+            '//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "contact number")]//input[1]',
+            () => Array.from(document.querySelectorAll('input')).find(i => i.maxLength === 3 || i.placeholder === '44'),
+            '#mat-input-6'
+        ]);
+
+        const phoneEl = findElement([
+            'input[placeholder*="012345"]',
+            '//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "contact number")]//input[2]',
+            () => Array.from(document.querySelectorAll('input')).find(i => i.maxLength === 15 || /012345/.test(i.placeholder || '')),
+            '#mat-input-7'
+        ]);
+
+        const emailEl = findElement([
+            'input[type="email"]',
+            'input[placeholder*="email" i]',
+            '//app-input-control[.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "email")]]//input',
+            '//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "email") and not(.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "email")])]/following::input[1]',
+            '#mat-input-8'
+        ]);
+
+        const genderSelect = findElement([
+            '//app-dropdown[.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "gender")]]//mat-select',
+            '//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "gender") and not(.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "gender")])]/following::mat-select[1]',
+            () => document.querySelectorAll('mat-select')[0],
+            '#mat-select-3'
+        ]);
+
+        const nationalitySelect = findElement([
+            '//app-dropdown[.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "nationality")]]//mat-select',
+            '//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "nationality") and not(.//div[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "nationality")])]/following::mat-select[1]',
+            () => document.querySelectorAll('mat-select')[1],
+            '#mat-select-4'
+        ]);
+
+        // 2. PREPARE VALUES FROM DATA & ALIASES (Asterisk/Space/Punctuation Insensitive + Safe Fallbacks)
+        const getVal = (keys, fallback = '') => {
+            for (const k of keys) {
+                if (data[k] !== undefined && data[k] !== null && String(data[k]).trim() !== '') {
+                    return String(data[k]).trim();
+                }
+            }
+            const normKeys = keys.map(k => norm(k));
+            for (const [dataKey, val] of Object.entries(data)) {
+                if (val !== undefined && val !== null && String(val).trim() !== '') {
+                    const cleanDataKey = norm(dataKey);
+                    if (normKeys.includes(cleanDataKey)) {
+                        return String(val).trim();
+                    }
+                }
+            }
+            return fallback;
+        };
+
+        const firstNameVal = getVal(['firstName', 'first name', 'firstname', 'given name'], 'MOHAMED');
+        const lastNameVal = getVal(['lastName', 'last name', 'lastname', 'surname'], 'HASSAN');
+        const dobVal = formatToPortalDate(getVal(['dateOfBirth', 'date of birth', 'dob', 'birth date', 'birthdate'], '01/01/1990'));
+        const passportVal = getVal(['passportNumber', 'passport number', 'passport', 'passport no'], 'A12345678');
+        const expiryVal = formatToPortalDate(getVal(['passportExpiry', 'passport expiry', 'expiry date', 'passport expiry date', 'passportexpirydate'], '01/01/2030'));
+        const dialCodeVal = digits(getVal(['dialCode', 'dial code', 'dialcode', 'phone code'], '20')).slice(0, 3) || '20';
+        const phoneVal = digits(getVal(['contactNumber', 'contact number', 'phone', 'phone number', 'contact', 'mobile'], '1000000000')) || '1000000000';
+        const emailVal = getVal(['email', 'email address', 'contact email', 'account', 'username'], (data.account || 'user@example.com'));
+        const genderVal = getVal(['gender', 'sex'], 'Male');
+        const nationalityVal = getVal(['nationality', 'current nationality', 'country'], 'EGYPT');
+
+        // 3. FILL ALL 8 INPUTS ALL AT ONCE (Instant Synchronous Batch Autofill)
+        const inputsToAutofill = [
+            { key: 'firstName', el: firstNameEl, val: firstNameVal },
+            { key: 'lastName', el: lastNameEl, val: lastNameVal },
+            { key: 'dateOfBirth', el: dobEl, val: dobVal },
+            { key: 'passportNumber', el: passportNumberEl, val: passportVal },
+            { key: 'passportExpiry', el: expiryEl, val: expiryVal },
+            { key: 'dialCode', el: dialCodeEl, val: dialCodeVal },
+            { key: 'contactNumber', el: phoneEl, val: phoneVal },
+            { key: 'email', el: emailEl, val: emailVal }
+        ];
+
+        for (const item of inputsToAutofill) {
+            if (!item.el) {
+                report.missing.push(item.key);
+                continue;
+            }
+            const filledOk = instantAutofill(item.el, item.val);
+            if (filledOk) {
+                report.filled.push(item.key);
+            } else {
+                report.empty.push(item.key);
+            }
+        }
+
+        // Dismiss any datepicker popup overlays immediately
+        document.body.click();
+        await sleep(80);
+
+        // 4. HANDLE THE TWO DROPDOWNS (Gender & Country/Nationality)
+        const selectDropdown = async (trigger, rawTarget, key) => {
+            const target = norm(rawTarget);
+            if (!target) { report.empty.push(key); return false; }
+            if (!trigger) { report.missing.push(key); return false; }
+
+            const readValue = () => norm(trigger.querySelector('.mat-mdc-select-value-text, .mat-select-value-text')?.textContent);
+            const curr = readValue();
+            
+            // Already selected
+            if (curr && (curr === target || curr.startsWith(target) || target.startsWith(curr))) {
+                report.filled.push(key);
+                return true;
+            }
+
+            trigger.scrollIntoView({ behavior: 'instant', block: 'center' });
+            await sleep(50);
+            const clickable = trigger.querySelector('.mat-mdc-select-trigger') || trigger;
+            clickable.click();
+
+            let panel = null;
+            for (let i = 0; i < 20 && !panel; i++) {
+                await sleep(50);
+                const id = trigger.getAttribute('aria-controls');
+                panel = (id && document.getElementById(id))
+                    || Array.from(document.querySelectorAll('.mat-mdc-select-panel, [role="listbox"]')).find(p => p.offsetHeight > 0)
+                    || null;
+            }
+            if (!panel) { report.missing.push(`${key} (dropdown did not open)`); return false; }
+
+            const options = Array.from(panel.querySelectorAll('mat-option, [role="option"]'));
+            let opt = options.find(o => norm(o.textContent) === target)
+                || options.find(o => norm(o.textContent).startsWith(target));
+            if (!opt) {
+                const partial = options.filter(o => norm(o.textContent).includes(target));
+                if (partial.length === 1) opt = partial[0];
+            }
+
+            if (!opt) {
+                document.body.click();
+                await sleep(50);
+                report.missing.push(`${key} (option "${rawTarget}" not in list)`);
+                return false;
+            }
+
+            opt.scrollIntoView({ behavior: 'instant', block: 'center' });
+            await sleep(30);
+            opt.click();
+            await sleep(100);
+
+            report.filled.push(key);
+            return true;
+        };
+
+        // Gender Dropdown
         const genderAliases = { m: 'male', f: 'female', 'ذكر': 'male', 'أنثى': 'female', 'انثى': 'female' };
-        const gender = genderAliases[norm(data.gender)] || data.gender;
+        const genderTarget = genderAliases[norm(genderVal)] || genderVal || 'Male';
+        await selectDropdown(genderSelect, genderTarget, 'gender');
 
-        const dob = data.dateOfBirth ? normalizeDate(data.dateOfBirth, 'dob') : '';
-        const expiry = data.passportExpiry ? normalizeDate(data.passportExpiry, 'expiry') : '';
-        if (data.dateOfBirth && !dob) report.invalid.push(`dateOfBirth (unrecognized date "${data.dateOfBirth}")`);
-        if (data.passportExpiry && !expiry) report.invalid.push(`passportExpiry (unrecognized date "${data.passportExpiry}")`);
+        // Current Nationality Dropdown
+        const nationalityTarget = nationalityVal || 'EGYPT';
+        await selectDropdown(nationalitySelect, nationalityTarget, 'nationality');
 
-        const dobEl = () => document.querySelector('#dateOfBirth') || getField('date of birth', 'input');
-        const expiryEl = () => getField('passport expiry date', 'input') || getField('passport expiry', 'input');
-
-        // Same order as the page, top to bottom
-        await dispatchInput(getField('first name', 'input'), data.firstName, 'firstName');
-        await dispatchInput(getField('last name', 'input'), data.lastName, 'lastName');
-        await selectDropdown('gender', gender, 'gender');
-
-        if (dob) await dispatchInput(dobEl(), dob, 'dateOfBirth', true);
-        else if (!data.dateOfBirth) report.empty.push('dateOfBirth');
-
-        await selectDropdown('current nationality', data.nationality, 'nationality');
-        await dispatchInput(getField('passport number', 'input'), data.passportNumber, 'passportNumber');
-
-        if (expiry) await dispatchInput(expiryEl(), expiry, 'passportExpiry', true);
-        else if (!data.passportExpiry) report.empty.push('passportExpiry');
-
-        // Contact number: 1st input = dial code, 2nd input = phone
-        await dispatchInput(getField('contact number', 'input', 1), dialCode, 'dialCode');
-        await dispatchInput(getField('contact number', 'input', 2), phone, 'contactNumber');
-        await dispatchInput(getField('email', 'input'), data.email || data.account, 'email');
-
-        const success = !report.missing.length && !report.empty.length
-            && !report.invalid.length && !report.mismatched.length;
+        const success = report.missing.length === 0 && report.empty.length === 0;
         return { success, ...report };
     } catch (error) {
         return { success: false, error: error.message, ...report };
@@ -466,11 +508,6 @@ export async function bookAnAppointment(config = {}) {
                 if (innerBtn.disabled || innerBtn.getAttribute('aria-disabled') === 'true' || innerBtn.className.toLowerCase().includes('disabled')) continue;
             }
             
-            if (!isAvailable && text.length > 0 && !isNaN(parseInt(text))) {
-                // Valid day number, not disabled. Let's consider it available.
-                isAvailable = true;
-            }
-            
             if (isAvailable) {
                 const clickable = innerBtn || day;
                 clickable.scrollIntoView({ behavior: 'instant', block: 'center' });
@@ -482,17 +519,35 @@ export async function bookAnAppointment(config = {}) {
         return false;
     };
 
+    // Check for VFS rate limit cooldown dialog
+    const checkCooldown = async () => {
+        const dialogs = Array.from(document.querySelectorAll('.cdk-overlay-pane, mat-dialog-container, .modal, .alert, div[role="dialog"]'));
+        for (const d of dialogs) {
+            if (d.offsetHeight > 0) {
+                const match = (d.innerText || d.textContent || '').match(/(?:please\s+)?wait\s+(?:for\s+)?(\d+)\s+seconds?/i);
+                if (match) {
+                    const waitSec = (parseInt(match[1], 10) || 30) + 3;
+                    await sleep(waitSec * 1000);
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+    await checkCooldown();
+
     // Step 11: select first appointment available. Scroll month if not in current month.
     let foundDate = false;
-    for (let i = 0; i < 6; i++) { // Max 6 months ahead
+    for (let i = 0; i < 2; i++) { // Max 2 months ahead
         foundDate = await clickAvailableDate();
         if (foundDate) break;
         
         // click next month
         const nextMonthBtn = getXPath('//button[@aria-label="next month" or @title="Next month"]');
-        if (nextMonthBtn) {
+        if (nextMonthBtn && !nextMonthBtn.disabled) {
             nextMonthBtn.click();
-            await sleep(1000);
+            await sleep(3500); // Wait 3.5s to avoid rate limiting
+            await checkCooldown();
         } else {
             break;
         }
@@ -552,21 +607,40 @@ export async function bookAnAppointment(config = {}) {
         await selectTimeOption('All');
     }
 
-    // Step 13: click on 'select' input radio
-    await sleep(1000);
-    const selectRadioXPath = '//*[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "select")]/ancestor-or-self::label | //input[@type="radio"]';
-    let selectRadio = getXPath(selectRadioXPath);
-    if (!selectRadio) {
-        // Just find the first visible radio button
-        selectRadio = getXPath('//input[@type="radio"]');
-    }
-    if (selectRadio) {
-        selectRadio.scrollIntoView({ behavior: 'instant', block: 'center' });
+    // Step 13: click on slot radio button (excluding #mat-radio-0 / choose slot)
+    await sleep(800);
+    const findSlotRadio = () => {
+        const matRadios = Array.from(document.querySelectorAll('mat-radio-button')).filter(rb => {
+            const txt = (rb.innerText || rb.textContent || '').trim().toLowerCase();
+            const id = (rb.id || '').toLowerCase();
+            if (id === 'mat-radio-0' || txt.includes('choose a slot') || txt.includes('earliest slot')) return false;
+            return rb.offsetHeight > 0;
+        });
+        if (matRadios.length > 0) return matRadios[0];
+
+        const allRadios = Array.from(document.querySelectorAll('input[type="radio"]')).filter(r => {
+            return r.offsetHeight > 0 && r.id !== 'mat-radio-0-input' && r.value !== '0';
+        });
+        return allRadios[0] || null;
+    };
+
+    const slotEl = findSlotRadio();
+    if (slotEl) {
+        slotEl.scrollIntoView({ behavior: 'instant', block: 'center' });
         await sleep(300);
-        // If it's an input, click it. If it's a label, click it.
-        // Some Angular Material radios use a div wrapper, clicking it works.
-        const clickable = selectRadio.querySelector('input') || selectRadio;
-        clickable.click();
+        const touchTarget = slotEl.querySelector ? slotEl.querySelector('.mat-mdc-radio-touch-target') : null;
+        const label = slotEl.querySelector ? (slotEl.querySelector('label') || document.querySelector(`label[for="${slotEl.querySelector('input')?.id}"]`)) : null;
+        const input = slotEl.querySelector ? (slotEl.querySelector('input[type="radio"]') || slotEl) : slotEl;
+
+        if (touchTarget) touchTarget.click();
+        else if (label) label.click();
+        else slotEl.click();
+
+        if (input && input.tagName === 'INPUT') {
+            input.checked = true;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
         await sleep(500);
     } else {
         return { ok: false, reason: 'time-slot-radio-not-found' };

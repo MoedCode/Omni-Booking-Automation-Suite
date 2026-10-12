@@ -1,12 +1,11 @@
-/* Omni-Booking-Automation-Suite\VFS_Portugal/FileHandler/SheetsHandler.js */
+/* Omni-Booking-Automation-Suite/VFS_Portugal/FileHandler/SheetsHandler.js */
 
-const fs = require('fs');
-const XLSX = require('xlsx');
-const settings = require('../Config/Settings');
-const { allKeys } = require('../Config/Settings');
+import fs from 'fs';
+import XLSX from 'xlsx';
+import { allKeys, FILE_PATH } from '../Config/settings.js';
 
 class SheetHandler {
-    constructor(keysConfig = settings.allKeys, defaultFilePath = settings.FILE_PATH) {
+    constructor(keysConfig = allKeys, defaultFilePath = FILE_PATH) {
         this.allKeysConfig = keysConfig || {};
         this.mandatoryKeys = new Set(this.allKeysConfig.mandatoryKeys || []);
         this.allowedKeys = new Set(this.allKeysConfig.allowedKeys || []);
@@ -41,7 +40,9 @@ class SheetHandler {
     }
 
     _normalizeRowKeys(rawRow) {
+        const cleanFuzzy = (s) => String(s || '').toLowerCase().replace(/[*_:.\-#\s()]/g, '');
         const normalizedRow = {};
+
         for (let [rawKey, value] of Object.entries(rawRow)) {
             rawKey = rawKey.trim();
             let finalKey = rawKey;
@@ -51,26 +52,39 @@ class SheetHandler {
                 continue;
             }
 
-            let aliasMatched = false;
-            for (const [standardKey, aliases] of Object.entries(this.keyConv)) {
-                const lowerAliases = aliases.map(a => a.toLowerCase());
-                if (lowerAliases.includes(rawKey.toLowerCase())) {
-                    finalKey = standardKey;
-                    aliasMatched = true;
+            const rawFuzzy = cleanFuzzy(rawKey);
+
+            // 1. Direct fuzzy check against standard keys
+            let matched = false;
+            for (const validKey of this.allValidKeys) {
+                if (rawFuzzy === cleanFuzzy(validKey)) {
+                    finalKey = validKey;
+                    matched = true;
                     break;
                 }
             }
 
-            if (!aliasMatched) {
-                const fuzzyRawKey = rawKey.replace(/[-_ ]/g, "").toLowerCase();
-                for (const validKey of this.allValidKeys) {
-                    const fuzzyValidKey = validKey.replace(/[-_ ]/g, "").toLowerCase();
-                    if (fuzzyRawKey === fuzzyValidKey) {
-                        finalKey = validKey;
+            // 2. Check aliases in keyConv
+            if (!matched) {
+                for (const [standardKey, aliases] of Object.entries(this.keyConv)) {
+                    if (rawFuzzy === cleanFuzzy(standardKey)) {
+                        finalKey = standardKey;
+                        matched = true;
                         break;
                     }
+                    if (Array.isArray(aliases)) {
+                        for (const alias of aliases) {
+                            if (rawFuzzy === cleanFuzzy(alias)) {
+                                finalKey = standardKey;
+                                matched = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (matched) break;
                 }
             }
+
             normalizedRow[finalKey] = value;
         }
         return normalizedRow;
@@ -120,17 +134,7 @@ class SheetHandler {
 
             if (!isRowValid) { ignoredRowsCount++; return; }
 
-            if (this.hasAllowed) {
-                for (const [key, val] of Object.entries(row)) {
-                    const hasValue = val !== undefined && val !== null && (typeof val === 'string' ? val.trim() !== '' : true);
-                    if (hasValue && !this.allValidKeys.has(key)) {
-                        warnings.push(`[Row ${rowNumber}] Ignored: Contains unauthorized/unrecognized column key "${key}".`);
-                        isRowValid = false;
-                        break;
-                    }
-                }
-            }
-
+            // Extra unrecognized columns are omitted from cleanRecord without discarding the row
             if (!isRowValid) { ignoredRowsCount++; return; }
 
             const cleanRecord = {};
@@ -255,42 +259,5 @@ class SheetHandler {
     }
 }
 
-module.exports = SheetHandler;
-// ==========================================
-// Test Block (Executed when run directly)
-// ==========================================
-if (require.main === module) {
-    (async () => {
-        console.log("[Test Execution Started] Initializing SheetHandler...");
-        
-        const handler = new SheetHandler();
+export default SheetHandler;
 
-        try {
-            console.log(`[Test] Attempting to fetch from Google Sheets...`);
-            
-            // 👈 FIX: Added 'await' to resolve the Promise before logging
-            const result = await handler.loadFromGSheet("https://docs.google.com/spreadsheets/d/1XHDo01rUng0pKCFXxkMtzklZUwY5bt6bkCw3bcRkRBo/edit?usp=sharing");
-
-            console.log("\n--- Parsing Execution Results ---");
-            console.log(`Success Status : ${result.success}`);
-            console.log(`Total Processed: ${result.totalRowsProcessed}`);
-            console.log(`Valid Rows     : ${result.validRowsCount}`);
-            console.log(`Ignored Rows   : ${result.ignoredRowsCount}`);
-
-            if (result.error) {
-                console.error(`\n❌ Error Encountered:\n${result.error}`);
-            }
-
-            if (result.warnings && result.warnings.length > 0) {
-                console.warn(`\n⚠️ Warnings / Ignored Details:\n`, result.warnings);
-            }
-
-            if (result.success && result.data.length > 0) {
-                console.log(`\n✅ Successfully Parsed Data Records:\n`, result.data);
-            }
-
-        } catch (error) {
-            console.error("\n❌ Critical Test Exception Caught:", error.message);
-        }
-    })();
-}

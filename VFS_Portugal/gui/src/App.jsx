@@ -93,15 +93,15 @@ export default function App() {
         autoClose: true,
         attemptSeparator: 'Refresh Current Page',
         inputMethod: 'fill',
-        firstName: '',
-        lastName: '',
+        firstName: 'MOHAMED',
+        lastName: 'HASSAN',
         gender: 'Male',
-        dateOfBirth: '',
+        dateOfBirth: '01/01/1990',
         nationality: 'EGYPT',
-        passportNumber: '',
-        passportExpiry: '',
+        passportNumber: 'A12345678',
+        passportExpiry: '01/01/2030',
         dialCode: '20',
-        contactNumber: '',
+        contactNumber: '1000000000',
         email: '',
         appointmentTime: 'All'
     });
@@ -168,7 +168,57 @@ export default function App() {
         let duplicates = 0;
         let newAccounts = 0;
 
-        const parsedData = data.map(item => {
+        const normalizeRow = (rawItem) => {
+            const normalized = {};
+            for (const [key, val] of Object.entries(rawItem)) {
+                const cleanKey = key.toLowerCase().replace(/[*_:\s\-#()]/g, '');
+                normalized[cleanKey] = val;
+            }
+
+            const pick = (canonicalKey, aliases, fallback) => {
+                if (rawItem[canonicalKey] !== undefined && String(rawItem[canonicalKey]).trim() !== '') {
+                    return String(rawItem[canonicalKey]).trim();
+                }
+                for (const alias of aliases) {
+                    const cleanAlias = alias.toLowerCase().replace(/[*_:\s\-#()]/g, '');
+                    if (normalized[cleanAlias] !== undefined && String(normalized[cleanAlias]).trim() !== '') {
+                        return String(normalized[cleanAlias]).trim();
+                    }
+                }
+                return fallback;
+            };
+
+            return {
+                account: pick('account', ['email', 'user', 'username'], ''),
+                password: pick('password', ['pass', 'pwd'], ''),
+                country: pick('country', ['countryofresidence'], globalDefaults.country || 'Egypt'),
+                city: pick('city', ['center', 'applicationcentre', 'applicationcenter'], globalDefaults.city || 'Alexandria'),
+                appointmentCategory: pick('appointmentCategory', ['category', 'appointmentcategory'], globalDefaults.appointmentCategory || 'Short Term Visa'),
+                subCategory: pick('subCategory', ['subcategory', 'appointmentsubcategory'], globalDefaults.subCategory || 'Tourism'),
+                appointmentTime: pick('appointmentTime', ['time', 'preferredtime', 'appointmenttime'], globalDefaults.appointmentTime || 'All'),
+                firstName: pick('firstName', ['first name', 'firstname', 'givenname', 'given name'], globalDefaults.firstName || 'MOHAMED'),
+                lastName: pick('lastName', ['last name', 'lastname', 'surname'], globalDefaults.lastName || 'HASSAN'),
+                gender: pick('gender', ['sex'], globalDefaults.gender || 'Male'),
+                dateOfBirth: pick('dateOfBirth', ['date of birth', 'dob', 'birthdate'], globalDefaults.dateOfBirth || '01/01/1990'),
+                nationality: pick('nationality', ['current nationality', 'currentnationality'], globalDefaults.nationality || 'EGYPT'),
+                passportNumber: pick('passportNumber', ['passport number', 'passport', 'passportno'], globalDefaults.passportNumber || 'A12345678'),
+                passportExpiry: pick('passportExpiry', ['passport expiry', 'passport expiry date', 'passportexpirtydate', 'passportexpirydate', 'expirydate'], globalDefaults.passportExpiry || '01/01/2030'),
+                dialCode: pick('dialCode', ['dial code', 'dialcode', 'phonecode'], globalDefaults.dialCode || '20'),
+                contactNumber: pick('contactNumber', ['contact number', 'phone', 'phonenumber', 'contact', 'mobile'], globalDefaults.contactNumber || '1000000000'),
+                email: pick('email', ['email address', 'contact email'], ''),
+                mode: pick('mode', ['browser mode', 'browsermode'], 'Headless'),
+                attempts: pick('attempts', [], globalDefaults.attempts || 1),
+                attemptDelay: pick('attemptDelay', ['delay', 'attempt delay'], globalDefaults.attemptDelay || '00/00/05/00'),
+                switches: pick('switches', [], globalDefaults.switches || 1),
+                switchDelay: pick('switchDelay', ['switch delay'], globalDefaults.switchDelay || 3000),
+                autoClose: pick('autoClose', ['autoclose'], globalDefaults.autoClose),
+                attemptSeparator: pick('attemptSeparator', ['attempt separator'], globalDefaults.attemptSeparator || 'Refresh Current Page'),
+                inputMethod: pick('inputMethod', ['input method', 'typingmode', 'fillmode'], globalDefaults.inputMethod || 'fill')
+            };
+        };
+
+        const parsedData = data.map(rawItem => {
+            const item = normalizeRow(rawItem);
             if (existingAccounts.has(item.account)) duplicates++;
             else newAccounts++;
 
@@ -316,10 +366,23 @@ export default function App() {
         }
 
         const { headless, ...dataFields } = editForm;
+        const mergedFields = {
+            ...globalDefaults,
+            ...dataFields,
+            firstName: dataFields.firstName?.trim() || globalDefaults.firstName,
+            lastName: dataFields.lastName?.trim() || globalDefaults.lastName,
+            gender: dataFields.gender?.trim() || globalDefaults.gender,
+            dateOfBirth: dataFields.dateOfBirth?.trim() || globalDefaults.dateOfBirth,
+            nationality: dataFields.nationality?.trim() || globalDefaults.nationality,
+            passportNumber: dataFields.passportNumber?.trim() || globalDefaults.passportNumber,
+            passportExpiry: dataFields.passportExpiry?.trim() || globalDefaults.passportExpiry,
+            dialCode: dataFields.dialCode?.trim() || globalDefaults.dialCode,
+            contactNumber: dataFields.contactNumber?.trim() || globalDefaults.contactNumber,
+        };
         if (editingId === 'NEW') {
-            setInstances(prev => [...prev, { id: generateId(), data: dataFields, headless, status: 'Idle', aptStatus: 'idle', selected: false }]);
+            setInstances(prev => [...prev, { id: generateId(), data: mergedFields, headless, status: 'Idle', aptStatus: 'idle', selected: false }]);
         } else {
-            setInstances(prev => prev.map(inst => inst.id === editingId ? { ...inst, data: dataFields, headless } : inst));
+            setInstances(prev => prev.map(inst => inst.id === editingId ? { ...inst, data: mergedFields, headless } : inst));
         }
         setEditingId(null);
     };
