@@ -823,23 +823,22 @@ export class ChromeWorker extends BaseBrowser {
             });
 
             if (cooldownInfo) {
-                const waitSec = (cooldownInfo.seconds || 30) + 3; // +3s safety buffer
-                this.logWarning("cooldown", `🚨 VFS rate-limit popup detected: "${cooldownInfo.text}". Pausing execution for ${waitSec}s to prevent account ban...`);
+                const waitSec = cooldownInfo.seconds || 30;
+                this.logWarning("cooldown", `🚨 VFS rate-limit popup detected: "${cooldownInfo.text}". Pausing execution for exactly ${waitSec}s...`);
                 
                 const sleep = ms => new Promise(r => setTimeout(r, ms));
-                await sleep(waitSec * 1000);
-
-                // Wait until the dialog and overlay completely disappear
-                await this.page.evaluate(async () => {
-                    const sleep = ms => new Promise(res => setTimeout(res, ms));
-                    for (let i = 0; i < 20; i++) {
-                        const overlay = document.querySelector('.cdk-overlay-backdrop, .cdk-overlay-pane, mat-dialog-container');
-                        if (!overlay) break;
-                        const txt = overlay.innerText || overlay.textContent || '';
-                        if (!/wait.*second/i.test(txt)) break;
-                        await sleep(500);
-                    }
-                });
+                const startTime = Date.now();
+                const maxWaitMs = waitSec * 1000;
+                while (Date.now() - startTime < maxWaitMs) {
+                    const stillPresent = await this.page.evaluate(() => {
+                        const containers = Array.from(document.querySelectorAll(
+                            '.cdk-overlay-pane, mat-dialog-container, .common-dialog-timer-text, .timer-text, .modal, .alert, div[role="dialog"], div[role="alertdialog"], .cdk-global-overlay-wrapper'
+                        ));
+                        return containers.some(el => el.offsetHeight > 0 && /wait.*second/i.test(el.innerText || el.textContent || ''));
+                    });
+                    if (!stillPresent) break;
+                    await sleep(200);
+                }
 
                 this.logStatus("[Cooldown] ✅ Cooldown completed. Resuming orchestrator safely.");
                 return true;
@@ -1021,15 +1020,29 @@ export class ChromeWorker extends BaseBrowser {
     async clickSaveAndVerify() {
         const sleep = (ms) => new Promise(r => setTimeout(r, ms));
         try {
-            // Check if 32-second cooldown popup is visible
+            // Check if cooldown popup is visible
             const cooldown = await this.page.evaluate(() => {
-                const el = Array.from(document.querySelectorAll('.common-dialog-timer-text, .timer-text, mat-dialog-container, .modal-content, .alert'))
-                    .find(e => e.offsetHeight > 0 && /wait for \d+ second/i.test(e.textContent || ''));
+                const el = Array.from(document.querySelectorAll('.common-dialog-timer-text, .timer-text, mat-dialog-container, .modal-content, .alert, .cdk-overlay-pane'))
+                    .find(e => e.offsetHeight > 0 && /wait\s+(?:for\s+)?\d+\s+second/i.test(e.textContent || ''));
                 return el ? el.textContent.trim() : null;
             });
             if (cooldown) {
-                this.logWarning("yourDetails", `VFS rate limit popup detected: "${cooldown}". Waiting 35s...`);
-                await sleep(35000);
+                const match = cooldown.match(/(?:please\s+)?wait\s+(?:for\s+)?(\d+)\s+seconds?/i);
+                const waitSec = match ? (parseInt(match[1], 10) || 30) : 30;
+                this.logWarning("yourDetails", `VFS rate limit popup detected: "${cooldown}". Waiting exactly ${waitSec}s for cooldown to complete...`);
+                
+                // Actively poll until the popup disappears or timer expires (zero extra wait)
+                const startTime = Date.now();
+                const maxWaitMs = waitSec * 1000;
+                while (Date.now() - startTime < maxWaitMs) {
+                    const stillPresent = await this.page.evaluate(() => {
+                        const el = Array.from(document.querySelectorAll('.common-dialog-timer-text, .timer-text, mat-dialog-container, .modal-content, .alert, .cdk-overlay-pane'))
+                            .find(e => e.offsetHeight > 0 && /wait\s+(?:for\s+)?\d+\s+second/i.test(e.textContent || ''));
+                        return !!el;
+                    });
+                    if (!stillPresent) break;
+                    await sleep(200);
+                }
             }
 
             const handle = await this.page.evaluateHandle(() => {
